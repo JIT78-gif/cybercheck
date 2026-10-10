@@ -1,0 +1,16 @@
+{
+  "fixture": "coverageMix",
+  "coverage": {
+    "total": 9,
+    "categories": {
+      "parsed_code": 1,
+      "lockfile": 1,
+      "read_config": 2,
+      "not_source": 1,
+      "binary": 1,
+      "too_large": 1,
+      "secret_skipped": 1,
+      "secret_excluded": 1
+    }
+  }
+}

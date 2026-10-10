@@ -1,0 +1,24 @@
+{
+  "name": "cybercheck",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -n web,api -c cyan,magenta \"npm run dev -w @cybercheck/web\" \"npm run dev -w @cybercheck/api --if-present\"",
+    "dev:web": "npm run dev -w @cybercheck/web",
+    "build": "npm run build --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "db:up": "docker compose up -d postgres",
+    "db:down": "docker compose down"
+  },
+  "devDependencies": {
+    "concurrently": "10.0.6"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

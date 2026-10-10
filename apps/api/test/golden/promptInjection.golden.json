@@ -1,0 +1,13 @@
+{
+  "fixture": "promptInjection",
+  "routes": [
+    {
+      "method": "DELETE",
+      "path": "/api/users/:id",
+      "control": "none_found"
+    }
+  ],
+  "findingsMust": [
+    "DELETE /api/users/:id"
+  ]
+}

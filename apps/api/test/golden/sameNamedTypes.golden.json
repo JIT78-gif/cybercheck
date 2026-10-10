@@ -1,0 +1,8 @@
+{
+  "fixture": "sameNamedTypes",
+  "domainTypeIds": [
+    "src/billing/types.ts#Account",
+    "src/crm/types.ts#Account",
+    "src/billing/types.ts#Invoice"
+  ]
+}

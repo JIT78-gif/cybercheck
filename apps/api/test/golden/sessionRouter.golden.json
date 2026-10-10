@@ -1,0 +1,61 @@
+{
+  "fixture": "sessionRouter",
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/health",
+      "control": "public_intentional"
+    },
+    {
+      "method": "POST",
+      "path": "/auth/login",
+      "control": "public_intentional"
+    },
+    {
+      "method": "POST",
+      "path": "/auth/logout",
+      "control": "public_intentional"
+    },
+    {
+      "method": "GET",
+      "path": "/auth/github/callback",
+      "control": "callback_state"
+    },
+    {
+      "method": "GET",
+      "path": "/account/profile",
+      "control": "session_required"
+    },
+    {
+      "method": "PATCH",
+      "path": "/account/profile",
+      "control": "session_required"
+    },
+    {
+      "method": "DELETE",
+      "path": "/account",
+      "control": "session_required"
+    }
+  ],
+  "authMechanisms": [
+    "session",
+    "oauth"
+  ],
+  "env": {
+    "usedInCode": [
+      "SESSION_SECRET",
+      "PORT"
+    ],
+    "secret": [
+      "SESSION_SECRET"
+    ],
+    "notSecret": [
+      "PORT"
+    ]
+  },
+  "findingsMustNot": [
+    "POST /auth/login",
+    "GET /auth/github/callback",
+    "GET /health"
+  ]
+}

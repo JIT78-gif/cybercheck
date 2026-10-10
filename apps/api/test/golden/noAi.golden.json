@@ -1,0 +1,19 @@
+{
+  "fixture": "noAi",
+  "aiAbsent": true,
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/",
+      "control": "public_intentional"
+    },
+    {
+      "method": "GET",
+      "path": "/admin/stats",
+      "control": "session_required"
+    }
+  ],
+  "authMechanisms": [
+    "session"
+  ]
+}

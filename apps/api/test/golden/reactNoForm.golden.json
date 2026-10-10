@@ -1,0 +1,11 @@
+{
+  "fixture": "reactNoForm",
+  "screens": [
+    "/inbox",
+    "/settings"
+  ],
+  "screensWithInputs": [
+    "/inbox",
+    "/settings"
+  ]
+}

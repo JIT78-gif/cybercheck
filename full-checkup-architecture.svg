@@ -1,0 +1,100 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1160" viewBox="0 0 1800 1160">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#08111f"/>
+      <stop offset="1" stop-color="#132238"/>
+    </linearGradient>
+    <filter id="shadow"><feDropShadow dx="0" dy="8" stdDeviation="10" flood-opacity=".28"/></filter>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M0,0 L12,6 L0,12 z" fill="#87a5c7"/></marker>
+    <style>
+      .title{font:700 38px 'Segoe UI',Arial,sans-serif;fill:#f8fbff}.sub{font:400 18px 'Segoe UI',Arial,sans-serif;fill:#aac0d8}
+      .h{font:700 20px 'Segoe UI',Arial,sans-serif;fill:#fff}.t{font:400 15px 'Segoe UI',Arial,sans-serif;fill:#d8e5f3}.tiny{font:400 13px 'Segoe UI',Arial,sans-serif;fill:#b8cbe0}
+      .box{rx:18;filter:url(#shadow);stroke-width:2}.line{fill:none;stroke:#87a5c7;stroke-width:3;marker-end:url(#arrow)}
+    </style>
+  </defs>
+  <rect width="1800" height="1160" fill="url(#bg)"/>
+  <text x="900" y="58" text-anchor="middle" class="title">Full Project Checkup Platform</text>
+  <text x="900" y="88" text-anchor="middle" class="sub">Inspect → Evidence → User Approval → Nebula Sandbox Repair → Retest → Proposed Patch</text>
+
+  <rect x="720" y="120" width="360" height="80" class="box" fill="#1c3553" stroke="#6ea8e6"/>
+  <text x="900" y="151" text-anchor="middle" class="h">Project Intake</text>
+  <text x="900" y="178" text-anchor="middle" class="t">Repository / upload • authorization • scope</text>
+
+  <path d="M900 200 L900 235" class="line"/>
+  <rect x="670" y="238" width="460" height="92" class="box" fill="#193146" stroke="#55c3b7"/>
+  <text x="900" y="270" text-anchor="middle" class="h">Immutable Baseline + Project Intelligence</text>
+  <text x="900" y="297" text-anchor="middle" class="t">Architecture • commands • data flows • risks • questions</text>
+  <text x="900" y="318" text-anchor="middle" class="tiny">Analysis remains read-only</text>
+
+  <path d="M900 330 L900 370" class="line"/>
+  <rect x="690" y="373" width="420" height="78" class="box" fill="#322a59" stroke="#a996ff"/>
+  <text x="900" y="404" text-anchor="middle" class="h">Master Orchestrator</text>
+  <text x="900" y="430" text-anchor="middle" class="t">State • policies • budget • scheduling • evidence</text>
+
+  <path d="M900 451 L225 500" class="line"/><path d="M900 451 L675 500" class="line"/><path d="M900 451 L1125 500" class="line"/><path d="M900 451 L1575 500" class="line"/>
+
+  <rect x="35" y="505" width="380" height="270" class="box" fill="#143b42" stroke="#45d0b6"/>
+  <text x="225" y="542" text-anchor="middle" class="h">TESTING</text>
+  <text x="65" y="578" class="t">• Discover tests and requirements</text>
+  <text x="65" y="606" class="t">• Plan coverage and environment</text>
+  <text x="65" y="634" class="t">• Unit / integration / API / UI</text>
+  <text x="65" y="662" class="t">• Data / migration / compatibility</text>
+  <text x="65" y="690" class="t">• Performance / scale / resilience</text>
+  <text x="65" y="718" class="t">• Validate defects and limitations</text>
+  <text x="65" y="753" class="tiny">Output: testing evidence report</text>
+
+  <rect x="485" y="505" width="380" height="270" class="box" fill="#47262e" stroke="#ff7f8e"/>
+  <text x="675" y="542" text-anchor="middle" class="h">SECURITY</text>
+  <text x="515" y="578" class="t">• Context and threat modeling</text>
+  <text x="515" y="606" class="t">• Code / identity / data review</text>
+  <text x="515" y="634" class="t">• Dependencies / supply chain</text>
+  <text x="515" y="662" class="t">• Infrastructure / configuration</text>
+  <text x="515" y="690" class="t">• Dynamic control verification</text>
+  <text x="515" y="718" class="t">• Validate findings and root cause</text>
+  <text x="515" y="753" class="tiny">Output: security evidence report</text>
+
+  <rect x="935" y="505" width="380" height="270" class="box" fill="#3e2d50" stroke="#d898ff"/>
+  <text x="1125" y="542" text-anchor="middle" class="h">AI EVALUATOR</text>
+  <text x="965" y="578" class="t">• Discover models, tools, and RAG</text>
+  <text x="965" y="606" class="t">• Build versioned evaluation sets</text>
+  <text x="965" y="634" class="t">• Quality / grounding / hallucination</text>
+  <text x="965" y="662" class="t">• Baseline tool and prompt safety</text>
+  <text x="965" y="690" class="t">• Privacy / tenant isolation / policy</text>
+  <text x="965" y="718" class="t">• Latency / reliability / cost</text>
+  <text x="965" y="753" class="tiny">Output: AI evaluation evidence report</text>
+
+  <rect x="1385" y="505" width="380" height="270" class="box" fill="#4b321d" stroke="#ffb45e"/>
+  <text x="1575" y="535" text-anchor="middle" class="h">AI ADVERSARIAL</text>
+  <text x="1575" y="560" text-anchor="middle" class="h">TESTING</text>
+  <text x="1415" y="592" class="t">• Enforce rules of engagement</text>
+  <text x="1415" y="620" class="t">• Map complete attack surface</text>
+  <text x="1415" y="648" class="t">• Run bounded attack campaigns</text>
+  <text x="1415" y="676" class="t">• Chain application / infra / AI risks</text>
+  <text x="1415" y="704" class="t">• Validate minimum safe impact</text>
+  <text x="1415" y="732" class="t">• Explain compromise root cause</text>
+  <text x="1415" y="753" class="tiny">Output: adversarial campaign report</text>
+
+  <path d="M225 775 L710 835" class="line"/><path d="M675 775 L820 835" class="line"/><path d="M1125 775 L980 835" class="line"/><path d="M1575 775 L1090 835" class="line"/>
+  <rect x="630" y="838" width="540" height="82" class="box" fill="#1d334a" stroke="#e8c466"/>
+  <text x="900" y="870" text-anchor="middle" class="h">Unified Findings, Evidence, and Report</text>
+  <text x="900" y="897" text-anchor="middle" class="t">Tested • failed • blocked • untested • recommended improvements</text>
+
+  <path d="M900 920 L900 955" class="line"/>
+  <rect x="690" y="958" width="420" height="68" class="box" fill="#4c3b16" stroke="#ffd166"/>
+  <text x="900" y="985" text-anchor="middle" class="h">User Approval Gate</text>
+  <text x="900" y="1010" text-anchor="middle" class="t">Select exact findings to repair</text>
+
+  <path d="M690 992 L500 992" class="line"/>
+  <rect x="140" y="955" width="350" height="75" class="box" fill="#283240" stroke="#8797a9"/>
+  <text x="315" y="985" text-anchor="middle" class="h">Report Only</text>
+  <text x="315" y="1010" text-anchor="middle" class="t">Original project unchanged</text>
+
+  <path d="M1110 992 L1300 992" class="line"/>
+  <rect x="1310" y="940" width="350" height="105" class="box" fill="#1f4850" stroke="#62dbc8"/>
+  <text x="1485" y="972" text-anchor="middle" class="h">Nebula Repair Loop</text>
+  <text x="1485" y="998" text-anchor="middle" class="t">Patch sandbox → retest → max 3 tries</text>
+  <text x="1485" y="1023" text-anchor="middle" class="tiny">Return diff + evidence; separate apply approval</text>
+
+  <text x="900" y="1110" text-anchor="middle" class="sub">Core trust rule: no real-project mutation before explicit approval and successful sandbox verification.</text>
+  <text x="900" y="1138" text-anchor="middle" class="tiny">Adversarial testing is isolated, allowlisted, bounded, audited, and independently validated.</text>
+</svg>

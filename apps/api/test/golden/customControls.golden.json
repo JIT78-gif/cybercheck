@@ -1,0 +1,15 @@
+{
+  "fixture": "customControls",
+  "rateLimitingCustom": true,
+  "logging": true,
+  "routes": [
+    {
+      "method": "POST",
+      "path": "/login",
+      "control": "public_intentional"
+    }
+  ],
+  "findingsMustNot": [
+    "POST /login"
+  ]
+}

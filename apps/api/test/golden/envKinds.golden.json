@@ -1,0 +1,39 @@
+{
+  "fixture": "envKinds",
+  "env": {
+    "usedInCode": [
+      "DATABASE_URL",
+      "NEXTAUTH_SECRET",
+      "LOG_LEVEL",
+      "SENTRY_DSN",
+      "NEXT_PUBLIC_SITE_URL"
+    ],
+    "documented": [
+      "DATABASE_URL",
+      "NEXTAUTH_SECRET",
+      "NEXT_PUBLIC_SITE_URL",
+      "LEGACY_FLAG"
+    ],
+    "required": [
+      "DATABASE_URL",
+      "NEXTAUTH_SECRET"
+    ],
+    "notRequired": [
+      "LOG_LEVEL",
+      "SENTRY_DSN"
+    ],
+    "secret": [
+      "DATABASE_URL",
+      "NEXTAUTH_SECRET"
+    ],
+    "notSecret": [
+      "SENTRY_DSN",
+      "NEXT_PUBLIC_SITE_URL",
+      "LOG_LEVEL",
+      "LEGACY_FLAG"
+    ],
+    "browser": [
+      "NEXT_PUBLIC_SITE_URL"
+    ]
+  }
+}

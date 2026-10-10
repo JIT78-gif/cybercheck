@@ -1,0 +1,29 @@
+{
+  "fixture": "sqlInStrings",
+  "entities": {
+    "customers": [
+      "id",
+      "email",
+      "full_name",
+      "created_at",
+      "phone"
+    ],
+    "invoices": [
+      "id",
+      "customer_id",
+      "amount_cents",
+      "status",
+      "paid_at"
+    ]
+  },
+  "relations": [
+    "invoices->customers"
+  ],
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/healthz",
+      "control": "public_intentional"
+    }
+  ]
+}

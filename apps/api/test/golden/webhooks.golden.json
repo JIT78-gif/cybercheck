@@ -1,0 +1,38 @@
+{
+  "fixture": "webhooks",
+  "routes": [
+    {
+      "method": "POST",
+      "path": "/webhooks/stripe",
+      "control": "webhook_signature"
+    },
+    {
+      "method": "POST",
+      "path": "/webhooks/github",
+      "control": "none_found"
+    }
+  ],
+  "integrations": {
+    "required": [
+      {
+        "match": "stripe"
+      }
+    ]
+  },
+  "findingsMust": [
+    "Webhook POST /webhooks/github"
+  ],
+  "findingsMustNot": [
+    "Webhook POST /webhooks/stripe"
+  ],
+  "env": {
+    "usedInCode": [
+      "STRIPE_SECRET_KEY",
+      "STRIPE_WEBHOOK_SECRET"
+    ],
+    "secret": [
+      "STRIPE_SECRET_KEY",
+      "STRIPE_WEBHOOK_SECRET"
+    ]
+  }
+}

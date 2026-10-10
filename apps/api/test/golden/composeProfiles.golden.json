@@ -1,0 +1,21 @@
+{
+  "fixture": "composeProfiles",
+  "containers": [
+    {
+      "name": "api",
+      "file": "docker-compose.yml"
+    },
+    {
+      "name": "db",
+      "file": "docker-compose.yml"
+    },
+    {
+      "name": "api",
+      "file": "docker-compose.prod.yml"
+    },
+    {
+      "name": "proxy",
+      "file": "docker-compose.prod.yml"
+    }
+  ]
+}

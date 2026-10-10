@@ -1,0 +1,8 @@
+{
+  "fixture": "fakeTests",
+  "tests": 0,
+  "findingsMust": [
+    "The declared test command does not run any tests",
+    "No automated tests found"
+  ]
+}

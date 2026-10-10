@@ -1,0 +1,217 @@
+@import "tailwindcss";
+
+/* Semantic tokens (see design-system/MASTER.md). Light (app) is the default;
+   `.theme-dark` switches a subtree to the marketing palette. */
+:root {
+  --bg: #fafaf7;
+  --surface: #ffffff;
+  --surface-2: #f3f2ee;
+  --border: #e6e4de;
+  --fg: #0f172a;
+  --fg-muted: #4b5563;
+  --accent: #1d4ed8;
+  --primary: #0b1b33;
+  --primary-fg: #ffffff;
+  --success: #15803d;
+  --warning: #b45309;
+  --danger: #b91c1c;
+  --ring: #1d4ed8;
+}
+
+.theme-dark {
+  --bg: #070b14;
+  --surface: #0d1526;
+  --surface-2: #121d33;
+  --border: #1e2b45;
+  --fg: #e6edf7;
+  --fg-muted: #9aa8bd;
+  --accent: #7cc4fa;
+  --primary: #e8f3ff;
+  --primary-fg: #06101f;
+  --success: #4ade80;
+  --warning: #fbbf24;
+  --danger: #f87171;
+  --ring: #7cc4fa;
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-border: var(--border);
+  --color-fg: var(--fg);
+  --color-fg-muted: var(--fg-muted);
+  --color-accent: var(--accent);
+  --color-primary: var(--primary);
+  --color-primary-fg: var(--primary-fg);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-ring: var(--ring);
+  --font-sans: var(--font-plex-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, monospace;
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--font-sans);
+    line-height: 1.6;
+  }
+
+  *:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  ::selection {
+    background: color-mix(in srgb, var(--accent) 30%, transparent);
+  }
+}
+
+/* ---------- Motion ----------
+   Load-time animations use keyframes. Scroll reveals use [data-reveal] and are
+   switched on by components/motion/reveal-observer.tsx. Hidden start states
+   only apply under `html.js`, so content stays visible without JavaScript. */
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes scan {
+  from {
+    transform: translateY(-100%);
+  }
+  to {
+    transform: translateY(400%);
+  }
+}
+
+@keyframes breathe {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+@utility animate-fade-up {
+  animation: fade-up 500ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+@utility animate-scan {
+  animation: scan 4.5s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+
+@utility animate-breathe {
+  animation: breathe 6s ease-in-out infinite;
+}
+
+@utility animate-float {
+  animation: float 7s ease-in-out infinite;
+}
+
+.js [data-reveal] {
+  opacity: 0;
+  transform: translate3d(0, 24px, 0);
+  transition:
+    opacity 600ms cubic-bezier(0.2, 0.7, 0.2, 1),
+    transform 600ms cubic-bezier(0.2, 0.7, 0.2, 1);
+  transition-delay: var(--reveal-delay, 0ms);
+}
+
+.js [data-reveal="left"] {
+  transform: translate3d(-32px, 0, 0);
+}
+
+.js [data-reveal="right"] {
+  transform: translate3d(32px, 0, 0);
+}
+
+.js [data-reveal="scale"] {
+  transform: scale(0.96);
+}
+
+.js [data-reveal].is-visible {
+  opacity: 1;
+  transform: none;
+}
+
+/* Children of [data-sequence] play one after another once an ancestor is revealed. */
+.js [data-sequence] > * {
+  opacity: 0;
+  transform: translate3d(0, 8px, 0);
+  transition:
+    opacity 400ms ease-out,
+    transform 400ms ease-out;
+  transition-delay: calc(var(--seq-base, 350ms) + var(--i, 0) * 160ms);
+}
+
+.js .is-visible [data-sequence] > * {
+  opacity: 1;
+  transform: none;
+}
+
+/* Progress bars fill from the left once revealed. */
+.js [data-bar] {
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 1000ms cubic-bezier(0.2, 0.7, 0.2, 1) 450ms;
+}
+
+.js .is-visible [data-bar] {
+  transform: scaleX(1);
+}
+
+details[open] > .faq-answer {
+  animation: fade-up 250ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    transition-delay: 0ms !important;
+  }
+
+  .js [data-reveal],
+  .js [data-sequence] > *,
+  .js [data-bar] {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}

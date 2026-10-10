@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "project_workspace_repo_idx" ON "project" USING btree ("workspace_id","github_repo") WHERE "project"."github_repo" is not null;

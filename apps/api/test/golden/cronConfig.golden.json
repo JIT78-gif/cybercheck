@@ -1,0 +1,25 @@
+{
+  "fixture": "cronConfig",
+  "jobs": [
+    {
+      "library": "node-cron",
+      "scheduleRaw": "30 1 * * *",
+      "resolved": "30 1 * * *",
+      "handler": "sendDigest"
+    },
+    {
+      "library": "node-cron",
+      "scheduleRaw": "0 ${config.cleanupHour} * * *",
+      "resolved": "0 4 * * *",
+      "handler": "purgeOld"
+    }
+  ],
+  "env": {
+    "usedInCode": [
+      "CLEANUP_HOUR"
+    ],
+    "notRequired": [
+      "CLEANUP_HOUR"
+    ]
+  }
+}

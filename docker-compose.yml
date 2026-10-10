@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: cybercheck-postgres
+    environment:
+      POSTGRES_USER: cybercheck
+      POSTGRES_PASSWORD: cybercheck_dev
+      POSTGRES_DB: cybercheck
+    ports:
+      - "5433:5432"
+    volumes:
+      - cybercheck-pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cybercheck -d cybercheck"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  cybercheck-pg:

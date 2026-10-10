@@ -1,0 +1,32 @@
+{
+  "fixture": "serviceToken",
+  "routes": [
+    {
+      "method": "POST",
+      "path": "/internal/reindex",
+      "control": "service_token"
+    },
+    {
+      "method": "GET",
+      "path": "/reports/latest",
+      "control": "none_found"
+    }
+  ],
+  "authMechanisms": [
+    "api_key"
+  ],
+  "env": {
+    "usedInCode": [
+      "INTERNAL_API_KEY"
+    ],
+    "secret": [
+      "INTERNAL_API_KEY"
+    ]
+  },
+  "findingsMust": [
+    "GET /reports/latest"
+  ],
+  "findingsMustNot": [
+    "POST /internal/reindex"
+  ]
+}
