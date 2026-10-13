@@ -14,6 +14,7 @@ test("signed-out visitors can't open a check tab", async ({ page }) => {
 });
 
 test("add a project from the Testing tab; it is shared with every tab and the Overview", async ({ page }) => {
+  test.setTimeout(300_000); // waits for the full analysis, including the AI step
   await signedInUser(page, "Grace Tester");
 
   await page.goto("/app");
@@ -34,17 +35,19 @@ test("add a project from the Testing tab; it is shared with every tab and the Ov
   await page.getByRole("checkbox").check();
   await upload.click();
 
-  await expect(page.getByRole("heading", { name: "Snapshot ready" })).toBeVisible({ timeout: 20_000 });
-  await expect(page.getByText("is frozen and ready for checks")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Upload saved, analysis started" })).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByText("is saved as a frozen snapshot")).toBeVisible();
   await expect(page.getByText("Next.js", { exact: true }).first()).toBeVisible();
   await page.getByRole("button", { name: "Done" }).click();
 
-  // Selected in Testing...
+  // Selected in Testing, but not checkable until the full analysis (code + AI step) has finished.
   const select = page.getByLabel("Project");
-  await expect(select.locator("option:checked")).toHaveText(name);
+  await expect(select.locator("option:checked")).toHaveText(new RegExp(`^${name}`));
   await expect(page).toHaveURL(/\?project=/);
   await expect(page.getByRole("button", { name: "Start Testing check" })).toBeDisabled();
-  await expect(page.getByText("Your project is ready.")).toBeVisible();
+  // The status updates by itself (no reload) until the project is ready.
+  await expect(page.getByText("Your project is ready.")).toBeVisible({ timeout: 240_000 });
+  await expect(select.locator("option:checked")).toHaveText(name);
 
   // ...and already selected in Security (shared project, remembered choice).
   await page.getByRole("link", { name: "Security" }).click();

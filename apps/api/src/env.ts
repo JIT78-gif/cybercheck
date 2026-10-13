@@ -44,6 +44,25 @@ const schema = z.object({
   /** Spending cap for one project analysis, in US dollars. */
   AI_RUN_BUDGET_USD: z.coerce.number().positive().default(1),
 
+  // Testing check: project code runs only in Nebius Sandboxes (VM-isolated), never on this host.
+  NEBIUS_PROJECT_ID: optional,
+  NEBIUS_SANDBOX_URL: z.string().url().default("https://api.tokenfactory.nebius.com/sandboxes/v1"),
+  /** The model provider is independent of the sandbox provider. Nebius Sandboxes still execute all project code. */
+  TESTING_AI_PROVIDER: z.enum(["nebius", "gemini"]).default("nebius"),
+  GEMINI_API_KEY: optional,
+  GEMINI_BASE_URL: z.string().url().default("https://generativelanguage.googleapis.com/v1beta/openai/"),
+  GEMINI_MODEL_AUTHOR: z.string().default("gemini-3.8-flash"),
+  GEMINI_MODEL_TRIAGE: z.string().default("gemini-3.8-flash"),
+  GEMINI_MODEL_CRITIC: z.string().default("gemini-2.5-pro"),
+  /** Model that writes extra probes and tests (code-specialised). */
+  TESTING_MODEL_AUTHOR: z.string().default("moonshotai/Kimi-K2.7-Code"),
+  /** Model that plans booting and explains failures. */
+  TESTING_MODEL_TRIAGE: z.string().default("deepseek-ai/DeepSeek-V4-Pro-0813"),
+  /** Independent model (different family) that must agree before a product defect is confirmed. */
+  TESTING_MODEL_CRITIC: z.string().default("zai-org/GLM-5.3"),
+  /** Spending cap on AI for one Testing run, in US dollars. */
+  TESTING_RUN_BUDGET_USD: z.coerce.number().positive().default(1.5),
+
   SMTP_HOST: z.string().trim().min(1).default("smtp.gmail.com"),
   SMTP_PORT: z.coerce.number().int().positive().default(465),
   SMTP_USER: optional,
@@ -68,4 +87,6 @@ export const providers = {
   githubApp: Boolean(env.GITHUB_CLIENT_ID && env.GITHUB_CLIENT_SECRET && env.GITHUB_APP_SLUG),
   smtp: Boolean(env.SMTP_USER && env.SMTP_PASS),
   ai: Boolean(env.NEBIUS_API_KEY),
+  testingAi: env.TESTING_AI_PROVIDER === "gemini" ? Boolean(env.GEMINI_API_KEY) : Boolean(env.NEBIUS_API_KEY),
+  sandbox: Boolean(env.NEBIUS_API_KEY && env.NEBIUS_PROJECT_ID),
 };

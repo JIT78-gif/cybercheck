@@ -1,0 +1,24 @@
+{
+  "project": "cafe-fullstack",
+  "summary": "FastAPI + SQLite backend with licence activation, admin and customer sessions, and a Next.js frontend that loads Google Fonts at build time and has no ESLint configuration. Seeded defects: the order total ignores quantities, SQLite foreign keys are declared but never turned on, and the admin price input has no label.",
+  "commands": { "requiredEnv": [] },
+  "expectedOutcomes": { "install": "passed", "build": "passed", "testSuite": "passed", "appBoots": true },
+  "defects": [
+    { "id": "order-total-ignores-quantity", "summary": "POST /customer/orders sums unit prices without multiplying by quantity (README: two coffees at 3.00 cost 6.00)", "path": "app/main.py", "line": 197, "detectableBy": "api_probe", "endpoint": "POST /customer/orders", "mustFind": true },
+    { "id": "foreign-keys-not-enforced", "summary": "SQLite foreign keys are declared but PRAGMA foreign_keys is never turned on, so orphan rows are accepted", "path": "app/db.py", "line": 61, "detectableBy": "database", "endpoint": null, "title": "Foreign keys are declared but not enforced", "mustFind": true },
+    { "id": "price-input-without-label", "summary": "The admin menu form's price input has no label, only nearby text (WCAG 1.3.1 / 4.1.2)", "path": "frontend/app/admin/page.jsx", "line": 1, "detectableBy": "browser", "endpoint": null, "title": "label", "mustFind": true }
+  ],
+  "notDefects": [
+    "The build downloads Inter from Google Fonts: a configuration gap (needs internet), not a code defect",
+    "next lint starts its setup wizard because no ESLint configuration is committed: a configuration gap",
+    "Moving an order backwards or skipping a step answers 409 by design; paid is final"
+  ],
+  "mustNotReport": ["Lint errors", "The build fails"],
+  "classifications": [
+    { "title": "needs internet access", "kind": "configuration_gap" },
+    { "title": "not configured for non-interactive", "kind": "configuration_gap" }
+  ],
+  "release": "not_ready_product_failures",
+  "layersDecisive": { "api": 15, "data": 8, "ui": 3, "accessibility": 3, "existing_suite": 1, "performance": 1 },
+  "fixtureSuccess": 0.7
+}

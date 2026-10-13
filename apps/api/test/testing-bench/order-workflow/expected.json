@@ -1,0 +1,49 @@
+{
+  "project": "order-workflow",
+  "summary": "Order lifecycle state machine with a Fastify API and a passing happy-path vitest suite; canTransition lets an unpaid order go straight from created to shipped.",
+  "stack": { "language": "typescript", "framework": "fastify", "testFramework": "vitest", "packageManager": "npm" },
+  "commands": {
+    "install": "npm ci",
+    "build": "npm run build",
+    "typecheck": "npm run typecheck",
+    "test": "npm test",
+    "start": "npm start",
+    "port": 3000,
+    "requiredEnv": []
+  },
+  "expectedOutcomes": {
+    "install": "passed",
+    "build": "passed",
+    "typecheck": "passed",
+    "testSuite": "passed",
+    "failingTests": [],
+    "flakyTests": [],
+    "environmentFailingTests": [],
+    "appBoots": true
+  },
+  "defects": [
+    {
+      "id": "D1",
+      "kind": "product_defect",
+      "summary": "canTransition allows created -> shipped because the 'shipped' case only checks from !== 'shipped' instead of from === 'paid', so an unpaid order can be shipped (README: an order must be paid before it can be shipped).",
+      "path": "src/orders/lifecycle.ts",
+      "line": 44,
+      "detectableBy": "generated_test",
+      "endpoint": "POST /orders/:id/transitions",
+      "observable": "canTransition('created', 'shipped') returns true (expected false); transition(createOrder(...), 'shipped', now) succeeds instead of throwing InvalidTransitionError. Over HTTP: POST /orders {customerId:'c_1', totalCents:4999} -> 201, then POST /orders/<id>/transitions {to:'shipped'} -> 200 with status 'shipped' instead of 409 invalid_transition. This is the only invalid transition that is accepted: created->delivered, cancelled->shipped, shipped->shipped, shipped->cancelled, shipped->paid and anything out of delivered/cancelled correctly return 409.",
+      "mustFind": false
+    }
+  ],
+  "notDefects": [
+    "created -> cancelled and paid -> cancelled are allowed by design",
+    "delivered and cancelled are terminal; 409 for any transition out of them is correct",
+    "Malformed order ids (non UUID) return 400 by design, unknown ids 404",
+    "Repeating the current status (e.g. paid -> paid) returns 409 by design",
+    "Orders are stored in memory; there is no authentication by design"
+  ],
+  "mustNotReport": [
+    "Do not report cancelled -> shipped, shipped -> cancelled or delivered -> anything as accepted; they are correctly rejected with 409",
+    "Do not report a failing test suite: all 6 existing tests pass",
+    "Do not report 409 responses for invalid transitions as product defects"
+  ]
+}

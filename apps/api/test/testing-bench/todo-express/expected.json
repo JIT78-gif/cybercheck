@@ -1,0 +1,40 @@
+{
+  "project": "todo-express",
+  "summary": "Clean Express (CommonJS) todo API with correct input validation and a jest + supertest suite in which exactly one test is nondeterministic because its random title generator exceeds the 200 character limit about half of the time.",
+  "stack": { "language": "javascript", "framework": "express", "testFramework": "jest", "packageManager": "npm" },
+  "commands": {
+    "install": "npm ci",
+    "build": null,
+    "typecheck": null,
+    "test": "npm test",
+    "start": "npm start",
+    "port": 3000,
+    "requiredEnv": []
+  },
+  "expectedOutcomes": {
+    "install": "passed",
+    "build": "not_declared",
+    "typecheck": "not_declared",
+    "testSuite": "flaky",
+    "failingTests": [],
+    "flakyTests": ["POST /todos > creates todos with generated titles"],
+    "environmentFailingTests": [],
+    "appBoots": true
+  },
+  "defects": [],
+  "notDefects": [
+    "When 'creates todos with generated titles' fails it is because test/fixtures.js randomTitle() picks a target length uniformly in 10..389 characters and the product correctly rejects titles over 200 characters with HTTP 400; the failure probability per run is about 50% (simulated 0.5045 over 200000 draws). The defect is in the test data, not in src.",
+    "POST /todos returns 400 for titles longer than 200 characters after trimming; that is documented and intended",
+    "Unknown body fields (including __proto__) are rejected with 400 by design",
+    "Malformed ids such as /todos/abc or /todos/01 return 400, unknown ids return 404",
+    "Malformed JSON returns 400 {\"error\":\"invalid_json\"}; bodies over 16 kB return 413 {\"error\":\"payload_too_large\"}",
+    "Data is in memory and resets on restart by design",
+    "GET /health is public; there is no authentication by design (internal service)"
+  ],
+  "mustNotReport": [
+    "Any confirmed product defect in src/ is a false positive: this is the safe twin",
+    "Do not report the 400 on long titles as a product defect; the nondeterministic test is a test-data problem",
+    "Do not classify the suite as plainly passed or plainly failed: it is flaky (about 50% failure on the single test above, all other 21 tests are deterministic)",
+    "Do not report the absence of build or typecheck scripts as a failure (plain JavaScript project)"
+  ]
+}

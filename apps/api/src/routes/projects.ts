@@ -30,6 +30,7 @@ import { TERMINAL_EVENTS, emitIntakeEvent, listIntakeEvents, subscribeIntake } f
 import { startIntake } from "../intake/pipeline.ts";
 import { INTAKE_POLICY_VERSION } from "../intake/policy.ts";
 import { objectStore } from "../storage/object-store.ts";
+import { analysisOf } from "../understanding/run.ts";
 
 const UPLOAD_DIR = fileURLToPath(new URL("../../../../.data/uploads", import.meta.url));
 
@@ -61,7 +62,8 @@ export async function projectRoutes(app: FastifyInstance) {
       : [];
     const latest = new Map<string, typeof snapshot.$inferSelect>();
     for (const s of snaps) if (!latest.has(s.projectId)) latest.set(s.projectId, s);
-    return { projects: projects.map((p) => toProjectSummary(p, latest.get(p.id) ?? null)) };
+    const analyses = await Promise.all(projects.map((p) => analysisOf(latest.get(p.id) ?? null)));
+    return { projects: projects.map((p, i) => toProjectSummary(p, latest.get(p.id) ?? null, analyses[i])) };
   });
 
   app.post<{ Params: { wid: string } }>("/v1/workspaces/:wid/projects", async (request, reply) => {
@@ -127,7 +129,7 @@ export async function projectRoutes(app: FastifyInstance) {
       .where(eq(snapshot.projectId, p.id))
       .orderBy(desc(snapshot.createdAt));
     const detail: ProjectDetail = {
-      ...toProjectSummary(p, snaps[0] ?? null),
+      ...toProjectSummary(p, snaps[0] ?? null, await analysisOf(snaps[0] ?? null)),
       snapshots: snaps.map(toSnapshotSummary),
     };
     return { project: detail };

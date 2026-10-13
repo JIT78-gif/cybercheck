@@ -1,0 +1,50 @@
+{
+  "project": "ws-monorepo",
+  "summary": "npm workspaces monorepo (packages/core TS library + apps/api Express app depending on @tripdesk/core, one root lockfile) where one core vitest test fails because eachDay excludes the end day, which also surfaces in GET /itinerary/days.",
+  "stack": { "language": "typescript", "framework": "express", "testFramework": "vitest", "packageManager": "npm" },
+  "commands": {
+    "install": "npm ci",
+    "build": "npm run build",
+    "typecheck": "npm run typecheck",
+    "test": "npm test",
+    "start": "npm start",
+    "port": 3000,
+    "requiredEnv": []
+  },
+  "expectedOutcomes": {
+    "install": "passed",
+    "build": "passed",
+    "typecheck": "passed",
+    "testSuite": "failed",
+    "failingTests": ["eachDay > includes both the start and end day"],
+    "flakyTests": [],
+    "environmentFailingTests": [],
+    "appBoots": true
+  },
+  "defects": [
+    {
+      "id": "D1",
+      "kind": "product_defect",
+      "summary": "eachDay in @tripdesk/core loops while day < end instead of day <= end, so the documented inclusive range drops its last day (and a same-day range returns no days).",
+      "path": "packages/core/src/dates.ts",
+      "line": 41,
+      "detectableBy": "existing_test",
+      "endpoint": "GET /itinerary/days",
+      "observable": "packages/core test 'eachDay > includes both the start and end day' fails: expected ['2025-03-01','2025-03-02'] to deeply equal [...3 days] (10 tests, 1 failed; root npm test exits 1 from workspace @tripdesk/core). Over HTTP (apps/api): GET /itinerary/days?start=2025-03-01&end=2025-03-03 returns count 2 without 2025-03-03; start=end=2025-03-01 returns count 0 and days [].",
+      "mustFind": true
+    }
+  ],
+  "notDefects": [
+    "The failing test and the defect live in packages/core; apps/api only consumes it (apps/api has no test script, skipped by --if-present)",
+    "Root typecheck builds @tripdesk/core first because apps/api resolves @tripdesk/core through packages/core/dist type declarations; build order core then api is intentional",
+    "nightsBetween excludes the check-out day by design (nights, not days); POST /quotes for 2025-03-01 to 2025-03-04 at 12000 returns nights 3, total 40320 (12% tax) which is correct",
+    "rangesOverlap treats ranges as inclusive by design",
+    "Invalid or missing dates return 400; itineraries are capped at 366 days by design",
+    "No authentication and no required env vars; PORT defaults to 3000"
+  ],
+  "mustNotReport": [
+    "Do not attribute the failure to apps/api or to workspace linking: install, build and typecheck all pass",
+    "Do not report nightsBetween or quoteStay as wrong",
+    "Do not claim the suite passed"
+  ]
+}

@@ -1,0 +1,16 @@
+# Runtime
+Flask==3.1.2
+Werkzeug==3.1.9
+Jinja2==3.1.6
+MarkupSafe==3.0.4
+itsdangerous==2.2.0
+click==8.5.0
+blinker==1.9.0
+
+# Tests
+pytest==8.4.2
+iniconfig==2.3.1
+packaging==26.3
+pluggy==1.6.0
+Pygments==2.21.0
+colorama==0.4.6; sys_platform == "win32"

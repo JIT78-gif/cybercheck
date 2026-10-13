@@ -6,7 +6,7 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "concurrently -n web,api -c cyan,magenta \"npm run dev -w @cybercheck/web\" \"npm run dev -w @cybercheck/api --if-present\"",
+    "dev": "concurrently -n web,api,worker -c cyan,magenta,yellow \"npm run dev -w @cybercheck/web\" \"npm run dev -w @cybercheck/api --if-present\" \"npm run worker -w @cybercheck/api\"",
     "dev:web": "npm run dev -w @cybercheck/web",
     "build": "npm run build --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",

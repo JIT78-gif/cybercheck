@@ -16,6 +16,9 @@
   --warning: #b45309;
   --danger: #b91c1c;
   --ring: #1d4ed8;
+  /* Charts: a neutral for "no verdict" and a light companion to the accent. */
+  --chart-muted: #c4c0b6;
+  --chart-soft: #93c5fd;
 }
 
 .theme-dark {
@@ -32,6 +35,8 @@
   --warning: #fbbf24;
   --danger: #f87171;
   --ring: #7cc4fa;
+  --chart-muted: #3b4a66;
+  --chart-soft: #1e40af;
   color-scheme: dark;
 }
 

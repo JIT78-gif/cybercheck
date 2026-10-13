@@ -1,0 +1,50 @@
+{
+  "project": "pg-tasks",
+  "summary": "Express + node-postgres task API that requires DATABASE_URL, creates its table on startup, and has a jest suite against real Postgres where exactly one test fails because pagination uses OFFSET page*pageSize with 1-based pages.",
+  "stack": { "language": "javascript", "framework": "express", "testFramework": "jest", "packageManager": "npm" },
+  "commands": {
+    "install": "npm ci",
+    "build": null,
+    "typecheck": null,
+    "test": "npm test",
+    "start": "npm start",
+    "port": 3000,
+    "requiredEnv": ["DATABASE_URL"]
+  },
+  "expectedOutcomes": {
+    "install": "passed",
+    "build": "not_declared",
+    "typecheck": "not_declared",
+    "testSuite": "failed",
+    "failingTests": ["GET /tasks > returns the first page of tasks in id order"],
+    "flakyTests": [],
+    "environmentFailingTests": [],
+    "appBoots": true
+  },
+  "defects": [
+    {
+      "id": "D1",
+      "kind": "product_defect",
+      "summary": "listTasks computes OFFSET as page * pageSize although pages are 1-based (default page=1), so every page skips one full page: page 1 returns rows pageSize+1..2*pageSize and the default listing of fewer than pageSize tasks is empty.",
+      "path": "src/tasks.js",
+      "line": 23,
+      "detectableBy": "existing_test",
+      "endpoint": "GET /tasks",
+      "observable": "test 'returns the first page of tasks in id order' gets ['three','four'] instead of ['one','two'] (11 tests, 1 failed). Over HTTP: after POST /tasks {title:'only task'}, GET /tasks returns {\"items\":[],\"page\":1,\"pageSize\":20,\"total\":1} instead of one item.",
+      "mustFind": true
+    }
+  ],
+  "notDefects": [
+    "The server exits 1 with '[pg-tasks] DATABASE_URL must be set' when DATABASE_URL is missing: intended",
+    "The tests require a reachable PostgreSQL via DATABASE_URL and TRUNCATE the tasks table: intended; with the sandbox Postgres available they are not environment failures",
+    "total in GET /tasks is correct (separate COUNT query); only items are offset",
+    "page=0, pageSize=0 or pageSize>100 return 400 by design; malformed ids return 400, unknown ids 404",
+    "GET /health runs SELECT 1 and fails if the database is down: intended",
+    "No authentication by design (internal service)"
+  ],
+  "mustNotReport": [
+    "Do not classify the failing pagination test as an environment failure: it fails with a working database because of src/tasks.js",
+    "Do not report the DATABASE_URL requirement as a defect",
+    "Do not claim the suite passed"
+  ]
+}

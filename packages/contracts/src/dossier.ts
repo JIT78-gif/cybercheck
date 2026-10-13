@@ -627,6 +627,8 @@ export const UnderstandingRun = z.object({
   createdAt: z.string(),
   finishedAt: z.string().nullable(),
   dossier: ProjectDossier.nullable(),
+  /** Live progress while the code is read or the AI step runs; null when idle. */
+  progress: z.object({ step: z.string(), progress: z.number().nullable() }).nullable(),
 });
 export type UnderstandingRun = z.infer<typeof UnderstandingRun>;
 

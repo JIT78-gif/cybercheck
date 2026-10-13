@@ -1,0 +1,21 @@
+[project]
+name = "inventory-service"
+version = "1.2.0"
+description = "Stock levels and order reservations"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi==0.121.3",
+    "pydantic==2.12.5",
+    "uvicorn==0.38.0",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest==8.4.2",
+    "httpx==0.28.1",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-ra"

@@ -35,7 +35,7 @@ test("upload a local folder: dependencies are left out and it becomes a snapshot
     await page.getByRole("checkbox").check();
     await page.getByRole("button", { name: "Create project and upload" }).click();
 
-    await expect(page.getByRole("heading", { name: "Snapshot ready" })).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole("heading", { name: "Upload saved, analysis started" })).toBeVisible({ timeout: 20_000 });
     await expect(page.getByText(`${Object.keys(demoProject).length} files`).first()).toBeVisible();
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -73,7 +73,7 @@ async function stubGithub(page: Page, opts: { connected: boolean }) {
   await page.route("**/v1/github/repos/octo-test/storefront/branches", (r) =>
     json(r, { branches: [{ name: "main", sha: "a".repeat(40), isDefault: true }, { name: "dev", sha: "b".repeat(40), isDefault: false }] }),
   );
-  const project = { id: "gh-project", workspaceId: "w", name: "storefront", description: null, sourceType: "github", githubRepo: "octo-test/storefront", createdAt: new Date().toISOString(), latestSnapshot: null };
+  const project = { id: "gh-project", workspaceId: "w", name: "storefront", description: null, sourceType: "github", githubRepo: "octo-test/storefront", createdAt: new Date().toISOString(), latestSnapshot: null, analysis: { stage: "none", step: null, progress: null, error: null } };
   await page.route("**/v1/workspaces/*/projects", (r) => {
     if (r.request().method() !== "POST") return r.fallback();
     calls.push({ url: r.request().url(), body: r.request().postDataJSON() });
@@ -98,7 +98,7 @@ async function stubGithub(page: Page, opts: { connected: boolean }) {
       })),
     }),
   );
-  await page.route("**/v1/projects/gh-project", (r) => json(r, { project: { ...project, latestSnapshot: snapshot, snapshots: [snapshot] } }));
+  await page.route("**/v1/projects/gh-project", (r) => json(r, { project: { ...project, latestSnapshot: snapshot, snapshots: [snapshot], analysis: { stage: "ready", step: null, progress: null, error: null } } }));
   return calls;
 }
 
@@ -135,7 +135,7 @@ test("GitHub connected: pick a repository from the list, choose a branch, import
   await dialog.getByRole("checkbox").check();
   await dialog.getByRole("button", { name: "Import repository" }).click();
 
-  await expect(dialog.getByRole("heading", { name: "Snapshot ready" })).toBeVisible({ timeout: 15_000 });
+  await expect(dialog.getByRole("heading", { name: "Upload saved, analysis started" })).toBeVisible({ timeout: 15_000 });
   await expect(dialog.getByText("Pinning the branch to an exact commit")).toBeVisible();
   await expect(dialog.getByText("bbbbbbb").first()).toBeVisible();
 

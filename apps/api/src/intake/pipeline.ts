@@ -1,5 +1,6 @@
 import { rm } from "node:fs/promises";
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
+import { isUnlocked, withLock } from "../db/locks.ts";
 import { db } from "../db/client.ts";
 import { snapshot } from "../db/schema.ts";
 import { GithubError } from "../github/client.ts";
@@ -38,7 +39,10 @@ function drain() {
 export type IntakeSource = string | (() => Promise<string>);
 
 export function startIntake(snapshotId: string, source: IntakeSource, opts: { stripTopLevel?: boolean } = {}) {
-  enqueue(() => runIntake(snapshotId, source, opts));
+  // The lock tells other processes (a restarted API, a worker) that this snapshot is being processed.
+  enqueue(async () => {
+    await withLock(`intake:${snapshotId}`, () => runIntake(snapshotId, source, opts));
+  });
 }
 
 async function runIntake(snapshotId: string, source: IntakeSource, opts: { stripTopLevel?: boolean }) {
@@ -127,11 +131,20 @@ async function runIntake(snapshotId: string, source: IntakeSource, opts: { strip
 
 /** On startup, snapshots that were mid-processing when the API stopped can't resume: mark them. */
 export async function recoverInterruptedSnapshots() {
-  const stuck = await db
-    .update(snapshot)
-    .set({ status: "FAILED", error: "Processing was interrupted by a server restart. Please upload again." })
-    .where(inArray(snapshot.status, ["RECEIVED", "VALIDATING"]))
-    .returning({ id: snapshot.id });
-  for (const s of stuck) await emitIntakeEvent(s.id, "failed", { reason: "interrupted" });
-  return stuck.length;
+  const candidates = await db.select({ id: snapshot.id }).from(snapshot).where(inArray(snapshot.status, ["RECEIVED", "VALIDATING"]));
+  let n = 0;
+  for (const c of candidates) {
+    // Still locked means another process is working on it right now: leave it alone.
+    if (!(await isUnlocked(`intake:${c.id}`))) continue;
+    const [s] = await db
+      .update(snapshot)
+      .set({ status: "FAILED", error: "Processing was interrupted by a server restart. Please upload again." })
+      .where(and(eq(snapshot.id, c.id), inArray(snapshot.status, ["RECEIVED", "VALIDATING"])))
+      .returning({ id: snapshot.id });
+    if (s) {
+      await emitIntakeEvent(s.id, "failed", { reason: "interrupted" });
+      n++;
+    }
+  }
+  return n;
 }

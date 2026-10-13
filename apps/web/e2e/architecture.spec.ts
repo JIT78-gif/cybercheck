@@ -25,6 +25,7 @@ async function uploadShop(page: Page) {
 }
 
 test("architecture: sections, diagrams, evidence and export", async ({ page }) => {
+  test.setTimeout(300_000);
   const mermaidErrors: string[] = [];
   page.on("console", (m) => m.type() === "error" && /mermaid|syntax|parse/i.test(m.text()) && mermaidErrors.push(m.text()));
 
@@ -33,7 +34,7 @@ test("architecture: sections, diagrams, evidence and export", async ({ page }) =
 
   // The project page shows the understanding status and links to the Architecture area.
   await page.goto(`/app/projects/${id}`);
-  await expect(page.getByText(/areas answered from code/)).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByText(/areas answered from code/)).toBeVisible({ timeout: 240_000 }); // after the AI step
   await page.getByRole("link", { name: "Open architecture" }).click();
   await expect(page).toHaveURL(new RegExp(`/app/projects/${id}/architecture`), { timeout: 30_000 });
 
@@ -48,6 +49,20 @@ test("architecture: sections, diagrams, evidence and export", async ({ page }) =
   const row = page.getByRole("row").filter({ hasText: "/api/orders/:id" }).filter({ hasText: "DELETE" });
   await expect(row).toContainText("No protection found");
   await expect(page.locator("figure svg").first()).toBeVisible({ timeout: 20_000 });
+
+  // Ctrl + wheel zooms the diagram (around the pointer); a plain wheel scrolls the page instead.
+  const fig = page.locator("figure").first();
+  const zoomLevel = fig.getByText(/^\d+%$/);
+  await expect(zoomLevel).toHaveText("100%");
+  await fig.getByRole("img").hover();
+  await page.mouse.wheel(0, -200);
+  await expect(zoomLevel).toHaveText("100%");
+  await page.keyboard.down("Control");
+  await page.mouse.wheel(0, -300);
+  await page.keyboard.up("Control");
+  await expect.poll(async () => Number((await zoomLevel.textContent())?.replace("%", ""))).toBeGreaterThan(100);
+  await fig.getByRole("img").dblclick();
+  await expect(zoomLevel).toHaveText("100%");
 
   // Evidence opens the code viewer at the right line.
   await row.getByRole("button", { name: /src\/routes\/orders\.ts:\d+/ }).last().click(); // the handler column

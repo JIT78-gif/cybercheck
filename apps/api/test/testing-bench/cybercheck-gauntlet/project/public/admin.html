@@ -1,0 +1,10 @@
+<!doctype html>
+<html lang="en">
+  <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Admin · Sentinel Mart</title><link rel="stylesheet" href="/styles.css"></head>
+  <body>
+    <header><a href="/">Sentinel Mart</a></header>
+    <main class="wide-shell"><h1>Administration</h1><p>Manage every user account.</p><button><span aria-hidden="true">+</span></button><select><option>Choose a role</option><option>admin</option></select><div id="users"></div></main>
+    <script>fetch('/api/admin/users', { headers: { authorization: 'Bearer ' + localStorage.getItem('token') } }).then(r => r.json()).then(x => users.innerHTML = JSON.stringify(x));</script>
+  </body>
+</html>
+

@@ -51,7 +51,7 @@ try {
   await page.getByRole("checkbox").check();
   await shot(page, "05-add-project-details");
   await page.getByRole("button", { name: "Create project and upload" }).click();
-  await page.getByRole("heading", { name: "Snapshot ready" }).waitFor({ timeout: 20_000 });
+  await page.getByRole("heading", { name: "Upload saved, analysis started" }).waitFor({ timeout: 20_000 });
   await shot(page, "06-snapshot-ready", true);
   await page.getByRole("button", { name: "Done" }).click();
   await shot(page, "07-testing-selected", true);

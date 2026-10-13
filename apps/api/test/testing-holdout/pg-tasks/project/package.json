@@ -1,0 +1,26 @@
+{
+  "name": "pg-tasks",
+  "version": "1.1.0",
+  "private": true,
+  "description": "Task tracking API backed by PostgreSQL",
+  "main": "src/server.js",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "jest --runInBand"
+  },
+  "dependencies": {
+    "express": "4.22.1",
+    "pg": "8.16.3"
+  },
+  "devDependencies": {
+    "jest": "29.7.0",
+    "supertest": "7.1.4"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "testMatch": ["<rootDir>/test/**/*.test.js"]
+  }
+}

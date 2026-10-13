@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { Minus, Plus, RotateCcw } from "lucide-react";
 import { Spinner } from "@/components/ui/form";
 
@@ -42,9 +42,34 @@ export function MermaidDiagram({ code, label }: { code: string; label: string })
   const id = `mmd-${rawId.replace(/[^a-zA-Z0-9]/g, "")}`;
   const [svg, setSvg] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
-  const [scale, setScale] = useState(1);
-  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  // One view state so zoom and pan always update together. The content is transformed from its top-left corner.
+  const [view, setView] = useState({ scale: 1, x: 0, y: 0 });
   const drag = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null);
+  const viewport = useRef<HTMLDivElement>(null);
+
+  /** Zoom by `factor`, keeping the content under point (px, py) of the viewport in place. */
+  const zoomAt = useCallback((factor: number, px: number, py: number) => {
+    setView((v) => {
+      const scale = Math.min(6, Math.max(0.2, v.scale * factor));
+      const k = scale / v.scale;
+      return { scale, x: px - (px - v.x) * k, y: py - (py - v.y) * k };
+    });
+  }, []);
+
+  // Ctrl (or Cmd) + mouse wheel, and trackpad pinch, zoom around the pointer. A native listener is
+  // needed because React's wheel handler is passive and can't stop the browser from zooming the page.
+  useEffect(() => {
+    const el = viewport.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return; // plain scrolling still scrolls the page
+      e.preventDefault();
+      const r = el.getBoundingClientRect();
+      zoomAt(Math.exp(-e.deltaY * (e.deltaMode === 1 ? 0.05 : 0.0018)), e.clientX - r.left, e.clientY - r.top);
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [zoomAt, svg]);
 
   useEffect(() => {
     let cancelled = false;
@@ -61,11 +86,16 @@ export function MermaidDiagram({ code, label }: { code: string; label: string })
     };
   }, [id, code]);
 
-  const zoom = (f: number) => setScale((s) => Math.min(4, Math.max(0.25, s * f)));
-  const reset = () => {
-    setScale(1);
-    setOffset({ x: 0, y: 0 });
-  };
+  // Buttons zoom around the centre of the visible area (factor 0 = reset).
+  const onButton = useCallback(
+    (factor: number) => {
+      if (!factor) return setView({ scale: 1, x: 0, y: 0 });
+      const r = viewport.current?.getBoundingClientRect();
+      zoomAt(factor, (r?.width ?? 0) / 2, (r?.height ?? 0) / 2);
+    },
+    [zoomAt],
+  );
+  const reset = () => setView({ scale: 1, x: 0, y: 0 });
 
   if (failed) {
     return (
@@ -80,17 +110,20 @@ export function MermaidDiagram({ code, label }: { code: string; label: string })
   return (
     <figure className="overflow-hidden rounded-xl border border-border bg-surface">
       <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
-        <figcaption className="text-xs font-medium text-fg-muted">{label}</figcaption>
+        <figcaption className="min-w-0 text-xs text-fg-muted">
+          <span className="font-medium">{label}</span>
+          <span className="hidden sm:inline"> · Ctrl + scroll to zoom, drag to move, double-click to reset</span>
+        </figcaption>
         <div className="flex items-center gap-1">
           {[
-            { icon: Minus, label: "Zoom out", on: () => zoom(1 / 1.25) },
-            { icon: Plus, label: "Zoom in", on: () => zoom(1.25) },
-            { icon: RotateCcw, label: "Reset view", on: reset },
+            { icon: Minus, label: "Zoom out", factor: 1 / 1.25 },
+            { icon: Plus, label: "Zoom in", factor: 1.25 },
+            { icon: RotateCcw, label: "Reset view", factor: 0 },
           ].map((b) => (
             <button
               key={b.label}
               type="button"
-              onClick={b.on}
+              onClick={() => onButton(b.factor)}
               aria-label={b.label}
               title={b.label}
               className="inline-flex size-9 cursor-pointer items-center justify-center rounded-lg text-fg-muted transition-colors hover:bg-surface-2 hover:text-fg"
@@ -98,24 +131,27 @@ export function MermaidDiagram({ code, label }: { code: string; label: string })
               <b.icon className="size-4" />
             </button>
           ))}
-          <span className="w-12 text-right font-mono text-xs text-fg-muted tabular-nums">{Math.round(scale * 100)}%</span>
+          <span className="w-12 text-right font-mono text-xs text-fg-muted tabular-nums">{Math.round(view.scale * 100)}%</span>
         </div>
       </div>
       <div
+        ref={viewport}
         className="relative h-[min(70vh,560px)] cursor-grab touch-none overflow-hidden bg-bg active:cursor-grabbing"
         onPointerDown={(e) => {
           (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-          drag.current = { x: e.clientX, y: e.clientY, ox: offset.x, oy: offset.y };
+          drag.current = { x: e.clientX, y: e.clientY, ox: view.x, oy: view.y };
         }}
         onPointerMove={(e) => {
-          if (!drag.current) return;
-          setOffset({ x: drag.current.ox + e.clientX - drag.current.x, y: drag.current.oy + e.clientY - drag.current.y });
+          const d = drag.current;
+          if (!d) return;
+          setView((v) => ({ ...v, x: d.ox + e.clientX - d.x, y: d.oy + e.clientY - d.y }));
         }}
         onPointerUp={() => {
           drag.current = null;
         }}
+        onDoubleClick={reset}
         role="img"
-        aria-label={label}
+        aria-label={`${label}. Hold Ctrl and scroll to zoom.`}
       >
         {!svg ? (
           <div className="flex h-full items-center justify-center gap-2 text-sm text-fg-muted">
@@ -124,7 +160,7 @@ export function MermaidDiagram({ code, label }: { code: string; label: string })
         ) : (
           <div
             className="flex h-full w-full items-start justify-center p-6 [&_svg]:h-auto [&_svg]:max-w-none"
-            style={{ transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`, transformOrigin: "top center" }}
+            style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})`, transformOrigin: "0 0" }}
             dangerouslySetInnerHTML={{ __html: svg }}
           />
         )}

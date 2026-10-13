@@ -1,0 +1,70 @@
+{
+  "project": "node-shop-ui",
+  "summary": "Held out (never tuned on). Express + Postgres backend with bearer sessions and an admin role, a Vite React frontend served by vite preview, and node:test unit tests of the pricing module. Seeded defects: changing a cart line's quantity accepts any integer (the README limits it to 1 to 10, and adding an item enforces it), and the product image has no alt text.",
+  "commands": {
+    "requiredEnv": [
+      "DATABASE_URL"
+    ]
+  },
+  "expectedOutcomes": {
+    "install": "passed",
+    "build": "passed",
+    "testSuite": "passed",
+    "appBoots": true
+  },
+  "defects": [
+    {
+      "id": "cart-quantity-update-unvalidated",
+      "summary": "PATCH /api/cart/items/:id only checks that quantity is an integer, so 0, negative or 99 are stored (README: 1 to 10)",
+      "path": "backend/src/server.js",
+      "line": 88,
+      "detectableBy": "api_probe",
+      "endpoint": "PATCH /api/cart/items/:id",
+      "mustFind": true,
+      "title": "quantit|range"
+    },
+    {
+      "id": "product-image-without-alt",
+      "summary": "The product card image has no alt attribute (WCAG 1.1.1)",
+      "path": "frontend/src/main.jsx",
+      "line": 39,
+      "detectableBy": "browser",
+      "endpoint": null,
+      "title": "image|alt",
+      "mustFind": true
+    },
+    {
+      "id": "auth-db-error-crashes-server",
+      "summary": "Not seeded, verified in source: the async auth middleware awaits pool.query without try/catch, and Express 4 does not catch async rejections, so one database error ends the process",
+      "path": "backend/src/server.js",
+      "line": 21,
+      "detectableBy": "load",
+      "endpoint": null,
+      "title": "database error stops|stops under",
+      "mustFind": false
+    },
+    {
+      "id": "login-inputs-small-targets",
+      "summary": "Not seeded, verified: the unstyled sign-in inputs are under 24 px tall at phone width (WCAG 2.2 2.5.8 target size, axe target-size)",
+      "path": "frontend/src/main.jsx",
+      "line": 70,
+      "detectableBy": "browser",
+      "endpoint": null,
+      "title": "touch target|target-size",
+      "mustFind": false
+    }
+  ],
+  "notDefects": [
+    "The cart page sends visitors who are not signed in to /login by design",
+    "Adding a product requires the admin role by design"
+  ],
+  "release": "not_ready_product_failures",
+  "layersDecisive": {
+    "api": 10,
+    "data": 3,
+    "ui": 2,
+    "accessibility": 2,
+    "existing_suite": 1
+  },
+  "fixtureSuccess": 0.6
+}

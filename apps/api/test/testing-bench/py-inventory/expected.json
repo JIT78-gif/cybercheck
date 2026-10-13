@@ -1,0 +1,50 @@
+{
+  "project": "py-inventory",
+  "summary": "FastAPI + pydantic inventory service with a pytest suite of 15 tests where exactly one fails because reservations are checked against on_hand instead of available stock, allowing over-reservation.",
+  "stack": { "language": "python", "framework": "fastapi", "testFramework": "pytest", "packageManager": "pip" },
+  "commands": {
+    "install": "python3 -m venv .venv && .venv/bin/pip install -r requirements.txt",
+    "build": null,
+    "typecheck": null,
+    "test": ".venv/bin/pytest",
+    "start": ".venv/bin/python -m app",
+    "port": 8000,
+    "requiredEnv": []
+  },
+  "expectedOutcomes": {
+    "install": "passed",
+    "build": "not_declared",
+    "typecheck": "not_declared",
+    "testSuite": "failed",
+    "failingTests": ["tests/test_reservations.py::test_cannot_reserve_more_than_available"],
+    "flakyTests": [],
+    "environmentFailingTests": [],
+    "appBoots": true
+  },
+  "defects": [
+    {
+      "id": "D1",
+      "kind": "product_defect",
+      "summary": "InventoryService.reserve compares the requested quantity with item.on_hand instead of item.available (on_hand - reserved), so units that are already reserved can be promised again and available goes negative.",
+      "path": "app/service.py",
+      "line": 82,
+      "detectableBy": "existing_test",
+      "endpoint": "POST /items/{sku}/reservations",
+      "observable": "test_cannot_reserve_more_than_available fails with 'assert 201 == 409'. Over HTTP: POST /items {sku:'WID-001', name:'Widget', on_hand:10}, then POST /items/WID-001/reservations {quantity:6, order_id:'SO-1'} -> 201 and again {quantity:6, order_id:'SO-2'} -> 201 (expected 409); GET /items/WID-001 then shows reserved 12, available -2.",
+      "mustFind": true
+    }
+  ],
+  "notDefects": [
+    "FastAPI returns 422 (not 400) for request validation errors; that is the framework convention and the tests expect it",
+    "Reserving more than on_hand on a fresh item (11 of 10) is correctly rejected with 409",
+    "Unknown fields in request bodies are rejected with 422 by design (extra='forbid')",
+    "Releasing an already released reservation returns 409 by design",
+    "State is in memory per process; there is no authentication by design",
+    "The app listens on PORT (default 8000) via 'python -m app', not 3000"
+  ],
+  "mustNotReport": [
+    "Do not report 422 validation responses as defects",
+    "Do not report the stock write-off rule (cannot drop on_hand below reserved) as wrong; it is correct",
+    "Do not claim the suite passed: 1 of 15 tests fails"
+  ]
+}

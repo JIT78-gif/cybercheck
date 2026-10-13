@@ -1,0 +1,10 @@
+<!doctype html>
+<html lang="en">
+  <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>AI support · Sentinel Mart</title><link rel="stylesheet" href="/styles.css"></head>
+  <body>
+    <header><a href="/">Sentinel Mart</a></header>
+    <main class="wide-shell"><h1>AI support</h1><textarea id="message" placeholder="Ask support"></textarea><button id="send">Send</button><div id="answer"></div></main>
+    <script>send.onclick = async () => { const r = await fetch('/api/assistant', { method: 'POST', headers: { authorization: 'Bearer ' + localStorage.getItem('token'), 'content-type': 'application/json' }, body: JSON.stringify({ message: message.value }) }); const x = await r.json(); answer.innerHTML = x.reply; };</script>
+  </body>
+</html>
+

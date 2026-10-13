@@ -1,0 +1,1 @@
+ALTER TABLE "test_run_event" ADD COLUMN "data" jsonb;

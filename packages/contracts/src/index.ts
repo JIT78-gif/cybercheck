@@ -76,6 +76,23 @@ export type IntakeEvent = z.infer<typeof IntakeEvent>;
 
 // ---------- Projects ----------
 
+/**
+ * How far the project is from being usable by the checks. Only "ready" may be checked:
+ * processing (upload being validated) → reading_code (static analysis) → explaining (AI step) → ready.
+ */
+export const AnalysisStage = z.enum(["processing", "reading_code", "explaining", "ready", "failed", "rejected", "none"]);
+export type AnalysisStage = z.infer<typeof AnalysisStage>;
+export const ProjectAnalysis = z.object({
+  stage: AnalysisStage,
+  /** What is happening right now, e.g. "Reading module 3 of 9: src/services". */
+  step: z.string().nullable(),
+  /** 0 to 1 when the step count is known. */
+  progress: z.number().min(0).max(1).nullable(),
+  /** Why it failed or was rejected, in plain words. */
+  error: z.string().nullable(),
+});
+export type ProjectAnalysis = z.infer<typeof ProjectAnalysis>;
+
 export const ProjectSummary = z.object({
   id: z.string(),
   workspaceId: z.string(),
@@ -85,6 +102,8 @@ export const ProjectSummary = z.object({
   githubRepo: z.string().nullable(),
   createdAt: z.string(),
   latestSnapshot: SnapshotSummary.nullable(),
+  /** Readiness of the latest snapshot, including the full understanding (code facts and AI step). */
+  analysis: ProjectAnalysis,
 });
 export type ProjectSummary = z.infer<typeof ProjectSummary>;
 
@@ -230,3 +249,4 @@ export function exclusionFor(path: string): string | null {
   return null;
 }
 export * from "./dossier.ts";
+export * from "./testing.ts";

@@ -1,0 +1,25 @@
+{
+  "name": "todo-express",
+  "version": "0.9.2",
+  "private": true,
+  "description": "Todo list REST API",
+  "main": "src/server.js",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "jest"
+  },
+  "dependencies": {
+    "express": "4.22.1"
+  },
+  "devDependencies": {
+    "jest": "29.7.0",
+    "supertest": "7.1.4"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "testMatch": ["<rootDir>/test/**/*.test.js"]
+  }
+}

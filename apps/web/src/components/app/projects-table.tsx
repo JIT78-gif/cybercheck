@@ -9,7 +9,7 @@ import { GitHubIcon } from "@/components/auth/provider-icons";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/form";
 import { shortDigest, timeAgo } from "@/lib/format";
-import { EmptyState, StatusChip } from "./ui";
+import { AnalysisChip, EmptyState } from "./ui";
 
 function CopyId({ id }: { id: string }) {
   const [copied, setCopied] = useState(false);
@@ -106,7 +106,7 @@ export function ProjectsTable({
                   {shortDigest(s?.resolvedRevision ?? s?.contentDigest) ?? <span className="text-fg-muted">none</span>}
                 </td>
                 <td className="px-3 py-4">
-                  <StatusChip status={s?.status} />
+                  <AnalysisChip analysis={p.analysis} />
                 </td>
                 <td className="px-3 py-4 whitespace-nowrap text-fg-muted">{timeAgo(p.createdAt)}</td>
                 <td className="px-5 py-2 text-right whitespace-nowrap sm:pr-7">

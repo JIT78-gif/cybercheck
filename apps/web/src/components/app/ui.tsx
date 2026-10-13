@@ -1,6 +1,56 @@
 import { CircleCheck, CircleDashed, CircleX, LoaderCircle, TriangleAlert } from "lucide-react";
-import type { SnapshotStatus } from "@cybercheck/contracts";
+import type { ProjectAnalysis, SnapshotStatus } from "@cybercheck/contracts";
 import { cn } from "@/lib/cn";
+
+/** Stages where the analysis is still working; the UI keeps refreshing while any project is in one. */
+export const RUNNING_STAGES = new Set<ProjectAnalysis["stage"]>(["processing", "reading_code", "explaining"]);
+
+const analysisStyle: Record<ProjectAnalysis["stage"], { label: string; icon: typeof CircleCheck; cls: string; spin?: boolean }> = {
+  processing: { label: "Checking upload", icon: LoaderCircle, cls: "border-accent/30 bg-accent/8 text-accent", spin: true },
+  reading_code: { label: "Reading code", icon: LoaderCircle, cls: "border-accent/30 bg-accent/8 text-accent", spin: true },
+  explaining: { label: "AI explaining", icon: LoaderCircle, cls: "border-accent/30 bg-accent/8 text-accent", spin: true },
+  ready: { label: "Ready", icon: CircleCheck, cls: "border-success/30 bg-success/8 text-success" },
+  failed: { label: "Failed", icon: TriangleAlert, cls: "border-warning/30 bg-warning/8 text-warning" },
+  rejected: { label: "Rejected", icon: CircleX, cls: "border-danger/30 bg-danger/8 text-danger" },
+  none: { label: "No snapshot", icon: CircleDashed, cls: "border-border bg-surface-2 text-fg-muted" },
+};
+
+/** Project readiness for the checks: "Ready" only once the code is read and explained. */
+export function AnalysisChip({ analysis, className }: { analysis: ProjectAnalysis; className?: string }) {
+  const s = analysisStyle[analysis.stage];
+  const pct = analysis.progress != null && RUNNING_STAGES.has(analysis.stage) ? ` ${Math.round(analysis.progress * 100)}%` : "";
+  return (
+    <span
+      className={cn("inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 py-0.5 text-xs font-medium", s.cls, className)}
+      title={analysis.step ?? analysis.error ?? s.label}
+    >
+      <s.icon className={cn("size-3.5", s.spin && "animate-spin")} aria-hidden="true" />
+      {s.label}
+      {pct && <span className="tabular-nums opacity-80">{pct}</span>}
+    </span>
+  );
+}
+
+/** Live progress line with a bar, for project pages and the check tabs. */
+export function AnalysisProgress({ analysis }: { analysis: ProjectAnalysis }) {
+  if (!RUNNING_STAGES.has(analysis.stage)) return null;
+  return (
+    <div className="space-y-2" role="status" aria-live="polite">
+      <div className="flex items-center justify-between gap-3 text-sm">
+        <span className="min-w-0 truncate text-fg">{analysis.step ?? "Working"}</span>
+        {analysis.progress != null && <span className="shrink-0 text-xs text-fg-muted tabular-nums">{Math.round(analysis.progress * 100)}%</span>}
+      </div>
+      <div className="h-1.5 overflow-hidden rounded-full bg-surface-2" aria-hidden="true">
+        {analysis.progress != null ? (
+          <div className="h-full rounded-full bg-accent transition-[width] duration-500" style={{ width: `${Math.max(4, analysis.progress * 100)}%` }} />
+        ) : (
+          <div className="h-full w-1/3 animate-pulse rounded-full bg-accent/60" />
+        )}
+      </div>
+      <p className="text-xs text-fg-muted">The project can be checked once this finishes. A full analysis usually takes 2 to 5 minutes.</p>
+    </div>
+  );
+}
 
 export function Card({ className, ...props }: React.ComponentProps<"section">) {
   return (
@@ -36,7 +86,7 @@ export function PageHeader({ section, title, actions }: { section: string; title
 }
 
 const statusStyle: Record<SnapshotStatus | "NONE", { label: string; icon: typeof CircleCheck; cls: string; spin?: boolean }> = {
-  BASELINED: { label: "Ready", icon: CircleCheck, cls: "border-success/30 bg-success/8 text-success" },
+  BASELINED: { label: "Saved", icon: CircleCheck, cls: "border-success/30 bg-success/8 text-success" },
   RECEIVED: { label: "Processing", icon: LoaderCircle, cls: "border-accent/30 bg-accent/8 text-accent", spin: true },
   VALIDATING: { label: "Processing", icon: LoaderCircle, cls: "border-accent/30 bg-accent/8 text-accent", spin: true },
   REJECTED: { label: "Rejected", icon: CircleX, cls: "border-danger/30 bg-danger/8 text-danger" },

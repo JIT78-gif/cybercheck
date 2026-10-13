@@ -1,0 +1,49 @@
+{
+  "project": "flask-shop",
+  "summary": "Flask cart API with a passing pytest suite (13 tests); POST /cart/<id>/discount reads data['code'] without validation, so a JSON body without a string code returns 500 instead of 400.",
+  "stack": { "language": "python", "framework": "flask", "testFramework": "pytest", "packageManager": "pip" },
+  "commands": {
+    "install": "python3 -m venv .venv && .venv/bin/pip install -r requirements.txt",
+    "build": null,
+    "typecheck": null,
+    "test": ".venv/bin/pytest",
+    "start": ".venv/bin/python -m app",
+    "port": 5000,
+    "requiredEnv": []
+  },
+  "expectedOutcomes": {
+    "install": "passed",
+    "build": "not_declared",
+    "typecheck": "not_declared",
+    "testSuite": "passed",
+    "failingTests": [],
+    "flakyTests": [],
+    "environmentFailingTests": [],
+    "appBoots": true
+  },
+  "defects": [
+    {
+      "id": "D1",
+      "kind": "product_defect",
+      "summary": "apply_discount indexes data['code'] and calls .strip() without checking presence or type (the items route validates its fields), so a missing or non-string code raises KeyError/AttributeError and Flask answers 500.",
+      "path": "app/routes.py",
+      "line": 103,
+      "detectableBy": "api_probe",
+      "endpoint": "POST /cart/<cart_id>/discount",
+      "observable": "POST /cart -> 201 {id}; then POST /cart/<id>/discount with Content-Type application/json and body {} -> 500 {\"error\":\"internal_server_error\",...} (KeyError 'code') instead of 400; body {\"code\":10} -> 500 (AttributeError). Not covered by tests. A missing or non-JSON body correctly returns 400.",
+      "mustFind": true
+    }
+  ],
+  "notDefects": [
+    "Unknown discount codes return 400 by design; codes are trimmed and case-insensitive",
+    "Unknown carts and products return 404; invalid quantities (0, 100, string) return 400",
+    "Discount is rounded half up to the cent ((subtotal * percent + 50) // 100)",
+    "The app runs Flask's built-in server via 'python -m app' on PORT (default 5000); the Flask development-server warning is expected",
+    "Carts are in memory and there is no authentication by design"
+  ],
+  "mustNotReport": [
+    "Do not report the test suite as failed: all 13 tests pass",
+    "Do not report 400/404 responses on items, products or unknown codes as defects",
+    "Do not report the use of the Flask development server as a product defect"
+  ]
+}

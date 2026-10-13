@@ -1,0 +1,45 @@
+{
+  "project": "env-integrations",
+  "summary": "Clean Express 5 checkout backend that needs Stripe, SendGrid, Postgres and an internal token at boot; mocked unit tests pass, two contract tests hit the real Stripe and SendGrid APIs and fail only when there is no network.",
+  "stack": { "language": "typescript", "framework": "express", "testFramework": "vitest", "packageManager": "npm" },
+  "commands": {
+    "install": "npm ci",
+    "build": "npm run build",
+    "typecheck": "npm run typecheck",
+    "test": "npm test",
+    "start": "npm start",
+    "port": 3000,
+    "requiredEnv": ["STRIPE_SECRET_KEY", "SENDGRID_API_KEY", "DATABASE_URL", "INTERNAL_API_TOKEN"]
+  },
+  "expectedOutcomes": {
+    "install": "passed",
+    "build": "passed",
+    "typecheck": "passed",
+    "testSuite": "partially_failed_environment",
+    "failingTests": [],
+    "flakyTests": [],
+    "environmentFailingTests": [
+      "provider contract > Stripe rejects an invalid secret key with 401",
+      "provider contract > SendGrid rejects an invalid API key with 401"
+    ],
+    "appBoots": true
+  },
+  "defects": [],
+  "notDefects": [
+    "With network ON all 19 tests pass (Stripe and SendGrid both answer 401 to the invalid keys); with network OFF the two contract tests fail with 'expected ProviderUnavailableError ... to be an instance of ProviderError' because fetch cannot reach api.stripe.com / api.sendgrid.com. The other 17 tests mock fetch or inject fake clients and pass offline.",
+    "The server exits with code 1 and 'Missing required environment variables: ...' when STRIPE_SECRET_KEY, SENDGRID_API_KEY, DATABASE_URL or INTERNAL_API_TOKEN is missing; DATABASE_URL must be a postgres:// or postgresql:// URL. Any non-empty placeholder values for the keys are accepted at boot (see .env.example).",
+    "Offline, POST /payments (with the bearer token and a valid body) returns 502 {\"error\":\"stripe_unavailable\"} and POST /notifications/email returns 502 {\"error\":\"sendgrid_unavailable\"}: this is the intended handling of an unreachable provider",
+    "GET /ready returns 503 {\"status\":\"unavailable\",\"checks\":{\"database\":\"down\"}} when no Postgres is reachable: intended readiness behavior",
+    "GET /health is public and always 200 by design; POST endpoints return 401 without 'Authorization: Bearer <INTERNAL_API_TOKEN>' by design",
+    "A fresh random Idempotency-Key per request is a design choice, not a confirmed defect",
+    "Validation errors on POST bodies return 400; malformed JSON returns 400 {\"error\":\"bad_request\"}"
+  ],
+  "mustNotReport": [
+    "External API failures offline (Stripe, SendGrid) are environment failures, not product defects",
+    "The two failing contract tests must be classified as environment/network failures, not as product defects and not as plain test-suite failures",
+    "502 from /payments or /notifications/email while offline is not a product defect",
+    "503 from /ready without a database is not a product defect",
+    "Live integration checks against Stripe/SendGrid must be reported as blocked or environment-limited when the network is off",
+    "Any confirmed product defect in src/ is a false positive"
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "name": "ledger-api",
+  "version": "1.4.0",
+  "private": true,
+  "description": "Small double-entry style money ledger HTTP API",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "start": "node dist/server.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "11.10.0",
+    "fastify": "5.6.2",
+    "zod": "3.25.76"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "7.6.13",
+    "@types/node": "22.19.1",
+    "typescript": "5.9.3",
+    "vitest": "3.2.4"
+  }
+}

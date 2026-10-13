@@ -19,9 +19,10 @@ export function UnderstandingSummary({ projectId, snapshotId }: { projectId: str
         </span>
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-fg">Architecture and understanding</p>
-          {!run || run.status === "queued" || run.status === "analyzing" ? (
+          {!run || run.status === "queued" || run.status === "analyzing" || d?.ai?.status === "running" ? (
             <p className="mt-1 flex items-center gap-2 text-sm text-fg-muted">
-              <Spinner /> Reading the code
+              <Spinner /> {run?.progress?.step ?? "Reading the code"}
+              {run?.progress?.progress != null && <span className="tabular-nums">{Math.round(run.progress.progress * 100)}%</span>}
             </p>
           ) : run.status === "failed" || !d ? (
             <p className="mt-1 text-sm text-fg-muted">The analysis didn&apos;t finish. Open it to try again.</p>

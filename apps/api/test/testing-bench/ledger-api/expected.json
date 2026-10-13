@@ -1,0 +1,65 @@
+{
+  "project": "ledger-api",
+  "summary": "Fastify + zod + better-sqlite3 money ledger with bearer auth from ADMIN_TOKEN; one existing test fails from a tax rounding mistake and POST /transfers lacks body validation so malformed bodies return HTTP 500.",
+  "stack": { "language": "typescript", "framework": "fastify", "testFramework": "vitest", "packageManager": "npm" },
+  "commands": {
+    "install": "npm ci",
+    "build": "npm run build",
+    "typecheck": "npm run typecheck",
+    "test": "npm test",
+    "start": "npm start",
+    "port": 3000,
+    "requiredEnv": ["ADMIN_TOKEN"]
+  },
+  "expectedOutcomes": {
+    "install": "passed",
+    "build": "passed",
+    "typecheck": "passed",
+    "testSuite": "failed",
+    "failingTests": ["computeInvoiceTotals > rounds invoice tax to the nearest cent"],
+    "flakyTests": [],
+    "environmentFailingTests": [],
+    "appBoots": true
+  },
+  "defects": [
+    {
+      "id": "D1",
+      "kind": "product_defect",
+      "summary": "computeInvoiceTotals truncates tax with Math.floor instead of rounding half up to the nearest cent, so 3 x 1999 cents at 825 bps yields tax 494 and total 6491 instead of 495 and 6492.",
+      "path": "src/money.ts",
+      "line": 37,
+      "detectableBy": "existing_test",
+      "endpoint": "POST /invoices",
+      "observable": "test 'rounds invoice tax to the nearest cent' fails (expected 494 to be 495); over HTTP POST /invoices {accountId, taxRateBps: 825, lines:[{quantity:3, unitPriceCents:1999}]} returns taxCents 494, totalCents 6491 (README says half up, expected 495 and 6492)",
+      "mustFind": true
+    },
+    {
+      "id": "D2",
+      "kind": "product_defect",
+      "summary": "POST /transfers casts request.body to TransferBody without any schema validation (every other write route uses zod), so a missing body, a missing amount or a non-string amount throws a TypeError inside parseAmount and the route answers 500 instead of 400.",
+      "path": "src/routes/transfers.ts",
+      "line": 16,
+      "detectableBy": "api_probe",
+      "endpoint": "POST /transfers",
+      "observable": "With a valid 'Authorization: Bearer <ADMIN_TOKEN>': body {} returns HTTP 500 {\"error\":\"internal_error\"} instead of 400; no body at all returns 500; {\"fromAccountId\":1,\"toAccountId\":2,\"amount\":10} (number amount) returns 500. Related symptom of the same root cause: {\"fromAccountId\":1,\"amount\":\"1.00\"} (missing toAccountId) returns 404 'Account undefined not found' instead of 400. The throw happens at src/routes/transfers.ts line 17 / src/money.ts line 10 (value.trim()). Not covered by any existing test.",
+      "mustFind": true
+    }
+  ],
+  "notDefects": [
+    "GET /health is public by design and returns 200 without a token",
+    "Every other route returns 401 without 'Authorization: Bearer <ADMIN_TOKEN>'; that is intended",
+    "The server exits with code 1 and 'ADMIN_TOKEN must be set' when ADMIN_TOKEN is missing; that is intended",
+    "Negative or over-precise transfer amounts as strings ('-5.00', '1.234') are correctly rejected with 400",
+    "Transfer fee minimum of 25 cents and 0.5% half-up rounding are correct (transferFee uses Math.round)",
+    "Transfers to an unknown account with a well-formed body return 404; insufficient funds return 422 and leave balances unchanged",
+    "The default database is in-memory (LEDGER_DB_PATH=:memory:), so data does not persist across restarts by design",
+    "createdAt timestamps are SQLite datetime('now') strings in UTC without timezone suffix"
+  ],
+  "mustNotReport": [
+    "Do not report the auth requirement (401 on /accounts, /transfers, /invoices without a token) as a defect",
+    "Do not report the refusal to boot without ADMIN_TOKEN as a defect",
+    "Do not report validation 400 responses on /accounts, /accounts/:id/deposits or /invoices as defects",
+    "Do not report the transfer fee calculation as wrong",
+    "Do not claim the test suite passed: exactly one of 22 tests fails"
+  ]
+}

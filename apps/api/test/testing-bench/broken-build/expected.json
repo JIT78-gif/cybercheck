@@ -1,0 +1,49 @@
+{
+  "project": "broken-build",
+  "summary": "TypeScript shipping quote library (no HTTP server) where tsc fails with one real type error (formatMoney called without its required currency argument) while the vitest suite passes because vitest transpiles without type checking.",
+  "stack": { "language": "typescript", "framework": "none", "testFramework": "vitest", "packageManager": "npm" },
+  "commands": {
+    "install": "npm ci",
+    "build": "npm run build",
+    "typecheck": "npm run typecheck",
+    "test": "npm test",
+    "start": null,
+    "port": null,
+    "requiredEnv": []
+  },
+  "expectedOutcomes": {
+    "install": "passed",
+    "build": "failed",
+    "typecheck": "failed",
+    "testSuite": "passed",
+    "failingTests": [],
+    "flakyTests": [],
+    "environmentFailingTests": [],
+    "appBoots": false
+  },
+  "defects": [
+    {
+      "id": "D1",
+      "kind": "build_defect",
+      "summary": "quoteShipment calls formatMoney(totalCents) without the required currency argument, which is a compile error (TS2554 Expected 2 arguments, but got 1); at runtime it only works by accident because formatMoney falls back to DEFAULT_CURRENCY ('USD').",
+      "path": "src/quote.ts",
+      "line": 48,
+      "detectableBy": "typecheck",
+      "endpoint": null,
+      "observable": "npm run typecheck exits 2 and npm run build exits 1, both printing 'src/quote.ts(48,14): error TS2554: Expected 2 arguments, but got 1.'; build emits no dist/ (noEmitOnError). npm test passes 13/13.",
+      "mustFind": true
+    }
+  ],
+  "notDefects": [
+    "This is a library: there is no start script and no HTTP server, so appBoots=false is expected and not a failure of the engine or the project",
+    "The runtime value of quote.display is correct ('$10.50' etc.) because every rate table is USD; the problem is only the compile error",
+    "formatMoney's 'currency || DEFAULT_CURRENCY' fallback is defensive code, not a runtime defect",
+    "Tie-breaking by faster delivery in cheapestQuote is intended"
+  ],
+  "mustNotReport": [
+    "Must NOT report the build or typecheck as passed",
+    "Must NOT conclude the project is healthy just because all 13 tests pass",
+    "Do not report wrong prices or wrong currency formatting at runtime: runtime output is correct",
+    "Do not report the missing start script or missing HTTP server as a defect"
+  ]
+}

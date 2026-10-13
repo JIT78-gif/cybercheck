@@ -1,0 +1,8 @@
+:root { font-family: Arial, sans-serif; color: #8a8a8a; background: #fff; }
+body { margin: 0; }
+header { display: flex; justify-content: space-between; padding: 16px 24px; background: #f4f4f4; }
+.wide-shell { width: 980px; margin: 30px auto; }
+section { margin: 24px 0; padding: 20px; border: 1px solid #ddd; }
+input, textarea, select, button { margin: 4px; padding: 5px; }
+#results, #answer { margin-top: 16px; }
+

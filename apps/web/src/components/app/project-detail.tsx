@@ -14,7 +14,7 @@ import { ApiError, api } from "@/lib/api";
 import { CHECK_INFO, CHECK_ORDER } from "@/lib/checks";
 import { formatBytes, shortDigest, timeAgo } from "@/lib/format";
 import { useAppData } from "./app-data";
-import { Card, CardTitle, PageHeader, StatusChip } from "./ui";
+import { AnalysisChip, AnalysisProgress, Card, CardTitle, PageHeader, RUNNING_STAGES, StatusChip } from "./ui";
 
 const TREE_PREVIEW = 150;
 
@@ -63,6 +63,23 @@ export function ProjectDetailView({ id }: { id: string }) {
       .then((r) => setProject(r.project))
       .catch((e) => setError(e instanceof ApiError ? e : null));
   }, [id]);
+
+  // Live status: refresh every few seconds until the analysis has finished.
+  const running = project ? RUNNING_STAGES.has(project.analysis.stage) : false;
+  useEffect(() => {
+    if (!running) return;
+    const timer = setTimeout(() => {
+      api<{ project: ProjectDetail }>(`/v1/projects/${id}`)
+        .then((r) => {
+          setProject(r.project);
+          upsertProject(r.project);
+        })
+        .catch(() => {
+          // try again on the next tick
+        });
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, [running, project, id, upsertProject]);
 
   if (error) {
     return (
@@ -129,12 +146,14 @@ export function ProjectDetailView({ id }: { id: string }) {
       <Card>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <CardTitle>Latest snapshot</CardTitle>
-          <StatusChip status={latest?.status} />
+          <AnalysisChip analysis={project.analysis} />
         </div>
         {!latest ? (
           <p className="mt-3 text-sm text-fg-muted">No snapshot yet. Upload an archive to create one.</p>
         ) : latest.status === "BASELINED" ? (
           <div className="mt-5 space-y-5">
+            <AnalysisProgress analysis={project.analysis} />
+            {project.analysis.stage === "failed" && <Alert>{project.analysis.error ?? "The analysis did not finish."} Open the architecture page and choose Analyze again.</Alert>}
             <UnderstandingSummary projectId={project.id} snapshotId={latest.id} />
             <SnapshotFacts snapshot={latest} />
           </div>
@@ -145,17 +164,32 @@ export function ProjectDetailView({ id }: { id: string }) {
         ) : latest.status === "FAILED" ? (
           <Alert className="mt-5">{latest.error}</Alert>
         ) : (
-          <p className="mt-3 flex items-center gap-2 text-sm text-fg-muted">
-            <Spinner /> Processing. This page updates when you reload it.
-          </p>
+          <div className="mt-5">
+            <AnalysisProgress analysis={project.analysis} />
+          </div>
         )}
       </Card>
 
       <div>
-        <h2 className="mb-3 text-lg font-semibold tracking-tight text-fg">Run a check on this project</h2>
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <h2 className="mb-1 text-lg font-semibold tracking-tight text-fg">Run a check on this project</h2>
+        {project.analysis.stage !== "ready" && (
+          <p className="mb-3 text-sm text-fg-muted">Checks unlock when the analysis has finished, so every check works from the complete understanding of the project.</p>
+        )}
+        <div className="mt-3 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {CHECK_ORDER.map((c) => {
             const info = CHECK_INFO[c];
+            if (project.analysis.stage !== "ready") {
+              return (
+                <div key={c} aria-disabled="true" className="rounded-2xl border border-border bg-surface p-5 opacity-60">
+                  <info.icon className="size-5 text-fg-muted" aria-hidden="true" />
+                  <p className="mt-3 font-semibold text-fg">{info.name}</p>
+                  <p className="mt-1 text-sm text-fg-muted">{info.tagline}</p>
+                  <span className="mt-4 inline-flex items-center gap-1.5 text-sm text-fg-muted">
+                    {RUNNING_STAGES.has(project.analysis.stage) ? <><Spinner className="size-3.5" /> Waiting for the analysis</> : "Not available"}
+                  </span>
+                </div>
+              );
+            }
             return (
               <Link
                 key={c}

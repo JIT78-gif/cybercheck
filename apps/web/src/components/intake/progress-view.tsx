@@ -105,7 +105,7 @@ export function ProgressView({
     <div className="space-y-5">
       <h3 ref={headingRef} tabIndex={-1} className="text-lg font-semibold text-fg outline-none">
         {outcome === "baselined"
-          ? "Snapshot ready"
+          ? "Upload saved, analysis started"
           : outcome === "rejected"
             ? source === "github"
               ? "We couldn't import this repository"
@@ -120,7 +120,7 @@ export function ProgressView({
         <div className="animate-fade-up space-y-5 rounded-2xl border border-success/30 bg-success/5 p-5">
           <p className="flex items-center gap-2 text-sm font-medium text-success">
             <CircleCheck className="size-4" aria-hidden="true" />
-            {project.name} is frozen and ready for checks.
+            {project.name} is saved as a frozen snapshot. We are now reading and explaining the code; checks unlock when that finishes (usually 2 to 5 minutes). You can follow it live on the project page.
           </p>
           <SnapshotFacts snapshot={snapshot} />
         </div>

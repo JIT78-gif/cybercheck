@@ -1,0 +1,37 @@
+{
+  "project": "hanging-suite",
+  "summary": "TypeScript task-queue library whose vitest suite never finishes: one test awaits once(queue, 'idle') but the queue only ever emits 'drain', and vitest.config.ts sets testTimeout to 600000 ms, so the run hangs for 10 minutes while the other tests pass.",
+  "stack": { "language": "typescript", "framework": "none", "testFramework": "vitest", "packageManager": "npm" },
+  "commands": {
+    "install": "npm ci",
+    "build": "npm run build",
+    "typecheck": "npm run typecheck",
+    "test": "npm test",
+    "start": null,
+    "port": null,
+    "requiredEnv": []
+  },
+  "expectedOutcomes": {
+    "install": "passed",
+    "build": "passed",
+    "typecheck": "passed",
+    "testSuite": "timed_out",
+    "failingTests": [],
+    "flakyTests": [],
+    "environmentFailingTests": [],
+    "appBoots": false
+  },
+  "defects": [],
+  "notDefects": [
+    "The test that never finishes is 'TaskQueue > notifies listeners when a resumed queue has finished'; 'TaskQueue > rejects an invalid concurrency' never starts because it is queued after it in the same file",
+    "The hang is caused by the test: test/taskQueue.test.ts line 83 waits for an 'idle' event, while the documented and implemented event is 'drain' (src/taskQueue.ts line 77). The library itself behaves as documented.",
+    "testTimeout/hookTimeout of 600000 ms in vitest.config.ts is a project setting, which is why vitest does not fail the test quickly",
+    "This is a library: no start script and no HTTP server, so appBoots=false is expected",
+    "The 10 other tests (4 in test/retry.test.ts, 6 in test/taskQueue.test.ts) pass within about a second; one test never runs because it comes after the hanging test"
+  ],
+  "mustNotReport": [
+    "Must NOT report the test suite as passed: it must be reported as timed out / inconclusive after the engine's own time limit and the process must be terminated",
+    "Must NOT wait the full 10 minutes as if the run were healthy",
+    "Do not report a product defect in src/taskQueue.ts for the hang; the event name mismatch lives in the test file"
+  ]
+}

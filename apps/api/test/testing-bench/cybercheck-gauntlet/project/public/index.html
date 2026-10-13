@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Sentinel Mart</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <header><a href="/">Sentinel Mart</a><nav><a href="/admin">Admin</a> <a href="/assistant">AI support</a></nav></header>
+    <main class="wide-shell">
+      <h1>Store</h1>
+      <img src="/logo.svg">
+      <section>
+        <h2>Sign in</h2>
+        <input id="email" placeholder="Email">
+        <input id="password" type="password" placeholder="Password">
+        <button id="login">Sign in</button>
+      </section>
+      <section>
+        <h2>Search</h2>
+        <input id="query" placeholder="Find products">
+        <button id="search" aria-label=""><span aria-hidden="true">⌕</span></button>
+        <div id="results"></div>
+      </section>
+    </main>
+    <script>
+      login.onclick = async () => {
+        const response = await fetch('/api/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: email.value, password: password.value }) });
+        const data = await response.json();
+        localStorage.setItem('token', data.token);
+      };
+      search.onclick = async () => {
+        results.innerHTML = await (await fetch('/api/search?q=' + encodeURIComponent(query.value))).text();
+      };
+    </script>
+  </body>
+</html>
+

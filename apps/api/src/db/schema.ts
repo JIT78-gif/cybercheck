@@ -229,3 +229,189 @@ export const understandingRun = pgTable(
   },
   (t) => [index("understanding_run_snapshot_idx").on(t.snapshotId, t.createdAt)],
 );
+
+// ---------- Testing check (one run per request, bound to a snapshot and its dossier) ----------
+
+export const testingRunStatus = pgEnum("testing_run_status", ["queued", "running", "completed", "partial", "blocked", "failed", "cancelled"]);
+
+export const testingRun = pgTable(
+  "testing_run",
+  {
+    id: text("id").primaryKey(),
+    snapshotId: text("snapshot_id")
+      .notNull()
+      .references(() => snapshot.id, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => project.id, { onDelete: "cascade" }),
+    understandingRunId: text("understanding_run_id").references(() => understandingRun.id, { onDelete: "set null" }),
+    requestedBy: text("requested_by")
+      .notNull()
+      .references(() => user.id),
+    status: testingRunStatus("status").notNull().default("queued"),
+    phase: text("phase").notNull().default("admission"),
+    /** Engine version, models, budgets and limits that applied to this run. */
+    policy: jsonb("policy").notNull(),
+    /** Boot plan, identities and other planning decisions (no secret values). */
+    plan: jsonb("plan"),
+    report: jsonb("report"),
+    usage: jsonb("usage"),
+    error: text("error"),
+    cancelRequested: boolean("cancel_requested").notNull().default(false),
+    /** Incremented on every claim; writes from an older claim are ignored (fencing). */
+    generation: integer("generation").notNull().default(0),
+    workerId: text("worker_id"),
+    heartbeatAt: timestamp("heartbeat_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+  },
+  (t) => [index("testing_run_snapshot_idx").on(t.snapshotId, t.createdAt), index("testing_run_status_idx").on(t.status, t.createdAt)],
+);
+
+export const testObligation = pgTable(
+  "test_obligation",
+  {
+    runId: text("run_id")
+      .notNull()
+      .references(() => testingRun.id, { onDelete: "cascade" }),
+    id: text("id").notNull(),
+    seq: integer("seq").notNull(),
+    status: text("status").notNull(),
+    data: jsonb("data").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.runId, t.id] })],
+);
+
+export const testExecution = pgTable(
+  "test_execution",
+  {
+    id: text("id").primaryKey(),
+    runId: text("run_id")
+      .notNull()
+      .references(() => testingRun.id, { onDelete: "cascade" }),
+    data: jsonb("data").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("test_execution_run_idx").on(t.runId, t.createdAt)],
+);
+
+export const testFinding = pgTable(
+  "test_finding",
+  {
+    /** Short per-run id shown to users (F1, F2 ...). */
+    id: text("id").notNull(),
+    runId: text("run_id")
+      .notNull()
+      .references(() => testingRun.id, { onDelete: "cascade" }),
+    data: jsonb("data").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.runId, t.id] })],
+);
+
+export const testRunEvent = pgTable(
+  "test_run_event",
+  {
+    runId: text("run_id")
+      .notNull()
+      .references(() => testingRun.id, { onDelete: "cascade" }),
+    seq: integer("seq").notNull(),
+    type: text("type").notNull(),
+    message: text("message").notNull(),
+    /** Structured detail of a live action (a request sent, a screen opened, a journey step), for the live view. */
+    data: jsonb("data"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.runId, t.seq] })],
+);
+
+/** Sandbox images with a snapshot's dependencies installed, reused across runs (keyed by content). */
+export const sandboxImageCache = pgTable("sandbox_image_cache", {
+  key: text("key").primaryKey(),
+  provider: text("provider").notNull(),
+  imageId: text("image_id").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
+ * Human reviews of Testing findings. Append-only: a later review links the one it supersedes, and the latest one
+ * is the effective decision. The machine finding itself is never changed by a review.
+ */
+export const findingReview = pgTable(
+  "finding_review",
+  {
+    id: text("id").primaryKey(),
+    runId: text("run_id")
+      .notNull()
+      .references(() => testingRun.id, { onDelete: "cascade" }),
+    findingId: text("finding_id").notNull(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => project.id, { onDelete: "cascade" }),
+    snapshotId: text("snapshot_id")
+      .notNull()
+      .references(() => snapshot.id, { onDelete: "cascade" }),
+    reviewerUserId: text("reviewer_user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    reviewerRole: text("reviewer_role").notNull(),
+    decision: text("decision").notNull(),
+    reason: text("reason"),
+    supersedesReviewId: text("supersedes_review_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("finding_review_run_idx").on(t.runId, t.findingId, t.createdAt), index("finding_review_project_idx").on(t.projectId)],
+);
+
+/** Who did what to which object (reviews, approvals): an append-only record of user decisions. */
+export const auditLog = pgTable(
+  "audit_log",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").references(() => user.id, { onDelete: "set null" }),
+    workspaceId: text("workspace_id"),
+    action: text("action").notNull(),
+    targetType: text("target_type").notNull(),
+    targetId: text("target_id").notNull(),
+    data: jsonb("data"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("audit_log_target_idx").on(t.targetType, t.targetId)],
+);
+
+/**
+ * A repair of one human-confirmed finding, tried only inside fresh sandboxes after explicit approval. The project
+ * snapshot is never changed: a patch exists only as an overlay on the validation runs' sandboxes.
+ */
+export const testingRepair = pgTable(
+  "testing_repair",
+  {
+    id: text("id").primaryKey(),
+    runId: text("run_id")
+      .notNull()
+      .references(() => testingRun.id, { onDelete: "cascade" }),
+    findingId: text("finding_id").notNull(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => project.id, { onDelete: "cascade" }),
+    snapshotId: text("snapshot_id")
+      .notNull()
+      .references(() => snapshot.id, { onDelete: "cascade" }),
+    status: text("status").notNull(),
+    requestedBy: text("requested_by")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    approvedBy: text("approved_by").references(() => user.id, { onDelete: "set null" }),
+    scope: jsonb("scope").notNull(),
+    attempts: jsonb("attempts").notNull().default(sql`'[]'::jsonb`),
+    error: text("error"),
+    /** Worker claim: who is running it and when it last reported (a stale one is picked up again). */
+    workerId: text("worker_id"),
+    heartbeatAt: timestamp("heartbeat_at", { withTimezone: true }),
+    cancelRequested: boolean("cancel_requested").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("testing_repair_run_idx").on(t.runId, t.findingId)],
+);

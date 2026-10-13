@@ -1,0 +1,54 @@
+{
+  "project": "session-notes",
+  "summary": "Fastify 5 notes API with password login (DASHBOARD_PASSWORD) and cookie sessions, no test suite; after signing in, PATCH /api/notes/:id without a title crashes with HTTP 500 because the route has no body validation.",
+  "stack": { "language": "typescript", "framework": "fastify", "testFramework": "none", "packageManager": "npm" },
+  "commands": {
+    "install": "npm ci",
+    "build": "npm run build",
+    "typecheck": "npm run typecheck",
+    "test": null,
+    "start": "npm start",
+    "port": 3000,
+    "requiredEnv": ["DASHBOARD_PASSWORD"]
+  },
+  "expectedOutcomes": {
+    "install": "passed",
+    "build": "passed",
+    "typecheck": "passed",
+    "testSuite": "zero_tests",
+    "failingTests": [],
+    "flakyTests": [],
+    "environmentFailingTests": [],
+    "appBoots": true
+  },
+  "defects": [
+    {
+      "id": "D1",
+      "kind": "product_defect",
+      "summary": "PATCH /api/notes/:id casts request.body to NotePatch without validation (POST and GET use zod) and calls patch.title.trim(), so a partial update without a string title throws TypeError and returns 500 instead of 200 or 400.",
+      "path": "src/routes/notes.ts",
+      "line": 52,
+      "detectableBy": "api_probe",
+      "endpoint": "PATCH /api/notes/:id",
+      "observable": "Requires a session: POST /login {\"password\": <DASHBOARD_PASSWORD>} and keep the sid cookie, then POST /api/notes {\"title\":\"First\"} -> 201. PATCH /api/notes/1 with {\"body\":\"new text\"} -> 500 {\"error\":\"internal_error\"}; {} -> 500; no body -> 500 ('Cannot read properties of undefined (reading 'trim')'). README documents PATCH as accepting any subset of title, body, pinned. Same root cause (cast at line 50): {\"title\":\"x\",\"pinned\":\"yes\"} is accepted and stores pinned as the string 'yes'. Without a session the route correctly answers 401, so the defect is only reachable after login.",
+      "mustFind": true
+    }
+  ],
+  "notDefects": [
+    "There is no test script and no test files: the suite must be reported as absent / zero tests, not as passed",
+    "The server exits 1 with 'DASHBOARD_PASSWORD must be set' when the variable is missing: intended",
+    "GET /health is public by design; every /api/notes route returns 401 without a session by design",
+    "POST /login returns 401 for a wrong or missing password; POST /logout destroys the session",
+    "SESSION_SECRET is optional; a random secret per process (sessions lost on restart) is documented behavior",
+    "Cookies are not marked Secure unless NODE_ENV=production so the app works over plain HTTP locally: intended",
+    "Negative or huge limit/offset query params return 400 (zod) and do not crash",
+    "PATCH /api/notes/<unknown id> returns 404 before reading the body",
+    "Missing login rate limiting is a hardening suggestion, not a confirmed product defect"
+  ],
+  "mustNotReport": [
+    "Do not report the 401 on /api/notes without a session as a defect",
+    "Do not report the boot refusal without DASHBOARD_PASSWORD as a defect",
+    "Do not report the test suite as passed (there is none)",
+    "Do not report POST /api/notes or GET /api/notes validation 400s as defects"
+  ]
+}

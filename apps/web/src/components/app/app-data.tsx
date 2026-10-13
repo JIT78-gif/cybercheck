@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import { useRouter } from "next/navigation";
 import type { Me, ProjectSummary, Workspace } from "@cybercheck/contracts";
 import { ApiError, api } from "@/lib/api";
+import { RUNNING_STAGES } from "./ui";
 
 type AppData = {
   me: Me | null;
@@ -69,6 +70,20 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       cancelled = true;
     };
   }, [workspaceId, handle]);
+
+  // Live status: while any project is still being analysed, refresh the list every few seconds.
+  const running = projects?.some((p) => RUNNING_STAGES.has(p.analysis.stage)) ?? false;
+  useEffect(() => {
+    if (!running || !workspaceId) return;
+    const timer = setTimeout(() => {
+      api<{ projects: ProjectSummary[] }>(`/v1/workspaces/${workspaceId}/projects`)
+        .then((r) => setProjects(r.projects))
+        .catch(() => {
+          // try again on the next tick
+        });
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, [running, projects, workspaceId]);
 
   const upsertProject = useCallback((p: ProjectSummary) => {
     setProjects((list) => {

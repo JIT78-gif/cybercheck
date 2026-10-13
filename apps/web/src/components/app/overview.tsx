@@ -55,7 +55,7 @@ export function Overview() {
   const dismissed = dismissedStored || dismissedNow;
 
   const total = projects?.length ?? null;
-  const ready = projects?.filter((p) => p.latestSnapshot?.status === "BASELINED").length ?? null;
+  const ready = projects?.filter((p) => p.analysis.stage === "ready").length ?? null;
   const hasProject = (total ?? 0) > 0;
 
   const steps = [

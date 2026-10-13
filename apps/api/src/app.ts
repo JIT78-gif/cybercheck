@@ -9,6 +9,8 @@ import { workspace, workspaceMember } from "./db/schema.ts";
 import { env, providers } from "./env.ts";
 import { githubRoutes } from "./routes/github.ts";
 import { projectRoutes } from "./routes/projects.ts";
+import { testingRoutes } from "./routes/testing.ts";
+import { testingReviewRoutes } from "./routes/testing-review.ts";
 import { understandingRoutes } from "./routes/understanding.ts";
 
 export async function buildApp() {
@@ -76,5 +78,7 @@ export async function buildApp() {
   await app.register(projectRoutes);
   await app.register(githubRoutes);
   await app.register(understandingRoutes);
+  await app.register(testingRoutes);
+  await app.register(testingReviewRoutes);
   return app;
 }

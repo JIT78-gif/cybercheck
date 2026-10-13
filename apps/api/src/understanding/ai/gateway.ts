@@ -10,7 +10,8 @@ import type { z } from "zod";
  * <project_data> tags and the system prompt says so.
  */
 
-export type ModelRole = "fast" | "strong" | "critic";
+/** A named job ("fast", "strong", "critic", "author", "triage" ...) mapped to a model per session. */
+export type ModelRole = string;
 
 export type CallUsage = { role: ModelRole; model: string; purpose: string; inputTokens: number; outputTokens: number; costUsd: number; ms: number; ok: boolean };
 
@@ -63,17 +64,19 @@ export function extractJson(text: string): unknown {
 export type GatewayOptions = {
   apiKey: string;
   baseUrl: string;
-  models: Record<ModelRole, string>;
+  models: Record<string, string>;
   budgetUsd: number;
   fetchImpl?: typeof fetch;
   timeoutMs?: number;
+  /** Optional prices for OpenAI-compatible providers whose /models endpoint does not publish pricing. */
+  modelPrices?: Record<string, { inputUsdPerMillion: number; outputUsdPerMillion: number }>;
 };
 
 export class AiSession {
   readonly usage: CallUsage[] = [];
   private readonly fetchImpl: typeof fetch;
 
-  constructor(readonly opts: GatewayOptions) {
+  constructor(public opts: GatewayOptions) {
     this.fetchImpl = opts.fetchImpl ?? fetch;
   }
 
@@ -81,10 +84,18 @@ export class AiSession {
     return this.usage.reduce((s, u) => s + u.costUsd, 0);
   }
 
+  /** A lower budget for this session (a run's own AI budget); never raises the server's limit. */
+  limitBudget(usd: number) {
+    this.opts = { ...this.opts, budgetUsd: Math.min(this.opts.budgetUsd, usd) };
+  }
+
   /** Ask a model for JSON matching `schema`. Throws BudgetExceededError before overspending. */
   async json<T>(role: ModelRole, req: { purpose: string; system: string; user: string; schema: z.ZodType<T>; maxTokens: number }): Promise<T> {
     const model = this.opts.models[role];
-    const table = await prices(this.opts.baseUrl, this.opts.apiKey, this.fetchImpl);
+    if (!model) throw new Error(`No model configured for the ${role} role.`);
+    const table = this.opts.modelPrices
+      ? new Map(Object.entries(this.opts.modelPrices).map(([id, p]) => [id, { inPerToken: p.inputUsdPerMillion / 1_000_000, outPerToken: p.outputUsdPerMillion / 1_000_000 }]))
+      : await prices(this.opts.baseUrl, this.opts.apiKey, this.fetchImpl);
     const price = table.get(model);
     if (!price) throw new Error(`Model ${model} is not offered by the provider.`);
 
@@ -97,12 +108,25 @@ export class AiSession {
       if (this.spentUsd + worst > this.opts.budgetUsd) throw new BudgetExceededError(this.spentUsd, this.opts.budgetUsd);
 
       const started = Date.now();
-      const res = await this.fetchImpl(`${this.opts.baseUrl.replace(/\/$/, "")}/chat/completions`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${this.opts.apiKey}`, "content-type": "application/json" },
-        body: JSON.stringify({ model, messages, max_tokens: req.maxTokens, temperature: role === "critic" ? 0 : 0.1, response_format: { type: "json_object" } }),
-        signal: AbortSignal.timeout(this.opts.timeoutMs ?? 180_000),
-      });
+      // Transport problems (timeout, network, 429, 5xx) get one more try; they are not the model's fault.
+      const send = () =>
+        this.fetchImpl(`${this.opts.baseUrl.replace(/\/$/, "")}/chat/completions`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${this.opts.apiKey}`, "content-type": "application/json" },
+          body: JSON.stringify({ model, messages, max_tokens: req.maxTokens, temperature: role === "critic" || role === "triage" ? 0 : 0.1, response_format: { type: "json_object" } }),
+          signal: AbortSignal.timeout(this.opts.timeoutMs ?? 300_000),
+        });
+      let res: Response;
+      try {
+        res = await send();
+        if (res.status === 429 || res.status >= 500) {
+          await new Promise((r) => setTimeout(r, 3000));
+          res = await send();
+        }
+      } catch (err) {
+        if ((err as Error).name !== "TimeoutError" && (err as Error).name !== "TypeError") throw err;
+        res = await send();
+      }
       const body = (await res.json().catch(() => ({}))) as { choices?: Array<{ message?: { content?: string } }>; usage?: { prompt_tokens?: number; completion_tokens?: number }; error?: { message?: string } };
       const inputTokens = body.usage?.prompt_tokens ?? 0;
       const outputTokens = body.usage?.completion_tokens ?? 0;
@@ -119,10 +143,12 @@ export class AiSession {
           return parsed.data;
         }
         record(false);
+        if (process.env.AI_DEBUG) console.error(`[ai] ${req.purpose}: invalid shape`, parsed.error.issues.slice(0, 8), text.slice(0, 1500));
         messages = [...messages, { role: "assistant", content: text.slice(0, 4000) }, { role: "user", content: `That JSON does not match the required shape: ${parsed.error.issues.slice(0, 8).map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}. Reply again with corrected JSON only.` }];
       } catch (err) {
         record(false);
         if (!(err instanceof ModelOutputError) && !(err instanceof SyntaxError)) throw err;
+        if (process.env.AI_DEBUG) console.error(`[ai] ${req.purpose}: not JSON`, text.slice(0, 1500));
         messages = [...messages, { role: "assistant", content: text.slice(0, 4000) }, { role: "user", content: "That was not valid JSON. Reply again with one JSON object only." }];
       }
     }

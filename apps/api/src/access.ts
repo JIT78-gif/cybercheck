@@ -84,6 +84,7 @@ export function toSnapshotSummary(s: typeof snapshot.$inferSelect): SnapshotSumm
 export function toProjectSummary(
   p: typeof project.$inferSelect,
   latest: typeof snapshot.$inferSelect | null,
+  analysis: ProjectSummary["analysis"] = { stage: "none", step: null, progress: null, error: null },
 ): ProjectSummary {
   return {
     id: p.id,
@@ -94,5 +95,30 @@ export function toProjectSummary(
     githubRepo: p.githubRepo,
     createdAt: p.createdAt.toISOString(),
     latestSnapshot: latest ? toSnapshotSummary(latest) : null,
+    analysis,
   };
 }
+
+/**
+ * Workspace roles that may review findings, accept a risk and approve a sandbox repair. Every member during the
+ * hackathon; narrow this list (for example to owner and admin) to make review an owner or admin decision again.
+ */
+export const REVIEW_ROLES: ReadonlyArray<"owner" | "admin" | "member"> = ["owner", "admin", "member"];
+
+/** Project authority: the caller's role in the workspace that holds the project, when that role may decide. Null otherwise. */
+export async function projectAuthority(userId: string, projectId: string): Promise<"owner" | "admin" | "member" | null> {
+  const [row] = await db
+    .select({ role: workspaceMember.role })
+    .from(project)
+    .innerJoin(workspaceMember, eq(workspaceMember.workspaceId, project.workspaceId))
+    .where(and(eq(project.id, projectId), eq(workspaceMember.userId, userId)))
+    .limit(1);
+  const role = row?.role as "owner" | "admin" | "member" | undefined;
+  return role && REVIEW_ROLES.includes(role) ? role : null;
+}
+
+export const notAuthorized = (what: string): ApiError => ({
+  code: "forbidden",
+  message: `Your role in this workspace cannot ${what}.`,
+  fix: "Ask an owner of the workspace to do it, or to change your role.",
+});

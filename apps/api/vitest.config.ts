@@ -10,5 +10,7 @@ export default defineConfig({
     // Integration tests share one database; run files one at a time.
     fileParallelism: false,
     testTimeout: 30_000,
+    // Benchmark projects for the Testing check are inputs, not tests of this API.
+    exclude: ["**/node_modules/**", "test/testing-bench/**", "test/testing-holdout/**"],
   },
 });

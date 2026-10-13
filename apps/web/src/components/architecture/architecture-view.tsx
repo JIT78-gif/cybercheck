@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Download, FolderSearch, RefreshCw } from "lucide-react";
 import type { ProjectDetail, ProjectDossier } from "@cybercheck/contracts";
-import { Card, EmptyState } from "@/components/app/ui";
+import { AnalysisProgress, Card, EmptyState } from "@/components/app/ui";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Alert, Spinner } from "@/components/ui/form";
 import { ApiError, api } from "@/lib/api";
@@ -233,6 +233,14 @@ export function ArchitectureView({ id }: { id: string }) {
         </Card>
       ) : (
         <CodeViewerProvider snapshotId={snapshot.id}>
+          {run.dossier.ai?.status === "running" && (
+            <Card className="mb-6">
+              <AnalysisProgress
+                analysis={{ stage: "explaining", step: run.progress?.step ? `AI explanation: ${run.progress.step}` : "AI explanation in progress", progress: run.progress?.progress ?? null, error: null }}
+              />
+              <p className="mt-2 text-xs text-fg-muted">The code facts below are complete. The sections under Meaning (AI) fill in when the AI step finishes.</p>
+            </Card>
+          )}
           <Dossier d={run.dossier} />
         </CodeViewerProvider>
       )}

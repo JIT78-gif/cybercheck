@@ -115,7 +115,7 @@ const CRITIC_SYSTEM = `You are an independent security reviewer. For each risk, 
 
 // ---------------------------------------------------------------- Orchestration
 
-export type SynthesisOptions = { session: AiSession; models: AiInsights["models"]; onProgress?: (step: string) => void };
+export type SynthesisOptions = { session: AiSession; models: AiInsights["models"]; onProgress?: (step: string, progress: number | null) => void };
 
 export const emptyInsights = (models: AiInsights["models"]): AiInsights => ({
   status: "running",
@@ -153,7 +153,7 @@ export async function synthesize(d: ProjectDossier, src: SnapshotSource, opts: S
     const contexts = moduleContexts(d, src);
     const summaries: Array<{ id: string; s: ModuleSummary }> = [];
     for (const [i, ctx] of contexts.entries()) {
-      opts.onProgress?.(`Reading module ${i + 1} of ${contexts.length}: ${ctx.id}`);
+      opts.onProgress?.(`Reading module ${i + 1} of ${contexts.length}: ${ctx.id}`, i / (contexts.length + 3));
       const s = await opts.session.json("fast", { purpose: `module ${ctx.id}`, system: MODULE_SYSTEM, user: moduleUser(ctx.text), schema: ModuleSummary, maxTokens: 12000 });
       // Keep only citations that hold, so the system pass builds on checked material.
       const keep = <T extends { evidence: CitedEvidence[] }>(xs: T[]) => xs.map((x) => ({ ...x, evidence: x.evidence.filter((e) => verifyClaim(src, [e]).evidence.length) })).filter((x) => x.evidence.length);
@@ -161,12 +161,12 @@ export async function synthesize(d: ProjectDossier, src: SnapshotSource, opts: S
     }
 
     // 2. System pass (strong model).
-    opts.onProgress?.("Putting the architecture together");
+    opts.onProgress?.("Putting the architecture together", contexts.length / (contexts.length + 3));
     const moduleText = summaries.map(({ id: mid, s }) => `## ${mid}\n${JSON.stringify(s)}`).join("\n\n");
     const sys: SystemView = await opts.session.json("strong", { purpose: "system synthesis", system: SYSTEM_SYSTEM, user: systemUser(systemFacts(d), moduleText), schema: SystemView, maxTokens: 16000 });
 
     // 3. Verify every claim against the snapshot.
-    opts.onProgress?.("Checking every claim against the code");
+    opts.onProgress?.("Checking every claim against the code", (contexts.length + 1) / (contexts.length + 3));
     out.purpose = { summary: sys.purpose.summary, users: sys.purpose.users.filter((u) => u.name), mainFeatures: sys.purpose.mainFeatures.filter(Boolean) };
     out.components = sys.components.filter((c) => c.name).map((c) => ({ id: id("component"), name: c.name, modules: c.modules, responsibility: c.responsibility, dataHandled: c.dataHandled, ...pick(check(c.evidence)) }));
     out.trustBoundaries = sys.trustBoundaries.filter((b) => b.name).map((b) => ({ id: id("boundary"), name: b.name, description: b.description, ...pick(check(b.evidence)) }));
@@ -194,7 +194,7 @@ export async function synthesize(d: ProjectDossier, src: SnapshotSource, opts: S
     // 4. Critic pass (different model family) on medium and high impact risks.
     const toCheck = risks.filter((r) => r.impact !== "low").slice(0, 12);
     if (toCheck.length) {
-      opts.onProgress?.("Independent review of the risks");
+      opts.onProgress?.("Second review of the risks", (contexts.length + 2) / (contexts.length + 3));
       const body = toCheck.map((r) => `### ${r.id}: ${r.title}\n${r.description}\n${excerpt(src, r.evidence)}`).join("\n\n");
       try {
         const facts = systemFacts(d);

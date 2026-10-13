@@ -14,5 +14,6 @@
     "noEmit": true,
     "verbatimModuleSyntax": true
   },
-  "include": ["src", "test", "drizzle.config.ts", "vitest.config.ts"]
+  "include": ["src", "test", "scripts", "drizzle.config.ts", "vitest.config.ts"],
+  "exclude": ["test/testing-bench", "test/testing-holdout"]
 }

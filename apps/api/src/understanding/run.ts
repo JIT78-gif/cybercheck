@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { and, desc, eq, inArray, ne, sql } from "drizzle-orm";
-import type { ProjectDossier, UnderstandingRun } from "@cybercheck/contracts";
+import type { ProjectAnalysis, ProjectDossier, UnderstandingRun } from "@cybercheck/contracts";
 import { db } from "../db/client.ts";
+import { withLock as withRunLock } from "../db/locks.ts";
 import { snapshot, understandingRun } from "../db/schema.ts";
 import { objectStore } from "../storage/object-store.ts";
 import { ANALYZER_VERSION, analyzeSource } from "./analyze.ts";
@@ -10,6 +11,9 @@ import { env, providers } from "../env.ts";
 import { buildAiDiagrams } from "./ai/diagrams.ts";
 import { AiSession } from "./ai/gateway.ts";
 import { emptyInsights, synthesize } from "./ai/synthesize.ts";
+
+/** Live progress of runs being worked on right now (kept in memory; a restart re-runs them anyway). */
+const live = new Map<string, { step: string; progress: number | null }>();
 
 // One analysis at a time: parsing is CPU-bound and finishes in seconds.
 let busy = false;
@@ -26,7 +30,7 @@ async function drain() {
   if (!next) return;
   busy = true;
   try {
-    await execute(next);
+    await withRunLock(`understanding:${next}`, () => execute(next));
   } catch (err) {
     console.error("[understanding] run crashed:", err);
   } finally {
@@ -39,6 +43,7 @@ async function execute(runId: string) {
   const [run] = await db.select().from(understandingRun).where(eq(understandingRun.id, runId));
   if (!run || run.status !== "queued") return;
   await db.update(understandingRun).set({ status: "analyzing" }).where(eq(understandingRun.id, runId));
+  live.set(runId, { step: "Reading the code: files, routes, data, configuration", progress: null });
   try {
     const [snap] = await db.select().from(snapshot).where(eq(snapshot.id, run.snapshotId));
     if (!snap?.archiveObjectKey || !snap.contentDigest) throw new Error("snapshot has no archive");
@@ -60,6 +65,8 @@ async function execute(runId: string) {
       .update(understandingRun)
       .set({ status: "failed", error: "The analysis stopped because of an internal error. Try running it again.", finishedAt: new Date() })
       .where(eq(understandingRun.id, runId));
+  } finally {
+    live.delete(runId);
   }
 }
 
@@ -84,7 +91,7 @@ async function drainAi() {
   if (!next) return;
   aiBusy = true;
   try {
-    await executeAi(next);
+    await withRunLock(`understanding-ai:${next}`, () => executeAi(next));
   } catch (err) {
     console.error("[understanding] AI step crashed:", err);
   } finally {
@@ -116,10 +123,51 @@ async function executeAi(runId: string) {
 
   const src = await getSnapshotSource(objectStore, snap.archiveObjectKey);
   const session = new AiSession({ apiKey: env.NEBIUS_API_KEY!, baseUrl: env.NEBIUS_BASE_URL, models: MODELS(), budgetUsd: env.AI_RUN_BUDGET_USD });
-  const ai = await synthesize(dossier, src, { session, models: MODELS() });
-  const next: ProjectDossier = { ...dossier, ai, diagrams: { ...dossier.diagrams, ...buildAiDiagrams(ai, dossier) } };
-  await db.update(understandingRun).set({ dossier: next }).where(eq(understandingRun.id, runId));
-  console.log(`[understanding] AI step for run ${runId}: ${ai.status}, $${ai.usage.costUsd.toFixed(4)}, ${ai.verification.verified}/${ai.verification.claims} claims verified`);
+  live.set(runId, { step: "Starting the AI explanation", progress: 0 });
+  try {
+    const ai = await synthesize(dossier, src, { session, models: MODELS(), onProgress: (step, progress) => live.set(runId, { step, progress }) });
+    const next: ProjectDossier = { ...dossier, ai, diagrams: { ...dossier.diagrams, ...buildAiDiagrams(ai, dossier) } };
+    await db.update(understandingRun).set({ dossier: next }).where(eq(understandingRun.id, runId));
+    console.log(`[understanding] AI step for run ${runId}: ${ai.status}, $${ai.usage.costUsd.toFixed(4)}, ${ai.verification.verified}/${ai.verification.claims} claims verified`);
+  } finally {
+    live.delete(runId);
+  }
+}
+
+/** Progress to show for a run: live progress if it is being worked on, else its place in the queue. */
+function progressOf(r: typeof understandingRun.$inferSelect): UnderstandingRun["progress"] {
+  const now = live.get(r.id);
+  if (now) return now;
+  if (r.status === "queued") {
+    const ahead = waiting.indexOf(r.id);
+    return { step: ahead > 0 ? `Waiting to start (${ahead} ahead)` : "Waiting to start", progress: 0 };
+  }
+  if (r.status === "ready" && (r.dossier as ProjectDossier | null)?.ai?.status === "running") {
+    const ahead = aiWaiting.indexOf(r.id) + (aiBusy ? 1 : 0);
+    return { step: ahead > 0 ? `Code read. Waiting for the AI explanation (${ahead} ahead)` : "Code read. Starting the AI explanation", progress: 0 };
+  }
+  return null;
+}
+
+/**
+ * Readiness of a project's latest snapshot for the checks. Only "ready" may be checked: the code
+ * has been read and, when the AI step is enabled, explained. Starts the analysis if it is missing
+ * (for example after an analyzer upgrade).
+ */
+export async function analysisOf(snap: typeof snapshot.$inferSelect | null): Promise<ProjectAnalysis> {
+  const none = (stage: ProjectAnalysis["stage"], error: string | null = null, step: string | null = null): ProjectAnalysis => ({ stage, step, progress: null, error });
+  if (!snap) return none("none");
+  if (snap.status === "RECEIVED" || snap.status === "VALIDATING") return none("processing", null, "Checking the upload");
+  if (snap.status === "REJECTED") return none("rejected", (snap.rejectionReasons as Array<{ message?: string }> | null)?.[0]?.message ?? "The upload was rejected.");
+  if (snap.status === "FAILED") return none("failed", snap.error ?? "Processing the upload failed.");
+  const run = await ensureUnderstanding(snap.id);
+  const p = progressOf(run);
+  if (run.status === "queued" || run.status === "analyzing") return { stage: "reading_code", step: p?.step ?? "Reading the code", progress: p?.progress ?? null, error: null };
+  if (run.status === "failed") return none("failed", run.error ?? "The analysis did not finish.");
+  const ai = (run.dossier as ProjectDossier | null)?.ai;
+  if (ai?.status === "running") return { stage: "explaining", step: p?.step ?? "Explaining the architecture with AI", progress: p?.progress ?? null, error: null };
+  if (ai?.status === "failed") return none("failed", ai.error ?? "The AI explanation did not finish. Run the analysis again.");
+  return none("ready");
 }
 
 export function toUnderstandingRun(r: typeof understandingRun.$inferSelect): UnderstandingRun {
@@ -131,6 +179,7 @@ export function toUnderstandingRun(r: typeof understandingRun.$inferSelect): Und
     createdAt: r.createdAt.toISOString(),
     finishedAt: r.finishedAt?.toISOString() ?? null,
     dossier: (r.dossier as ProjectDossier | null) ?? null,
+    progress: progressOf(r),
   };
 }
 
