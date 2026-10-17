@@ -1,0 +1,23 @@
+{
+  "project": "clean-node-control",
+  "summary": "A clean notes API used as the Security control: every control the Gauntlet lacks is present and correct.",
+  "commands": { "requiredEnv": ["TOKEN_SECRET"] },
+  "expectedOutcomes": { "install": "passed", "testSuite": "passed", "appBoots": true },
+  "defects": [],
+  "notDefects": [
+    "The health route is public by design",
+    "The login and registration routes are public by design",
+    "A note search that binds its pattern as a query parameter"
+  ],
+  "mustNotReport": [
+    "CORS allowing every origin",
+    "SQL injection in the note search",
+    "Passwords compared as plain text",
+    "A token with no signature that anyone can forge",
+    "Path traversal: a file path built from request input",
+    "A stack trace in an error response",
+    "Missing security headers",
+    "A request body or a password written to the logs",
+    "The request body copied onto a stored record wholesale"
+  ]
+}

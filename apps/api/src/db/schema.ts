@@ -230,7 +230,9 @@ export const understandingRun = pgTable(
   (t) => [index("understanding_run_snapshot_idx").on(t.snapshotId, t.createdAt)],
 );
 
-// ---------- Testing check (one run per request, bound to a snapshot and its dossier) ----------
+// ---------- Check runs (one run per request, bound to a snapshot and its dossier) ----------
+// The testing_run table holds the runs of every check engine (Testing, Security); "check" says which engine owns it.
+// Obligations, executions, findings, events, reviews and repairs reference the run, so they serve every check.
 
 export const testingRunStatus = pgEnum("testing_run_status", ["queued", "running", "completed", "partial", "blocked", "failed", "cancelled"]);
 
@@ -238,6 +240,8 @@ export const testingRun = pgTable(
   "testing_run",
   {
     id: text("id").primaryKey(),
+    /** The engine that owns the run: "testing" or "security" (CheckId). */
+    check: text("check").notNull().default("testing"),
     snapshotId: text("snapshot_id")
       .notNull()
       .references(() => snapshot.id, { onDelete: "cascade" }),
@@ -266,7 +270,7 @@ export const testingRun = pgTable(
     startedAt: timestamp("started_at", { withTimezone: true }),
     finishedAt: timestamp("finished_at", { withTimezone: true }),
   },
-  (t) => [index("testing_run_snapshot_idx").on(t.snapshotId, t.createdAt), index("testing_run_status_idx").on(t.status, t.createdAt)],
+  (t) => [index("testing_run_snapshot_idx").on(t.snapshotId, t.createdAt), index("testing_run_status_idx").on(t.status, t.createdAt), index("testing_run_check_idx").on(t.check, t.status, t.createdAt)],
 );
 
 export const testObligation = pgTable(
@@ -308,6 +312,66 @@ export const testFinding = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [primaryKey({ columns: [t.runId, t.id] })],
+);
+
+/** Security runtime proofs (Round 2): one row per proof, in the order they were run. */
+export const securityProof = pgTable(
+  "security_proof",
+  {
+    id: text("id").notNull(),
+    runId: text("run_id")
+      .notNull()
+      .references(() => testingRun.id, { onDelete: "cascade" }),
+    seq: integer("seq").notNull(),
+    data: jsonb("data").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.runId, t.id] }), uniqueIndex("security_proof_run_seq_idx").on(t.runId, t.seq)],
+);
+
+/** One AI Evaluator case of a run (inputs as classes, redacted samples, grader and judge results, verdict). */
+export const aiEvaluationCase = pgTable(
+  "ai_evaluation_case",
+  {
+    runId: text("run_id")
+      .notNull()
+      .references(() => testingRun.id, { onDelete: "cascade" }),
+    id: text("id").notNull(),
+    seq: integer("seq").notNull(),
+    category: text("category").notNull(),
+    verdict: text("verdict").notNull(),
+    data: jsonb("data").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.runId, t.id] }), uniqueIndex("ai_evaluation_case_run_seq_idx").on(t.runId, t.seq)],
+);
+
+/** An uploaded AI evaluation dataset version: immutable once stored (the normalized JSONL is an object-store artifact). */
+export const aiEvaluationDataset = pgTable(
+  "ai_evaluation_dataset",
+  {
+    id: text("id").primaryKey(),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspace.id, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => project.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    version: integer("version").notNull(),
+    /** sha256 of the normalized JSONL. */
+    digest: text("digest").notNull(),
+    artifactKey: text("artifact_key").notNull(),
+    schemaVersion: integer("schema_version").notNull(),
+    caseCount: integer("case_count").notNull(),
+    byCategory: jsonb("by_category").notNull(),
+    validation: jsonb("validation").notNull(),
+    createdBy: text("created_by")
+      .notNull()
+      .references(() => user.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("ai_evaluation_dataset_version_idx").on(t.projectId, t.name, t.version), index("ai_evaluation_dataset_project_idx").on(t.projectId, t.createdAt)],
 );
 
 export const testRunEvent = pgTable(

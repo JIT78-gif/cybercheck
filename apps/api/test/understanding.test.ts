@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ProjectDossier } from "@cybercheck/contracts";
 import { analyzeSource } from "../src/understanding/analyze.ts";
-import { isSecretFile, redactSecrets, sourceFromFiles, type SnapshotSource } from "../src/understanding/source.ts";
+import { isSecretFile, redactDeep, redactJsonText, redactSecrets, sourceFromFiles, type SnapshotSource } from "../src/understanding/source.ts";
 import { expressShop as expressApp } from "./fixtures.ts";
 
 /** Build an in-memory snapshot the same way loadSnapshotSource would. */
@@ -221,6 +221,42 @@ describe("Django", () => {
   });
 });
 
+describe("authentication mechanisms", () => {
+  const authFor = (files: Record<string, string>) => run(files).then((d) => d.securityModel.authMechanisms.map((m) => m.kind));
+
+  it("recognises a hand-made bearer token (signed or unsigned) as authentication, not a contradiction", async () => {
+    const unsigned = await authFor({
+      "package.json": JSON.stringify({ dependencies: { express: "4.18.0" } }),
+      "src/app.js": `const { requireUser } = require("./auth");\nconst app = require("express")();\napp.get("/api/me", requireUser, (req, res) => res.json(req.user));\n`,
+      "src/auth.js": `function issueToken(u) { return Buffer.from(JSON.stringify({ id: u.id })).toString("base64url"); }\nfunction requireUser(req, res, next) { const raw = req.get("authorization")?.replace(/^Bearer\\s+/i, ""); const claim = JSON.parse(Buffer.from(raw, "base64url").toString("utf8")); req.user = claim; next(); }\nmodule.exports = { issueToken, requireUser };\n`,
+    });
+    expect(unsigned).toContain("bearer_token");
+
+    const signed = await run({
+      "package.json": JSON.stringify({ dependencies: { express: "4.18.0" } }),
+      "src/auth.js": `const crypto = require("node:crypto");\nfunction sign(p) { return crypto.createHmac("sha256", process.env.S).update(p).digest("base64url"); }\nfunction issueToken(u) { const p = Buffer.from(JSON.stringify({ id: u.id })).toString("base64url"); return p + "." + sign(p); }\nfunction requireUser(req, res, next) { const raw = req.get("authorization")?.replace(/^Bearer\\s+/i, ""); const [p, s] = raw.split("."); if (!crypto.timingSafeEqual(Buffer.from(sign(p)), Buffer.from(s))) return res.status(401).end(); next(); }\n`,
+    });
+    const bearer = signed.securityModel.authMechanisms.find((m) => m.kind === "bearer_token");
+    expect(bearer?.detail).toMatch(/signed and verified/);
+    expect(signed.securityModel.notDetected.some((n) => n.control === "Authentication")).toBe(false);
+  });
+
+  it("does not turn stray Base64 or a JWT library into a hand-made token mechanism", async () => {
+    const base64 = await authFor({
+      "package.json": JSON.stringify({ dependencies: { express: "4.18.0" } }),
+      "src/util.js": `const encoded = Buffer.from(JSON.stringify({ a: 1 })).toString("base64");\nmodule.exports = { encoded };\n`,
+    });
+    expect(base64).not.toContain("bearer_token");
+
+    const jwt = await authFor({
+      "package.json": JSON.stringify({ dependencies: { jsonwebtoken: "9.0.0", express: "4.18.0" } }),
+      "src/auth.js": `const jwt = require("jsonwebtoken");\nfunction mw(req, res, next) { const raw = req.get("authorization").replace(/^Bearer /, ""); req.user = jwt.verify(raw, process.env.S); next(); }\n`,
+    });
+    expect(jwt).toContain("jwt");
+    expect(jwt).not.toContain("bearer_token");
+  });
+});
+
 describe("secrets", () => {
   it("recognises secret files but not documentation examples", () => {
     for (const p of [".env", ".env.local", "config/.env.production", "certs/server.key", "id_rsa", "gcp/service-account-prod.json"]) expect(isSecretFile(p), p).toBe(true);
@@ -231,5 +267,16 @@ describe("secrets", () => {
     expect(count).toBe(3);
     expect(text).not.toMatch(/sk-abc|hunter2|ghp_/);
     expect(text).toContain(`password = "[redacted]"`);
+  });
+  it("keeps exported JSON valid while redacting the secrets inside it", () => {
+    const run = { findings: [{ reproduction: `node -e "console.log('TOKEN='abcd1234efgh")"`, note: "key sk-abcdefghijklmnopqrstuvwxyz123456" }], n: 3, at: null };
+    // The old way: redacting the serialized text swallows the escaped quote.
+    expect(() => JSON.parse(redactSecrets(JSON.stringify(run, null, 2)).text)).toThrow();
+    const out = JSON.parse(JSON.stringify(redactDeep(run), null, 2));
+    expect(out.findings[0].reproduction).toBe(`node -e "console.log('TOKEN='[redacted]")"`);
+    expect(out.findings[0].note).toBe("key [redacted]");
+    expect(out).toMatchObject({ n: 3, at: null });
+    expect(JSON.parse(redactJsonText(JSON.stringify(run)))).toEqual(out);
+    expect(redactJsonText("not json sk-abcdefghijklmnopqrstuvwxyz123456")).toBe("not json [redacted]");
   });
 });

@@ -12,6 +12,9 @@ const MUTATING = new Set(["POST", "PUT", "PATCH", "DELETE", "ALL", "ANY", "ACTIO
 const AUTH_NAME = /(auth|protect|guard|session|jwt|token|login|logged|require[_]?user|current[_]?user|verify|ensure|permission|role|admin|isAuthenticated|is_authenticated|passport|clerk|signed[_]?in|bearer|apikey|api_key)/i;
 /** Middleware that sets something up (sessions, parsing, CORS) rather than rejecting callers. */
 const SETUP_MIDDLEWARE = /^(session|expressSession|cookieSession|ironSession|passport\.(initialize|session)|cors|helmet|compression|morgan|express\.(json|urlencoded|static|raw|text)|bodyParser\.\w+|cookieParser|fastifyCookie|secureSession)$/;
+/** Rate limiters slow callers down but never establish who they are ("loginLimiter" is not a login check). */
+const RATE_LIMIT_NAME = /(limit|throttl|slow[_]?down)/i;
+const isAuthName = (x: string) => AUTH_NAME.test(x) && !RATE_LIMIT_NAME.test(x);
 /** Names that look like auth but mean "public". */
 const PUBLIC_NAME = /(public|allow[_]?any|anonymous|optional[_]?auth|skip[_]?auth)/i;
 /** Calls inside a handler body that check the caller. */
@@ -130,7 +133,7 @@ function handlerHasAuthCall(n: Node | undefined) {
 function classifyMiddleware(names: string[]): { status: Guard["status"]; via: string[] } | null {
   const pub = names.filter((x) => PUBLIC_NAME.test(x));
   if (pub.length) return { status: "public", via: pub };
-  const auth = names.filter((x) => AUTH_NAME.test(x));
+  const auth = names.filter(isAuthName);
   return auth.length ? { status: "required", via: auth } : null;
 }
 
@@ -237,8 +240,8 @@ function jsFileGuards(p: Parsed, vars: Set<string>): FileGuard[] {
     if (!vars.has(obj) || !(prop === "use" || prop === "addHook")) continue;
     const args = (n.childForFieldName("arguments")?.namedChildren.filter(Boolean) as Node[]) ?? [];
     const names = args.filter((a) => a.type !== "string").map(nameOf).filter((x) => !SETUP_MIDDLEWARE.test(x));
-    const hit = names.find((x) => AUTH_NAME.test(x) && !PUBLIC_NAME.test(x));
-    if (hit && !(args[0] && stringValue(args[0]) && args.length === 2 && args[1]?.type === "identifier" && !AUTH_NAME.test(args[1].text))) {
+    const hit = names.find((x) => isAuthName(x) && !PUBLIC_NAME.test(x));
+    if (hit && !(args[0] && stringValue(args[0]) && args.length === 2 && args[1]?.type === "identifier" && !isAuthName(args[1].text))) {
       const how = prop === "addHook" ? `is registered as a ${stringValue(args[0]) ?? "request"} hook for every route in this file (line ${line(n)})` : `is applied with ${obj}.use() to every route registered after line ${line(n)}`;
       out.push({ line: line(n), name: hit, how });
     }

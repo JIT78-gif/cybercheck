@@ -9,6 +9,7 @@ import { Card, CardTitle } from "@/components/app/ui";
 import { EvidenceLink } from "@/components/architecture/code-viewer";
 import { Badge, DataTable, Mono } from "@/components/architecture/parts";
 import { cn } from "@/lib/cn";
+import { ProofList } from "./evidence-panel";
 import { ACTIVE_RUN } from "./use-testing";
 
 const PHASES: Array<{ id: TestingRunDetail["phase"]; label: string }> = [
@@ -179,6 +180,13 @@ export function FindingBody({ f, run, footer, className }: { f: TestFinding; run
                   </li>
                 ))}
               </ul>
+            </Labelled>
+          </div>
+        )}
+        {run.obligations.some((o) => f.obligationIds.includes(o.id) && o.proofs?.some((x) => !x.passed)) && (
+          <div className="sm:col-span-2">
+            <Labelled label="What the checks expected and saw">
+              <ProofList obligations={run.obligations.filter((o) => f.obligationIds.includes(o.id))} onlyFailed />
             </Labelled>
           </div>
         )}
@@ -384,13 +392,20 @@ export function Fixtures({ fixtures }: { fixtures: NonNullable<NonNullable<Testi
   return (
     <section className="space-y-3">
       <h3 className="font-semibold text-fg">Test data and sign-in setup</h3>
-      <p className="text-sm text-fg-muted">Run once before the checks, in dependency order. A check whose setup failed was not sent; it is listed as blocked.</p>
+      <p className="text-sm text-fg-muted">
+        Run once before the checks, in dependency order. A check whose setup failed was not sent; it is listed as blocked.
+        {fixtures.nodes.some((n) => n.invalid) ? ` ${fixtures.nodes.filter((n) => n.invalid).length} planned step(s) were invalid and never used.` : ""}
+        {fixtures.blockedChecks ? ` ${fixtures.blockedChecks} check(s) could not run because of the setup.` : ""}
+      </p>
       <ul className="space-y-2 text-sm">
         {fixtures.nodes.map((n) => (
           <li key={n.id} className="flex items-start gap-2">
             {n.ok === true ? <CircleCheck className="mt-0.5 size-4 shrink-0 text-success" aria-label="worked" /> : n.ok === false ? <CircleX className="mt-0.5 size-4 shrink-0 text-danger" aria-label="failed" /> : <CircleDashed className="mt-0.5 size-4 shrink-0 text-fg-muted" aria-label="not run" />}
             <span className="min-w-0">
-              <span className="text-fg">{n.label}</span>
+              <span className="text-fg">
+                {n.label}
+                {n.invalid ? <span className="ml-2 rounded bg-danger/10 px-1.5 py-0.5 text-xs text-danger">invalid, not used</span> : null}
+              </span>
               <span className="block text-xs break-words text-fg-muted">{n.detail}</span>
             </span>
           </li>

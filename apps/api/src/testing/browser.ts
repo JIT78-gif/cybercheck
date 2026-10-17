@@ -63,7 +63,7 @@ async function runBrowser(ctx: Ctx, image: string, plan: BrowserPlan, screens: S
   });
   const spec = {
     apps,
-    frontend: { name: "frontend", cwd: wsPath(plan.frontend.workspace), start: plan.frontend.start, port: plan.frontend.port, readyPath: plan.frontend.readyPath, env: frontendEnv(ctx, plan.frontend, plan.apps) },
+    frontend: { name: "frontend", served: Boolean(plan.frontend.served), cwd: wsPath(plan.frontend.workspace), start: plan.frontend.start, port: plan.frontend.port, readyPath: plan.frontend.readyPath, env: frontendEnv(ctx, plan.frontend, plan.apps) },
     graph: plan.graph.map((n) => ({ id: n.id, kind: n.kind, dependsOn: n.dependsOn, command: n.command, exports: n.exports, identity: n.identity ?? null, steps: n.steps, auth: n.auth, verify: n.verify ?? null })),
     screens: screens.map((s) => ({ url: s.url })),
     viewports: PROFILES[ctx.profile].viewports,

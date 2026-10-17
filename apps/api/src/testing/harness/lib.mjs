@@ -3,6 +3,7 @@
 // and run the fixture graph (seed commands, data creation, sign-in) once, in dependency order.
 // No dependencies: Node 18+ only. Captured tokens and ids stay in memory; they are never written to logs.
 import { spawn } from "node:child_process";
+import { createServer } from "node:http";
 import { createWriteStream, mkdirSync, statSync } from "node:fs";
 import { dirname } from "node:path";
 
@@ -133,16 +134,53 @@ let uidCounter = 0;
 // Six digits: unique within a run, and short enough for fields with tight length limits (a table number of 10 characters).
 export const newUid = () => `${(Date.now() % 1000) * 1000 + (++uidCounter % 1000)}`.padStart(6, "1");
 
-/** Fills {{name}}, {{$uid}} and ${ENV:NAME}. "{{id}}" on its own keeps the captured value's type. */
+/**
+ * A request path with its values filled in, each one encoded: a value in a path segment cannot add a "/", and one
+ * in the query cannot add "&" or "#". Text written into the path itself (a payload such as <script>) is left as is.
+ */
+export function fillPath(path, vars, env) {
+  const enc = (x) => encodeURIComponent(String(x));
+  return String(path)
+    .replace(/\$\{ENV:([A-Z0-9_]+)\}/g, (m, n) => (env?.[n] != null ? enc(env[n]) : m))
+    .replace(/\{\{(\$?[\w.]+)\}\}/g, (m, n) => (n === "$uid" ? vars.$uid : usable(vars[n]) ? enc(vars[n]) : m));
+}
+
+/** Fills {{name}}, {{$uid}} and ${ENV:NAME}. "{{id}}" on its own keeps the captured value's type; a request's path is encoded. */
 export function fill(v, vars, env) {
   if (typeof v === "string") {
-    const whole = v.match(/^\{\{(\w+)\}\}$/);
+    const whole = v.match(/^\{\{([\w.]+)\}\}$/);
     if (whole && usable(vars[whole[1]])) return vars[whole[1]];
-    return subEnv(v, env).replace(/\{\{(\$?\w+)\}\}/g, (_m, n) => (n === "$uid" ? vars.$uid : usable(vars[n]) ? String(vars[n]) : `{{${n}}}`));
+    return subEnv(v, env).replace(/\{\{(\$?[\w.]+)\}\}/g, (_m, n) => (n === "$uid" ? vars.$uid : usable(vars[n]) ? String(vars[n]) : `{{${n}}}`));
   }
   if (Array.isArray(v)) return v.map((x) => fill(x, vars, env));
-  if (v && typeof v === "object") return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, fill(x, vars, env)]));
+  if (v && typeof v === "object") {
+    const isRequest = typeof v.method === "string" && typeof v.path === "string";
+    return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, isRequest && k === "path" ? fillPath(x, vars, env) : fill(x, vars, env)]));
+  }
   return v;
+}
+
+/**
+ * A value a setup step asked for under a name the response nests: "userId" (or "$.id") when the answer is
+ * {"user": {"id": 5}}. The last two keys spell the name, or the asked-for field sits under a key the name starts with.
+ * Only an unambiguous match is used.
+ */
+export function inferCapture(body, name, path) {
+  const norm = (s) => String(s).toLowerCase().replace(/[^a-z0-9]/g, "");
+  const leaves = [];
+  const walk = (o, keys, depth) => {
+    if (depth > 4 || o == null) return;
+    if (Array.isArray(o)) return o.length ? walk(o[0], [...keys, "0"], depth + 1) : undefined;
+    if (typeof o !== "object") return usable(o) && keys.length ? leaves.push({ keys, value: o }) : undefined;
+    for (const [k, v] of Object.entries(o)) walk(v, [...keys, k], depth + 1);
+  };
+  walk(body, [], 0);
+  const want = norm(name);
+  const named = (keys) => keys.filter((k) => !/^\d+$/.test(k));
+  let hits = leaves.filter((l) => named(l.keys).length >= 2 && norm(named(l.keys).slice(-2).join("")) === want);
+  const field = norm(String(path ?? "").split(/[.[\]$]/).filter(Boolean).pop() ?? "");
+  if (!hits.length && field) hits = leaves.filter((l) => norm(l.keys.at(-1)) === field && named(l.keys).slice(0, -1).some((k) => norm(k).length >= 3 && want.startsWith(norm(k))));
+  return hits.length === 1 ? { path: `$.${hits[0].keys.join(".")}`, value: hits[0].value } : null;
 }
 
 /** The first placeholder still unfilled in a request, if any (such a request is never sent). */
@@ -162,7 +200,7 @@ export const missingText = (missing) => (missing.startsWith("ENV:") ? `the setti
 export const unfilled = (step) => {
   const text = JSON.stringify([step.path, step.json ?? null, step.form ?? null, step.headers ?? null, step.raw ?? null]);
   const env = text.match(/\$\{ENV:([A-Z0-9_]+)\}/);
-  return text.match(/\{\{(\$?\w+)\}\}/)?.[1] ?? (env ? `ENV:${env[1]}` : null);
+  return text.match(/\{\{(\$?[\w.]+)\}\}/)?.[1] ?? (env ? `ENV:${env[1]}` : null);
 };
 
 const SECRETISH = /(SECRET|TOKEN|PASSWORD|PASSWD|API_?KEY|PRIVATE|CREDENTIAL|AUTH|_KEY)$/i;
@@ -181,7 +219,12 @@ export function mask(text) {
 }
 
 /** Paths like "items.0.id", "items[0].id" or "$.data.id". */
-export const pick = (obj, path) => path.replace(/^\$\.?/, "").replace(/\[(\d+)\]/g, ".$1").split(".").filter(Boolean).reduce((o, k) => (o == null ? undefined : o[k]), obj);
+/** The parts of a JSON path: names, indexes ([0] or .0) and list filters ([id=o3]: the item whose id is o3). */
+export const pathParts = (path) => [...path.replace(/^\$\.?/, "").matchAll(/\[([^\]=]+)=([^\]]*)\]|\[(\d+)\]|([^.[\]]+)/g)].map((m) => (m[1] !== undefined ? { key: m[1], eq: m[2] } : (m[3] ?? m[4])));
+export const pick = (obj, path) =>
+  pathParts(path).reduce((o, k) => (o == null ? undefined : typeof k === "object" ? (Array.isArray(o) ? o.find((x) => x != null && String(x[k.key]) === k.eq) : undefined) : o[k]), obj);
+/** A JSON path with {{symbol}} filled in, so a filter can name a record the scenario created. */
+export const pathWith = (path, symbols) => path.replace(/\{\{([^}]+)\}\}/g, (m, name) => (symbols[name] === undefined ? m : String(symbols[name])));
 
 // ---------------------------------------------------------------- requests
 
@@ -205,12 +248,12 @@ export function client(base, latencies) {
     }
     const t = Date.now();
     try {
-      const res = await fetch(`${base}${step.path}`, { method: step.method, headers, body, redirect: "manual", signal: AbortSignal.timeout(15000) });
+      const res = await fetch(`${base}${step.path}`, { method: step.method, headers, body, redirect: "manual", signal: AbortSignal.timeout(step.timeoutMs ?? 15000) });
       const text = await res.text();
       const ms = Date.now() - t;
       latencies?.push(ms);
       const setCookies = typeof res.headers.getSetCookie === "function" ? res.headers.getSetCookie() : [];
-      return { status: res.status, ms, text, contentType: res.headers.get("content-type"), location: res.headers.get("location"), setCookies };
+      return { status: res.status, ms, text, contentType: res.headers.get("content-type"), location: res.headers.get("location"), setCookies, headers: Object.fromEntries(res.headers.entries()) };
     } catch (err) {
       return { status: null, ms: Date.now() - t, text: "", error: String(err?.cause?.code ?? err?.name ?? err) };
     }
@@ -261,6 +304,12 @@ function capture(step, r, vars, lenient = false) {
     if (keys.length === 1) {
       vars[step.capture.name] = body[keys[0]];
       return keys[0];
+    }
+    // A nested answer: "userId" asked for, {"user": {"id": 5}} returned.
+    const nested = inferCapture(body, step.capture.name, step.capture.path);
+    if (nested) {
+      vars[step.capture.name] = nested.value;
+      return nested.path;
     }
     // A sign-in value asked for under one name ("token") and returned under another ("session", "jwt").
     const TOKENISH = /token|session|jwt|sid|secret|key/i;
@@ -477,6 +526,9 @@ export async function runGraph(nodes, ctx) {
         loginAnswer = (r.text ?? "").slice(0, 300).replace(/"(\w*(?:token|jwt|session|secret)\w*)"\s*:\s*"[^"]*"/gi, `"$1":"[hidden]"`);
         keepCookies(a, r.setCookies);
         sessions[n.id] = { token: null, body: parsed(r.text) };
+        // The signed-in account's own id ({"user": {"id": 5}} or {"id": 5}), for checks about "my own" records.
+        const own = parsed(r.text) && typeof parsed(r.text) === "object" ? (inferCapture(parsed(r.text), "userId", "$.id") ?? (usable(parsed(r.text).id) ? { value: parsed(r.text).id } : null)) : null;
+        if (own && usable(own.value)) vars[`${n.id}.id`] = own.value;
         if (id.tokenPath) {
           try {
             const tok = pick(JSON.parse(r.text), id.tokenPath);
@@ -514,6 +566,24 @@ export async function runGraph(nodes, ctx) {
     auths[n.id] = a;
     ok.set(n.id, good);
     results.push({ id: n.id, kind: n.kind, ok: good, note: mask(note || "credentials set") });
+    // Forge a tampered token for a security proof: decode the bearer token's payload, change a claim, re-encode without
+    // re-signing, and register it as "<id>#forged". A server that verifies its tokens rejects it; one that does not accepts it.
+    if (good && n.forge && a.headers.authorization) {
+      try {
+        const tok = String(a.headers.authorization).replace(/^Bearer\s+/i, "");
+        const parts = tok.split(".");
+        const payload = JSON.parse(Buffer.from(parts[0], "base64url").toString("utf8"));
+        const roleKey = Object.keys(payload).find((k) => /role|scope|admin|perm|type/i.test(k)) ?? "role";
+        payload[roleKey] = n.forge.role ?? "admin";
+        parts[0] = Buffer.from(JSON.stringify(payload)).toString("base64url");
+        const forged = `${n.id}#forged`;
+        auths[forged] = { headers: { authorization: `Bearer ${parts.join(".")}` }, cookies: {} };
+        ok.set(forged, true);
+        results.push({ id: forged, kind: "identity", ok: true, note: `forged a tampered token (changed "${roleKey}") from ${n.id}'s token` });
+      } catch {
+        // The token is not decodable JSON (e.g. an opaque or encrypted token): a forged-token proof cannot be built.
+      }
+    }
   }
   return { auths, vars, results, ok, sessions, bodies };
 }
@@ -581,6 +651,208 @@ export function loadSeries(maxPoints = 300) {
   };
 }
 
+// ---------------------------------------------------------------- typed scenarios (compiled by the API first)
+
+class MissingSymbol extends Error {
+  constructor(symbol) {
+    super(`the value ${symbol} was not available`);
+    this.symbol = symbol;
+  }
+}
+
+const isoDay = (d) => d.toISOString().slice(0, 10);
+
+/** A fresh value made when the scenario runs. */
+export function generated(kind, days = 0) {
+  const uid = newUid();
+  if (kind === "unique_email") return `cc-${uid}@example.test`;
+  if (kind === "unique_name") return `cc-${uid}`;
+  if (kind === "uuid") return crypto.randomUUID();
+  if (kind === "today") return isoDay(new Date());
+  if (kind === "days_from_today") return isoDay(new Date(Date.now() + Number(days) * 86400000));
+  throw new Error(`unknown generated value ${kind}`);
+}
+
+const asNumber = (v, what) => {
+  const n = typeof v === "number" ? v : typeof v === "string" && v.trim() !== "" ? Number(v) : NaN;
+  if (!Number.isFinite(n)) throw new Error(`${what} is not a number (${JSON.stringify(v)})`);
+  return n;
+};
+
+/** Fills a JSON template: {"$symbol"}, {"$generated"} and {"$expr"} leaves become values. */
+export function resolveTemplate(t, symbols) {
+  if (Array.isArray(t)) return t.map((x) => resolveTemplate(x, symbols));
+  if (t === null || typeof t !== "object") return t;
+  if (typeof t.$symbol === "string") {
+    if (!(t.$symbol in symbols) || symbols[t.$symbol] === undefined) throw new MissingSymbol(t.$symbol);
+    return symbols[t.$symbol];
+  }
+  if (typeof t.$generated === "string") return generated(t.$generated, t.days);
+  if (t.$expr && typeof t.$expr === "object") {
+    const args = t.$expr.args.map((a, i) => asNumber(resolveTemplate(a, symbols), `argument ${i + 1} of ${t.$expr.op}`));
+    const ops = { add: (a, b) => a + b, sub: (a, b) => a - b, mul: (a, b) => a * b, div: (a, b) => a / b, min: Math.min, max: Math.max };
+    const v = args.slice(1).reduce((acc, x) => ops[t.$expr.op](acc, x), args[0]);
+    return Math.round(v * 1e9) / 1e9;
+  }
+  return Object.fromEntries(Object.entries(t).map(([k, v]) => [k, resolveTemplate(v, symbols)]));
+}
+
+/**
+ * The request line of a typed request: placeholders are whole path segments, each value encoded as one segment;
+ * query values are appended separately and encoded, so "<script>", colons and braces arrive unchanged.
+ */
+export function requestPath(r, symbols) {
+  const path = r.path.replace(/\{([^}/]+)\}/g, (_, name) => encodeURIComponent(String(resolveTemplate(r.pathParams?.[name], symbols))));
+  const q = new URLSearchParams();
+  for (const { name, value } of r.query ?? []) {
+    const v = resolveTemplate(value, symbols);
+    for (const x of Array.isArray(v) ? v : [v]) q.append(name, typeof x === "string" ? x : JSON.stringify(x));
+  }
+  const qs = q.toString();
+  return qs ? `${path}?${qs}` : path;
+}
+
+/** Equal as data; numbers (and numeric strings against numbers) within a rounding error. */
+export function sameValue(a, b) {
+  const numeric = (x) => typeof x === "number" || (typeof x === "string" && x.trim() !== "" && Number.isFinite(Number(x)));
+  if (numeric(a) && numeric(b) && (typeof a === "number" || typeof b === "number")) return Math.abs(Number(a) - Number(b)) < 1e-6;
+  if (Array.isArray(a) && Array.isArray(b)) return a.length === b.length && a.every((x, i) => sameValue(x, b[i]));
+  if (a && b && typeof a === "object" && typeof b === "object") {
+    const ka = Object.keys(a);
+    return ka.length === Object.keys(b).length && ka.every((k) => sameValue(a[k], b[k]));
+  }
+  return a === b;
+}
+
+function readTarget(target, res) {
+  if (!res || res.status == null) return undefined;
+  if (target.from === "status") return res.status;
+  if (target.from === "header") return res.headers?.[target.name.toLowerCase()];
+  if (res.json === undefined) {
+    try {
+      res.json = JSON.parse(res.text);
+    } catch {
+      res.json = null;
+    }
+  }
+  return res.json == null ? undefined : pick(res.json, target.jsonPath);
+}
+
+/** One assertion against the responses: whether it held, and what it expected and observed. */
+export function checkAssertion(a, responses, symbols) {
+  const res = responses.get(a.requestId);
+  const target = a.target.from === "body" ? { ...a.target, jsonPath: pathWith(a.target.jsonPath, symbols) } : a.target;
+  const observed = readTarget(target, res);
+  let expected;
+  try {
+    expected = a.expected === undefined ? undefined : resolveTemplate(a.expected, symbols);
+  } catch (e) {
+    return { passed: false, expected: null, observed, why: String(e.message) };
+  }
+  const num = (v) => (typeof v === "number" ? v : typeof v === "string" && v.trim() !== "" ? Number(v) : NaN);
+  let passed;
+  switch (a.op) {
+    case "equals": passed = sameValue(observed, expected); break;
+    case "not_equals": passed = observed !== undefined && !sameValue(observed, expected); break;
+    case "gt": passed = num(observed) > num(expected); break;
+    case "gte": passed = num(observed) >= num(expected); break;
+    case "lt": passed = num(observed) < num(expected); break;
+    case "lte": passed = num(observed) <= num(expected); break;
+    case "one_of": passed = Array.isArray(expected) && expected.some((x) => sameValue(observed, x)); break;
+    case "contains": passed = typeof observed === "string" ? observed.includes(String(expected)) : Array.isArray(observed) && observed.some((x) => sameValue(x, expected)); break;
+    case "not_contains": passed = typeof observed === "string" ? !observed.includes(String(expected)) : Array.isArray(observed) && !observed.some((x) => sameValue(x, expected)); break;
+    case "length": passed = (typeof observed === "string" || Array.isArray(observed)) && observed.length === num(expected); break;
+    case "exists": passed = observed !== undefined && observed !== null; break;
+    case "absent": passed = observed === undefined || observed === null; break;
+    case "changed_by": {
+      const before = readTarget(target, responses.get(a.baselineRequestId));
+      passed = Number.isFinite(num(before)) && Number.isFinite(num(observed)) && Math.abs(num(observed) - num(before) - num(expected)) < 1e-6;
+      return { passed, expected: { before, change: expected }, observed: { after: observed, change: Number.isFinite(num(before)) && Number.isFinite(num(observed)) ? num(observed) - num(before) : null }, why: passed ? null : `changed by ${Number.isFinite(num(before)) && Number.isFinite(num(observed)) ? num(observed) - num(before) : "an unknown amount"} instead of ${expected}` };
+    }
+    default: passed = false;
+  }
+  return { passed, expected, observed, why: passed ? null : `${a.says}: expected ${JSON.stringify(expected)}, observed ${JSON.stringify(observed)}` };
+}
+
+const REFUSED = new Set([401, 403]);
+
+/**
+ * Runs one compiled scenario against the app. A setup step that fails, a value that was never produced, or an
+ * action stopped by sign-in makes it inconclusive (the behaviour was not reached); a failed assertion on a reached
+ * action makes it failed. Each assertion leaves its expected and observed values and a short masked excerpt.
+ */
+export async function runScenario(s, { request, auths = {}, symbols: given = {} }) {
+  const symbols = { ...given };
+  // Fresh values the scenario makes for itself (one key sent twice must be the same key).
+  for (const b of s.bindings ?? []) if (b.producer?.kind === "generated" && symbols[b.symbol] === undefined) symbols[b.symbol] = generated(b.producer.value);
+  const responses = new Map();
+  const reached = new Map();
+  const inconclusive = (reason) => ({ scenarioId: s.id, status: "inconclusive", reason, targetReached: false, proofs: [] });
+  for (const r of s.requests) {
+    if (r.as && !auths[r.as]) return inconclusive(`Sign-in as ${r.as} did not work, so ${r.method} ${r.path} was not sent.`);
+    let step;
+    try {
+      const headers = resolveTemplate(r.headers ?? {}, symbols);
+      step = { method: r.method, path: requestPath(r, symbols), headers: Object.fromEntries(Object.entries(headers).map(([k, v]) => [k, String(v)])) };
+      if (r.body?.kind === "json") step.json = resolveTemplate(r.body.value, symbols);
+      else if (r.body?.kind === "form") step.form = Object.fromEntries(Object.entries(resolveTemplate(r.body.fields, symbols)).map(([k, v]) => [k, String(v)]));
+      else if (r.body?.kind === "raw") Object.assign(step, { raw: r.body.text, contentType: r.body.contentType });
+    } catch (e) {
+      if (e instanceof MissingSymbol) return inconclusive(`${e.message} for ${r.method} ${r.path}.`);
+      throw e;
+    }
+    const res = await request(step, r.as ? auths[r.as] : null);
+    responses.set(r.id, res);
+    emit({ k: "req", method: r.method, path: step.path, status: res.status, ms: res.ms, ok: res.status != null && res.status < 500, as: r.as ?? null, check: s.id });
+    if (r.role === "setup" && (res.status == null || res.status >= 400)) return inconclusive(`Setup ${r.method} ${r.path} answered ${res.status ?? res.error}, so the behaviour was not reached.`);
+    // A refusal reaches the target only when the scenario expects that refusal (an isolation check expects 403).
+    const expectsRefusal = s.assertions.some((a) => a.requestId === r.id && a.target.from === "status" && JSON.stringify(a.expected ?? null).match(/\b(401|403|404)\b/));
+    // No answer at all (a crash, a reset connection) means the request reached the app and broke it: not a refusal.
+    const refused = res.status != null && ((REFUSED.has(res.status) && !expectsRefusal) || (res.status === 404 && Object.keys(r.pathParams ?? {}).length > 0 && !expectsRefusal));
+    reached.set(r.id, !refused);
+    if (r.role === "action" && refused) return inconclusive(`${r.method} ${r.path} answered ${res.status ?? res.error} before reaching the behaviour under test${res.status === 404 ? " (the record was not found)" : ""}.`);
+    // A refusal that is itself correct behaviour (a parent with children may not be deleted) ends the scenario as passed.
+    if (r.endsIfRefused && !refused && res.status != null && res.status >= 400 && res.status < 500) {
+      const excerpt = mask(`${res.status} ${res.text ?? ""}`).slice(0, 400);
+      const proofs = s.assertions.map((a) => ({ requirementId: a.requirementId, assertionId: a.id, passed: true, expected: "refused, or done without breaking related records", observed: { status: res.status }, targetReached: true, stateVerified: false, excerpt }));
+      return { scenarioId: s.id, status: "passed", reason: `${r.method} ${r.path} answered ${res.status}: the app refused it, which also keeps related records consistent.`, targetReached: true, proofs };
+    }
+    if (res.status != null && res.status < 400 && r.captures?.length) {
+      const json = readTarget({ from: "body", jsonPath: "$" }, res);
+      for (const c of r.captures) {
+        const v = json == null ? undefined : pick(json, pathWith(c.jsonPath, symbols));
+        if (v !== undefined) symbols[c.symbol] = v;
+      }
+    }
+  }
+  const proofs = s.assertions.map((a) => {
+    const req = s.requests.find((x) => x.id === a.requestId);
+    const r = checkAssertion(a, responses, symbols);
+    const res = responses.get(a.requestId);
+    return {
+      requirementId: a.requirementId,
+      assertionId: a.id,
+      passed: r.passed,
+      expected: r.expected,
+      observed: r.observed,
+      targetReached: Boolean(reached.get(a.requestId)),
+      stateVerified: r.passed && (req?.role === "readback" || a.op === "changed_by"),
+      excerpt: res ? mask(`${res.status ?? ""} ${res.text ?? ""}`).slice(0, 400) : null,
+      why: r.why,
+    };
+  });
+  const failed = proofs.filter((p) => !p.passed);
+  const crash = s.requests.find((r) => r.role === "action" && responses.has(r.id) && (responses.get(r.id).status == null || responses.get(r.id).status >= 500));
+  const crashText = crash ? `${crash.method} ${crash.path} ${responses.get(crash.id).status == null ? `got no response (${responses.get(crash.id).error}); the app may have crashed` : `answered ${responses.get(crash.id).status}`}.` : "";
+  return {
+    scenarioId: s.id,
+    status: failed.length || crash ? "failed" : "passed",
+    reason: [crashText, failed.map((p) => p.why).join("; ")].filter(Boolean).join(" ").slice(0, 800) || `All ${proofs.length} assertion(s) held.`,
+    targetReached: true,
+    proofs: proofs.map(({ why: _w, ...p }) => p),
+  };
+}
+
 /** Healthy under load: fewer than 5% server errors or timeouts, and 95% of answers within 2 s. */
 export const BREAKPOINT = { errorRatePct: 5, p95Ms: 2000 };
 
@@ -595,4 +867,91 @@ export function breakpointOf(points, { appExited = false, droppedIterations = 0 
   const limitRps = healthy.length ? Math.max(...healthy.map((p) => p.rps)) : null;
   const brokeBy = appExited ? "crash" : i >= 0 ? (points[i].errorRatePct >= BREAKPOINT.errorRatePct ? "errors" : "latency") : droppedIterations > 0 ? "generator" : null;
   return { limitRps, brokeBy };
+}
+
+// ---------------------------------------------------------------- AI Evaluator replay model
+
+/** What the replay model says when a case set no script (a turn of the conversation before the one under test). */
+export const REPLAY_DEFAULT = "This is cybercheck's replay model. No scripted answer was set for this request.";
+
+const approxTokens = (s) => Math.max(1, Math.ceil(String(s ?? "").length / 4));
+
+/**
+ * A loopback, OpenAI-compatible model that answers from a script, so an app's own handling of model output (prompt
+ * building, parsing, tools, retries, errors) can be exercised with no real provider. `setScript(turns)` arms the
+ * script for the next request(s): each model call takes the next turn and the last one repeats. Every call is recorded
+ * (path, request body, what was served). Turns: {content, toolCalls, status, malformed, hang}.
+ */
+export async function startReplay(port, host = "127.0.0.1") {
+  const state = { script: null, served: 0, requests: [], hanging: new Set(), seq: 0 };
+  const server = createServer((req, res) => {
+    let raw = "";
+    req.on("data", (c) => (raw += c));
+    req.on("end", () => {
+      let body = null;
+      try {
+        body = JSON.parse(raw || "null");
+      } catch {}
+      const path = String(req.url ?? "").split("?")[0];
+      const isChat = req.method === "POST" && /\/chat\/completions$/.test(path);
+      const turn = isChat ? (state.script?.length ? state.script[Math.min(state.served, state.script.length - 1)] : { content: REPLAY_DEFAULT }) : null;
+      if (isChat) state.served++;
+      const served = !isChat ? "unsupported" : turn.hang ? "hang" : turn.status ? `status ${turn.status}` : turn.malformed ? "malformed" : turn.toolCalls?.length ? "tool_calls" : state.script?.length ? "content" : "default";
+      state.requests.push({ method: req.method, path, body: raw.slice(0, 40000), served, at: Date.now() });
+      if (!isChat) {
+        if (req.method === "GET" && /\/models$/.test(path)) return res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ object: "list", data: [{ id: "cc-replay", object: "model" }] }));
+        return res.writeHead(404, { "content-type": "application/json" }).end(JSON.stringify({ error: { message: "The replay model only answers chat completions.", type: "invalid_request_error" } }));
+      }
+      if (turn.hang) {
+        state.hanging.add(res);
+        res.on("close", () => state.hanging.delete(res));
+        return;
+      }
+      if (turn.status) return res.writeHead(turn.status, { "content-type": "application/json" }).end(JSON.stringify({ error: { message: "Replayed provider error.", type: turn.status === 429 ? "rate_limit_error" : "server_error" } }));
+      if (turn.malformed) return res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ id: "cc-replay-malformed", object: "chat.completion" }));
+      state.seq++;
+      const toolCalls = (turn.toolCalls ?? []).map((t, i) => ({ id: `call_cc${state.seq}_${i}`, type: "function", function: { name: t.name, arguments: JSON.stringify(t.arguments ?? {}) } }));
+      const message = { role: "assistant", content: turn.content ?? (toolCalls.length ? null : ""), ...(toolCalls.length ? { tool_calls: toolCalls } : {}) };
+      const usage = { prompt_tokens: approxTokens(JSON.stringify(body?.messages ?? "")), completion_tokens: approxTokens(turn.content ?? JSON.stringify(toolCalls)) };
+      usage.total_tokens = usage.prompt_tokens + usage.completion_tokens;
+      const finish = toolCalls.length ? "tool_calls" : "stop";
+      const model = typeof body?.model === "string" ? body.model : "cc-replay";
+      if (body?.stream === true) {
+        res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache" });
+        const chunk = (delta, finish_reason = null) => res.write(`data: ${JSON.stringify({ id: `cc-replay-${state.seq}`, object: "chat.completion.chunk", model, choices: [{ index: 0, delta, finish_reason }] })}\n\n`);
+        chunk({ role: "assistant", ...(message.content ? { content: message.content } : {}), ...(toolCalls.length ? { tool_calls: toolCalls.map((t, index) => ({ index, ...t })) } : {}) });
+        chunk({}, finish);
+        res.write(`data: ${JSON.stringify({ id: `cc-replay-${state.seq}`, object: "chat.completion.chunk", model, choices: [], usage })}\n\n`);
+        return res.end("data: [DONE]\n\n");
+      }
+      res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ id: `cc-replay-${state.seq}`, object: "chat.completion", created: Math.floor(Date.now() / 1000), model, choices: [{ index: 0, message, finish_reason: finish }], usage }));
+    });
+  });
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(port, host, resolve);
+  });
+  return {
+    port: server.address().port,
+    /** Arm a script for the following model calls; null serves the default answer. */
+    setScript(turns) {
+      state.script = turns && turns.length ? turns : null;
+      state.served = 0;
+    },
+    /** Requests recorded since index `from`. */
+    since: (from) => state.requests.slice(from),
+    get count() {
+      return state.requests.length;
+    },
+    /** Release hanging answers (between cases and at the end). */
+    release() {
+      for (const res of state.hanging) res.destroy();
+      state.hanging.clear();
+    },
+    close() {
+      this.release();
+      server.closeAllConnections?.();
+      server.close();
+    },
+  };
 }

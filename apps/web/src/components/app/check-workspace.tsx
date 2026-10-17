@@ -5,7 +5,12 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ArrowRight, Check, ChevronDown, Info, ListChecks, Lock, Play, Plus } from "lucide-react";
 import type { CheckId, ProjectSummary } from "@cybercheck/contracts";
+import { AiRunsCard } from "@/components/ai-evaluator/ai-runs-card";
+import { AiStart } from "@/components/ai-evaluator/ai-start";
+import { useAiRuns } from "@/components/ai-evaluator/use-ai-evaluator";
 import { UnderstandingSummary } from "@/components/architecture/understanding-summary";
+import { SecurityRunsCard } from "@/components/security/security-runs-card";
+import { startSecurity, useSecurityRuns } from "@/components/security/use-security";
 import { ProjectStatusList } from "@/components/testing/project-status-list";
 import { TestingRunsCard } from "@/components/testing/testing-runs-card";
 import { TestingStart } from "@/components/testing/testing-start";
@@ -68,11 +73,18 @@ export function CheckWorkspace({ check }: { check: CheckId }) {
 
   const snap = selected?.latestSnapshot;
   const isReady = selected?.analysis.stage === "ready";
-  // Only the Testing engine exists so far; the other tabs keep their placeholder.
-  const engine = check === "testing";
-  const { runs, error: runsError, reload } = useTestingRuns(engine ? (selected?.id ?? null) : null);
-  const activeRun = runs?.find((r) => ACTIVE_RUN.has(r.status));
-  const { status: testingStatus } = useTestingStatus(engine ? (workspace?.id ?? null) : null);
+  // Testing, Security and AI Evaluator have engines; the other tab keeps its placeholder.
+  const testingEngine = check === "testing";
+  const securityEngine = check === "security";
+  const aiEngine = check === "ai-evaluator";
+  const engine = testingEngine || securityEngine || aiEngine;
+  const testingRuns = useTestingRuns(testingEngine ? (selected?.id ?? null) : null);
+  const securityRuns = useSecurityRuns(securityEngine ? (selected?.id ?? null) : null);
+  const aiRuns = useAiRuns(aiEngine ? (selected?.id ?? null) : null);
+  const { error: runsError, reload } = securityEngine ? securityRuns : aiEngine ? aiRuns : testingRuns;
+  const activeRun = (securityEngine ? securityRuns.runs : aiEngine ? aiRuns.runs : testingRuns.runs)?.find((r) => ACTIVE_RUN.has(r.status));
+  const runPath = (id: string) => `/app/projects/${selected?.id}/${securityEngine ? "security" : aiEngine ? "ai-evaluator" : "testing"}/${id}`;
+  const { status: testingStatus } = useTestingStatus(testingEngine ? (workspace?.id ?? null) : null);
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<ApiError | null>(null);
 
@@ -81,9 +93,9 @@ export function CheckWorkspace({ check }: { check: CheckId }) {
     setStarting(true);
     setStartError(null);
     try {
-      const { run } = await startTesting(snap.id);
+      const { run } = securityEngine ? await startSecurity(snap.id) : await startTesting(snap.id);
       reload();
-      router.push(`/app/projects/${selected.id}/testing/${run.id}`);
+      router.push(runPath(run.id));
     } catch (e) {
       setStartError(e instanceof ApiError ? e : new ApiError(0, "unexpected", "The check could not start.", "Try again."));
       setStarting(false);
@@ -95,7 +107,7 @@ export function CheckWorkspace({ check }: { check: CheckId }) {
     <div className="space-y-6">
       <PageHeader section={info.name} title={info.name} />
 
-      {engine && <ProjectStatusList projects={projects} status={testingStatus} selectedId={selected?.id ?? null} onSelect={select} />}
+      {testingEngine && <ProjectStatusList projects={projects} status={testingStatus} selectedId={selected?.id ?? null} onSelect={select} />}
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
         {/* Left: run card */}
@@ -186,18 +198,20 @@ export function CheckWorkspace({ check }: { check: CheckId }) {
 
               {notApplicable && (
                 <Alert tone="info">
-                  Not applicable to {selected?.name}: no AI model, chatbot, agent or document search was detected in its
-                  dependencies.
+                  No AI library was detected in the dependencies of {selected?.name}. The check still looks for assistants built
+                  in the code itself, and finishes as not applicable at no cost if there are none.
                 </Alert>
               )}
 
-              {engine && selected && !activeRun && isReady && (
+              {aiEngine && selected && !activeRun && isReady && <AiStart projectId={selected.id} snapshotId={snap?.id ?? null} onStarted={reload} />}
+
+              {testingEngine && selected && !activeRun && isReady && (
                 <TestingStart projectId={selected.id} snapshotId={snap?.id ?? null} ready={isReady} />
               )}
 
-              <div className={cn(engine && selected && !activeRun && isReady && "hidden")}>
+              <div className={cn((testingEngine || aiEngine) && selected && !activeRun && isReady && "hidden")}>
                 {engine && activeRun && selected ? (
-                  <Link href={`/app/projects/${selected.id}/testing/${activeRun.id}`} className={buttonVariants({ shape: "pill", size: "lg", className: "w-full" })}>
+                  <Link href={runPath(activeRun.id)} className={buttonVariants({ shape: "pill", size: "lg", className: "w-full" })}>
                     <Spinner /> View the running check
                   </Link>
                 ) : (
@@ -213,7 +227,11 @@ export function CheckWorkspace({ check }: { check: CheckId }) {
                 <p className="mt-2 flex items-start gap-2 text-xs text-fg-muted">
                   <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
                   {isReady
-                    ? engine
+                    ? securityEngine
+                      ? "Your project is ready. Re-checks the project analysis, then scans for leaked secrets, vulnerable dependencies, risky code and configuration in an isolated sandbox with the network off. Your code is only read: it is never run or changed."
+                      : aiEngine
+                      ? "Your project is ready. Starts your app in an isolated sandbox with the network off, points its model calls at a scripted replay model, and checks every answer. No real model is called and your code is never changed."
+                      : engine
                       ? "Your project is ready. Builds it, runs its own tests, sets up sign-in and data, then checks the API, the screens, the database and load in an isolated sandbox. Your code is never changed."
                       : `Your project is ready. The ${info.name} engine is the next build step, so nothing runs yet.`
                     : selected && RUNNING_STAGES.has(selected.analysis.stage)
@@ -284,8 +302,12 @@ export function CheckWorkspace({ check }: { check: CheckId }) {
             )}
           </Card>
 
-          {engine ? (
-            <TestingRunsCard projectId={selected?.id ?? null} runs={runs} error={runsError} />
+          {securityEngine ? (
+            <SecurityRunsCard projectId={selected?.id ?? null} runs={securityRuns.runs} error={runsError} />
+          ) : aiEngine ? (
+            <AiRunsCard projectId={selected?.id ?? null} runs={aiRuns.runs} error={runsError} />
+          ) : testingEngine ? (
+            <TestingRunsCard projectId={selected?.id ?? null} runs={testingRuns.runs} error={runsError} />
           ) : (
             <Card>
               <CardTitle>Results</CardTitle>

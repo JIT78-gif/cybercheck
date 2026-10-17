@@ -1,7 +1,7 @@
 import type { LoadThresholds, Measure, Obligation, ObligationStatus, ProjectDossier, TestExecution, TestFinding, TestingProfile, TestingReport, TestLayer } from "@cybercheck/contracts";
 import { ObligationStatus as Statuses } from "@cybercheck/contracts";
 import { OFFLINE } from "./agents.ts";
-import { DECISION_LABEL, assessment, completeness as completenessOf, evidenceFactor, isApplicable, isDecisive, productHealth as healthOf, releaseDecision, testedFactor, testsForCapability, weightOf } from "./assurance.ts";
+import { DECISION_LABEL, assessment, completeness as completenessOf, earnedProofClass, evidenceFactor, isApplicable, isDecisive, productHealth as healthOf, releaseDecision, testedFactor, testsForCapability, weightOf } from "./assurance.ts";
 import { isAuthEntry } from "./plan.ts";
 
 /**
@@ -53,6 +53,19 @@ const DETERMINISTIC: Array<TestLayer | undefined> = ["environment", "accessibili
 type Claim = NonNullable<TestingReport["claims"]>[number];
 export type FixtureSummary = NonNullable<TestingReport["fixtures"]>;
 
+/**
+ * Fixture reliability counts every planned setup step: invalid ones (never used) are listed as failed with their
+ * reason, never dropped, and the checks the setup kept from running are counted.
+ */
+export function withInvalidSetup(fixtures: FixtureSummary | null, problems: Array<{ id: string; label: string; reason: string }>, obligations: Obligation[]): FixtureSummary | null {
+  const bad = new Set(problems.map((p) => p.id));
+  const blockedChecks = obligations.filter((o) => !isDecisive(o) && (o.blockedBy === "fixture" || (o.fixtureRefs ?? []).some((r) => bad.has(r)))).length;
+  if (!fixtures && !problems.length) return null;
+  const base = fixtures ?? { digest: "", nodes: [] };
+  const invalid = problems.filter((p) => !base.nodes.some((n) => n.id === p.id)).map((p) => ({ id: p.id, label: p.label, ok: false, detail: `Not used: ${p.reason}`.slice(0, 400), invalid: true }));
+  return { ...base, nodes: [...base.nodes, ...invalid], blockedChecks };
+}
+
 export function buildReport(input: {
   d: ProjectDossier;
   obligations: Obligation[];
@@ -70,6 +83,8 @@ export function buildReport(input: {
   fixtures?: FixtureSummary | null;
   /** Extra limitations, e.g. how local services were provided. */
   extraLimitations?: string[];
+  /** The engine version, recorded in the report. */
+  engine?: string;
   suiteSummaries: Array<{ workspace: string; framework: string; command: string; tests: { total: number; passed: number; failed: number; skipped: number }; cases: TestingReport["suites"][number]["cases"] }>;
 }): TestingReport {
   const { obligations: obs, executions, findings } = input;
@@ -180,7 +195,7 @@ export function buildReport(input: {
     measures,
     suites,
     untested,
-    environment: { provider: input.providerName, image: input.image, runtime, cpus: 4, memoryMb: 4096, network: `on only while installing dependencies${networkBuild ? " and to confirm a build that needed the internet" : ""}; off for builds, tests, probes and browsers`, syntheticEnv },
+    environment: { engine: input.engine, provider: input.providerName, image: input.image, runtime, cpus: 4, memoryMb: 4096, network: `on only while installing dependencies${networkBuild ? " and to confirm a build that needed the internet" : ""}; off for builds, tests, probes and browsers`, syntheticEnv },
     performance,
     limitations,
     audit: [],
@@ -333,7 +348,7 @@ function buildCapabilities(obs: Obligation[], cases: Array<{ name: string; file:
   for (const o of obs) if (o.capability) by.set(o.capability, [...(by.get(o.capability) ?? []), o]);
   return [...by]
     .map(([name, list]) => {
-      const classes = [...new Set(list.filter((o) => o.status === "passed" && o.proofClass).map((o) => o.proofClass!))];
+      const classes = [...new Set(list.filter((o) => o.status === "passed" && earnedProofClass(o)).map((o) => earnedProofClass(o)!))];
       const strong = classes.some((c) => BEHAVIOUR.has(c));
       const hasUi = list.some((o) => o.layer === "ui" && o.status === "passed");
       const missing = !strong ? "No successful business flow was proven (only guards, validation or availability)" : !hasUi && list.some((o) => o.layer === "ui") ? "No browser evidence" : null;

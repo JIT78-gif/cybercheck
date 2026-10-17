@@ -1,25 +1,32 @@
 import { buffer } from "node:stream/consumers";
 import { Readable } from "node:stream";
 import { eq } from "drizzle-orm";
-import { FindingKind, TestingPolicyInput, type EntryPoint, type Obligation, type ProjectDossier, type TestFinding, type TestingReport } from "@cybercheck/contracts";
+import { FindingKind, TestingPolicyInput, canDefineOracle, type EntryPoint, type Obligation, type ProjectDossier, type TestFinding, type TestingReport, type TestRequirement } from "@cybercheck/contracts";
 import { db } from "../db/client.ts";
 import { sandboxImageCache, snapshot, testFinding, testingRun, testObligation, understandingRun } from "../db/schema.ts";
 import { getSnapshotSource, type SnapshotSource } from "../understanding/source.ts";
 import { APP_ROOT, OUT, planWorkspaces, slug, wsPath, type WorkspacePlan } from "./adapters.ts";
-import { INTERACTIVE, NEEDS_NETWORK, OFFLINE, authorJourneys, authorProbes, authorUnitTests, authoringTargets, bootGraph, fixtureSteps, identityFor, wrongRoleIdentity, planBoot, scenarioToProbe, unitTargets, validEvidence } from "./agents.ts";
+import { INTERACTIVE, NEEDS_NETWORK, OFFLINE, authorJourneys, authorProbes, authorUnitTests, authoringTargets, bootGraph, fixtureSteps, identityFor, wrongRoleIdentity, planBoot, scenarioToProbe, unitTargets, validEvidence, type FrontendApp } from "./agents.ts";
+import { servedScreens } from "./served-pages.ts";
+import { behaviourSections } from "./report-sections.ts";
 import { capabilityOf, isDecisive, roleWords, withAssurance } from "./assurance.ts";
 import { buildFrontend, judgeBrowser, type BrowserJourney, type BrowserPlan } from "./browser.ts";
 import { judgeDatabase } from "./database.ts";
-import { aliasPlaceholders, bindCredentialPlaceholders, produces, recordNodes, validateGraph, verifyTarget, withRecord } from "./fixtures.ts";
+import { databaseStrategy, judgeInMemoryDatabase } from "./db-strategy.ts";
+import { aliasPlaceholders, bindCredentialPlaceholders, inventedSettings, produces, recordNodes, settingSources, validateGraph, verifiedGraph, verifyTarget, withRecord } from "./fixtures.ts";
 import { judgeGenerated, type Generated } from "./generated.ts";
 import { judgeLoad } from "./load.ts";
 import { appFor, buildObligations, buildProbes, isAuthEntry, obligation, type FixtureNode, type PlanOptions, type Probe } from "./plan.ts";
-import { judgeProbes } from "./probes.ts";
-import { buildReport, type FixtureSummary } from "./report.ts";
+import { appEnv, judgeProbes, type ScenarioJob } from "./probes.ts";
+import { ORACLE, authorScenarios, behaviourObligations, compileBehaviour, extractRequirements, templateFromWords } from "./behaviour.ts";
+import { fillTemplate, isCore, schemaRequirements, slotContext, templateScenarios, touchedRoutes, type TemplateFill } from "./templates.ts";
+import { authorInOrder, gapsFirst, type AuthoringStep } from "./authoring-order.ts";
+import { routeKey } from "./scenarios.ts";
+import { buildReport, withInvalidSetup, type FixtureSummary } from "./report.ts";
 import { SERVICE_NOTES, detectServices, installServices } from "./services.ts";
 import { consistentFailures, judgeSuite, runSuite } from "./suites.ts";
 import { mergeDuplicates, reconcile, settle, type Candidate } from "./triage.ts";
-import { BROWSER_DIR, CI_ENV, ENGINE_VERSION, K6, POLICY, PROFILES, TSX, addFinding, effectivePolicy, execute, setOb, sha, shq, tail, type Ctx, type Deps, type LoadStageName } from "./runtime.ts";
+import { BROWSER_DIR, CI_ENV, ENGINE_VERSION, K6, LEGACY_ENGINE, POLICY, PROFILES, TSX, addFinding, effectivePolicy, execute, setOb, sha, shq, tail, type Ctx, type Deps, type LoadStageName } from "./runtime.ts";
 import { env } from "../env.ts";
 import type { RunStore } from "./store.ts";
 
@@ -271,6 +278,10 @@ type CachedPlan = {
   authored: Awaited<ReturnType<typeof authorProbes>>;
   units: Awaited<ReturnType<typeof authorUnitTests>>;
   journeys: Awaited<ReturnType<typeof authorJourneys>> | null;
+  /** Documented requirements and the scenario proposals written for them (compiled again each run). */
+  behaviour?: { requirements: TestRequirement[]; proposals: unknown[]; fills?: TemplateFill[] };
+  /** Which authoring steps ran, were cut short or were skipped (disclosed again when the plan is reused). */
+  authoring?: AuthoringStep[];
   /** Setup graphs that worked after a repair, per app: the next run of the same code starts from them. */
   graphs?: Record<string, FixtureNode[]>;
   costUsd?: number;
@@ -297,6 +308,10 @@ export async function runTesting(store: RunStore, deps: Deps, onProgress: (step:
   // The user's choices applied to the profile: completeness target, AI budget, time limit, which lanes run.
   const ep = effectivePolicy(policy.success ? policy.data : {}, env.TESTING_RUN_BUDGET_USD);
   deps.session?.limitBudget(ep.budgetUsd);
+  // Shares of the run's AI budget (the 9+/10 plan): start-up planning, setup repair and requirements 20%, writing
+  // scenarios, probes, journeys and unit tests 30%, triage and review
+  // 35%, reconciliation 10%; the last 5% is a reserve only triage may use, so critical failures are still analysed.
+  if (!LEGACY_ENGINE) deps.session?.setStageBudget(budgetGroup, { planning: 0.2 * ep.budgetUsd, authoring: 0.3 * ep.budgetUsd, triage: 0.35 * ep.budgetUsd, reconcile: 0.1 * ep.budgetUsd }, { usd: 0.05 * ep.budgetUsd, groups: ["triage"] });
   const deadline = ep.maxSandboxMinutes ? Date.now() + ep.maxSandboxMinutes * 60_000 : null;
   const ctx: Ctx = { ...deps, store, runId: run.id, d: null as unknown as ProjectDossier, src: null as unknown as SnapshotSource, obligations: new Map(), executions: [], findings: [], sandboxOps: 0, sandboxCpu: 0, suiteSummaries: [], services: [], profile, thresholds };
   ctx.deadline = deadline;
@@ -320,6 +335,14 @@ export async function runTesting(store: RunStore, deps: Deps, onProgress: (step:
   if (d.meta.contentDigest !== snap.contentDigest) return finishBlocked(ctx, "The analysis belongs to different content than this snapshot.");
   ctx.d = d;
   ctx.src = await getSnapshotSource(deps.objects, snap.archiveObjectKey);
+  // Pages the backend serves itself (a static folder, res.sendFile, templates) are the screens when no frontend router
+  // was found: the browser opens them on the app, with no frontend build.
+  const served = LEGACY_ENGINE || d.screens.length ? null : servedScreens(ctx.src, d);
+  if (served?.screens.length) {
+    d.screens = served.screens;
+    ctx.screensFound = served.found;
+    await store.event("planning", `Found ${served.screens.length} page(s) the backend serves itself (${served.screens.map((s) => s.route).slice(0, 6).join(", ")}); the browser opens them on the app`);
+  }
   const errors = d.consistency.filter((c) => c.severity === "error");
   if (errors.length) await store.event("admission", `The analysis reported ${errors.length} consistency error(s); results that depend on them are marked`);
 
@@ -331,7 +354,10 @@ export async function runTesting(store: RunStore, deps: Deps, onProgress: (step:
   ctx.pathPrepend = workspaces.map((w) => (w.ecosystem === "python" ? `/work/venv-${slug(w.dir)}/bin` : `${wsPath(w.dir)}/node_modules/.bin`));
   const caps = capabilities(d, workspaces, ctx.services);
   const prof = PROFILES[profile];
-  const opts: PlanOptions = { browser: ep.browser && prof.browser && caps.frontendWs && d.screens.length > 0, database: prof.database && caps.database, load: ep.loadStages, viewports: prof.viewports };
+  // A file database or Postgres is opened directly; an in-memory one is judged from its schema and through the app.
+  const dbStrategy = LEGACY_ENGINE ? (caps.database ? (ctx.services.includes("postgres") ? "direct_postgres" : "direct_sqlite_file") : "none") : databaseStrategy(d, ctx.src, ctx.services);
+  ctx.databaseStrategy = dbStrategy;
+  const opts: PlanOptions = { browser: ep.browser && prof.browser && caps.frontendWs && d.screens.length > 0, database: prof.database && (caps.database || dbStrategy !== "none"), load: ep.loadStages, viewports: prof.viewports };
   const roles = roleWords(d);
   const known: string[] = [];
   const add = (o: Obligation) => {
@@ -385,36 +411,108 @@ export async function runTesting(store: RunStore, deps: Deps, onProgress: (step:
       planInfo = { source: "cache", runId: cached.runId ?? null, savedUsd: cached.costUsd ?? 0 };
       await store.event("planning", `Reusing the start-up plan, setup steps and AI-written checks from an earlier run of this exact snapshot (saved about $${(cached.costUsd ?? 0).toFixed(3)})`);
     }
-    const unitAuthoring = cached ? Promise.resolve(cached.units) : deps.session && unitPlan.length && ep.generatedTests ? authorUnitTests(deps.session, d, ctx.src, unitPlan) : Promise.resolve({ files: [], dropped: 0, rejected: [] });
-    const planning = cached ? Promise.resolve({ boot: cached.boot, authored: cached.authored, journeys: cached.journeys, journeyError: null as string | null }) : (async () => {
+    const noUnits: Awaited<ReturnType<typeof authorUnitTests>> = { files: [], dropped: 0, rejected: [] };
+    const planning = cached ? Promise.resolve({ boot: cached.boot, authored: cached.authored, journeys: cached.journeys, journeyError: null as string | null, behaviour: { requirements: cached.behaviour?.requirements ?? ([] as TestRequirement[]), proposals: cached.behaviour?.proposals ?? ([] as unknown[]), fills: cached.behaviour?.fills ?? ([] as TemplateFill[]) }, units: cached.units ?? noUnits, authoring: cached.authoring ?? [] }) : (async () => {
       const boot = await planBoot(deps.session, d, ctx.src, workspaces);
       await store.event("planning", boot.source === "ai" ? `Start-up plan: ${boot.apps.map((a) => `${a.workspace}: ${a.start} on port ${a.port}${a.setup.length ? `, setup: ${a.setup.map((s) => s.id).join(", ")}` : ""}${a.identities.length ? `, sign-in: ${a.identities.map((i) => i.name).join(", ")}` : ""}`).join("; ") || "no HTTP app"}${boot.frontends.length ? `; frontend: ${boot.frontends.map((f) => `${f.workspace} on port ${f.port}`).join(", ")}` : ""}` : `Start-up plan from rules${boot.error ? ` (AI planner unavailable: ${boot.error.slice(0, 120)})` : ""}`);
-      let authored: Awaited<ReturnType<typeof authorProbes>> = { scenarios: [], fixtures: [], dropped: 0 };
-      let journeys: Awaited<ReturnType<typeof authorJourneys>> | null = null;
-      let journeyError: string | null = null;
-      if (deps.session && boot.apps.length) {
-        await step("authoring", "Writing request scenarios and browser journeys from the code");
+      const out = {
+        authored: { scenarios: [], fixtures: [], dropped: 0 } as Awaited<ReturnType<typeof authorProbes>>,
+        journeys: null as Awaited<ReturnType<typeof authorJourneys>> | null,
+        journeyError: null as string | null,
+        behaviour: { requirements: [] as TestRequirement[], proposals: [] as unknown[], fills: [] as TemplateFill[] },
+        units: noUnits,
+        authoring: [] as AuthoringStep[],
+      };
+      if (deps.session) {
+        const session = deps.session;
+        const http = boot.apps.length > 0;
         const targets = authoringTargets(d, tested).filter((e) => boot.apps.some((a) => appFor(e, [a.workspace])));
         const ids = boot.apps.flatMap((a) => a.identities.map((i) => i.name));
         const identities = boot.apps.flatMap((a) => a.identities.map((i) => ({ name: i.name, login: i.request ?? { kind: i.kind } })));
         const setup = boot.apps.flatMap((a) => a.setup.map((s) => ({ id: s.id, label: s.label, captures: [...s.exports, ...(s.steps ?? []).flatMap((st) => (st.capture ? [st.capture.name] : []))] })));
-        const session = deps.session;
-        [authored, journeys] = await Promise.all([
-          !ep.generatedTests ? Promise.resolve({ scenarios: [], fixtures: [], dropped: 0 }) : authorProbes(session, d, ctx.src, targets, ids, (n, t) => onProgress(`Writing request scenarios (${n} of ${t})`), boot.apps.flatMap((a) => a.setup.map((x) => ({ id: x.id, requests: (x.steps ?? []).map((st) => `${st.method} ${st.path}${st.json !== undefined ? ` ${JSON.stringify(st.json).slice(0, 200)}` : ""}`), captures: [...x.exports, ...(x.steps ?? []).flatMap((st) => (st.capture ? [st.capture.name] : []))] })))),
-          opts.browser && boot.frontends.length ? authorJourneys(session, d, ctx.src, identities, setup, PROFILES.deep.maxJourneys).catch((err: Error) => {
-            journeyError = err.message.slice(0, 200);
-            return null;
-          }) : Promise.resolve(null),
-        ]);
-        await store.event("authoring", `Authored ${authored.scenarios.length} request scenario(s)${authored.dropped ? ` (dropped ${authored.dropped} without valid citations)` : ""}${journeys ? `, ${journeys.journeys.length} browser journey(s)${journeys.dropped.length ? ` (dropped ${journeys.dropped.length}: ${journeys.dropped.slice(0, 2).map((x) => x.reason).join("; ")})` : ""}` : ""}`);
+        const setupInfo = boot.apps.flatMap((a) => [...a.setup.map((x) => ({ id: x.id, captures: [...x.exports, ...(x.steps ?? []).flatMap((st) => (st.capture ? [st.capture.name] : []))], requests: (x.steps ?? []).map((st) => `${st.method} ${st.path}`) })), ...a.identities.map((i) => ({ id: i.name, captures: ["token"], requests: [] as string[] }))]);
+        // Behaviour first: what the docs and tests say the product must do (planning share), then checks for it.
+        if (http && ep.generatedTests && !LEGACY_ENGINE) {
+          await step("authoring", "Reading what the docs and tests say the product must do");
+          // A failed extraction is disclosed (report limitations), never an empty list that looks like "no requirements".
+          const documented = await extractRequirements(session, d, ctx.src).catch((err: Error) => {
+            out.authoring.push({ name: "requirements from the docs and tests", status: "skipped", reason: `reading them failed (${err.message.slice(0, 160)})` });
+            return [] as TestRequirement[];
+          });
+          // Declared foreign keys are SQL's own rule: checked whatever the docs say, unless a documented one covers the same delete.
+          const fromSchema = schemaRequirements(d, ctx.src).filter((r) => !documented.some((x) => x.template === "referential_integrity" && x.affectedAssets.some((a) => r.affectedAssets.includes(a))));
+          out.behaviour.requirements = [...documented, ...fromSchema];
+        }
+        const provable = (r: TestRequirement) => canDefineOracle(r) && ["response", "state", "integrity"].includes(r.requiredProof);
+        const urgent = (r: TestRequirement) => r.priority === "critical" || r.priority === "high";
+        // Core templates are built by the engine; the AI only names their requests. Everything else is written freely.
+        const core = out.behaviour.requirements.filter((r) => provable(r) && isCore(r.template));
+        const free = out.behaviour.requirements.filter((r) => !core.includes(r));
+        const [coreFirst, coreRest] = [core.filter(urgent), core.filter((r) => !urgent(r))];
+        const [critical, rest] = [free.filter(urgent), free.filter((r) => !urgent(r))];
+        const scenariosFor = (reqs: TestRequirement[]) => async () => {
+          out.behaviour.proposals.push(...(await authorScenarios(session, d, ctx.src, reqs, ids, setupInfo)));
+        };
+        const fillsFor = (reqs: TestRequirement[]) => async () => {
+          out.behaviour.fills.push(...(await Promise.all(reqs.map((r) => fillTemplate(session, d, ctx.src, r, ids)))));
+        };
+        await step("authoring", "Writing checks, most important first: critical requirements and browser journeys, then the rest");
+        // In order, each tier after the one before: one step can no longer use up what a more important one needs.
+        out.authoring = [...out.authoring, ...(await authorInOrder({ shareUsd: LEGACY_ENGINE ? Infinity : 0.3 * ep.budgetUsd, spent: () => session.stageSpent("authoring"), refused: () => session.refusedCalls("authoring") }, [
+          [
+            ...(coreFirst.length ? [{ name: `template checks for ${coreFirst.length} critical and high requirement(s)`, run: fillsFor(coreFirst) }] : []),
+            ...(critical.length ? [{ name: `scenarios for ${critical.length} critical and high requirement(s)`, run: scenariosFor(critical) }] : []),
+            ...(http && opts.browser && (boot.frontends.length || served?.screens.length)
+              ? [
+                  {
+                    name: "browser journeys",
+                    run: async () => {
+                      out.journeys = await authorJourneys(session, d, ctx.src, identities, setup, PROFILES.deep.maxJourneys).catch((err: Error) => {
+                        out.journeyError = err.message.slice(0, 200);
+                        return null;
+                      });
+                    },
+                  },
+                ]
+              : []),
+          ],
+          [...(coreRest.length ? [{ name: `template checks for ${coreRest.length} other requirement(s)`, run: fillsFor(coreRest) }] : []), ...(rest.length ? [{ name: `scenarios for ${rest.length} other requirement(s)`, run: scenariosFor(rest) }] : [])],
+          http && ep.generatedTests
+            ? [
+                {
+                  name: "request probes",
+                  run: async () => {
+                    out.authored = await authorProbes(session, d, ctx.src, gapsFirst(targets, [...out.behaviour.proposals, ...touchedRoutes(out.behaviour.fills)]), ids, (n, t) => onProgress(`Writing request scenarios (${n} of ${t})`), boot.apps.flatMap((a) => a.setup.map((x) => ({ id: x.id, requests: (x.steps ?? []).map((st) => `${st.method} ${st.path}${st.json !== undefined ? ` ${JSON.stringify(st.json).slice(0, 200)}` : ""}`), captures: [...x.exports, ...(x.steps ?? []).flatMap((st) => (st.capture ? [st.capture.name] : []))] }))));
+                  },
+                },
+              ]
+            : [],
+          unitPlan.length && ep.generatedTests
+            ? [
+                {
+                  name: "unit tests",
+                  run: async () => {
+                    out.units = await authorUnitTests(session, d, ctx.src, unitPlan);
+                  },
+                },
+              ]
+            : [],
+        ]))];
+        if (out.behaviour.requirements.length) await store.event("authoring", `Found ${out.behaviour.requirements.length} documented requirement(s) (${out.behaviour.requirements.filter((r) => r.source.kind !== "implementation").length} with a cited source) and wrote ${out.behaviour.proposals.length} behaviour scenario(s)`);
+        if (http) await store.event("authoring", `Authored ${out.authored.scenarios.length} request scenario(s)${out.authored.dropped ? ` (dropped ${out.authored.dropped} without valid citations)` : ""}${out.journeys ? `, ${out.journeys.journeys.length} browser journey(s)${out.journeys.dropped.length ? ` (dropped ${out.journeys.dropped.length}: ${out.journeys.dropped.slice(0, 2).map((x) => x.reason).join("; ")})` : ""}` : ""}`);
       }
-      return { boot, authored, journeys, journeyError };
+      return { boot, ...out };
     })();
     const tools: Tools = { node: nodeDirs.length > 0, browser: opts.browser, k6: opts.load.length > 0 && d.entryPoints.some((e) => e.kind === "http"), pg: ctx.services.includes("postgres") };
-    const [prep, plannedAi, units] = await Promise.all([prepare(ctx, workspaces, snap.contentDigest, archive, tools), planning, unitAuthoring]);
+    const [prep, plannedAi] = await Promise.all([prepare(ctx, workspaces, snap.contentDigest, archive, tools), planning]);
+    const units = plannedAi.units;
+    // Authoring steps skipped or cut short are said every run, also when the plan is reused: their checks are missing.
+    const authoringGaps = plannedAi.authoring.filter((s) => s.status !== "done");
+    for (const s of authoringGaps) await store.event("authoring", `${s.status === "skipped" ? "Skipped" : "Cut short"}: ${s.name}, because ${s.reason}`);
+    ctx.authoringGaps = authoringGaps.map((s) => `${s.status === "skipped" ? "Not written" : "Only partly written"}: ${s.name}, because ${s.reason}. The checks it would have added are missing from this run.`);
     if (!cached && deps.session && plannedAi.boot.source === "ai") {
       const costUsd = deps.session.usage.reduce((s, x) => s + x.costUsd, 0);
-      await deps.objects.put(planKey, Readable.from([JSON.stringify({ boot: plannedAi.boot, authored: plannedAi.authored, units, journeys: plannedAi.journeys, costUsd, runId: run.id } satisfies CachedPlan)])).catch(() => undefined);
+      await deps.objects.put(planKey, Readable.from([JSON.stringify({ boot: plannedAi.boot, authored: plannedAi.authored, units, journeys: plannedAi.journeys, behaviour: plannedAi.behaviour, authoring: plannedAi.authoring, costUsd, runId: run.id } satisfies CachedPlan)])).catch(() => undefined);
     }
 
     // Generated unit tests: one obligation per case; files that did not compile are testing-system problems, not product results.
@@ -465,6 +563,65 @@ export async function runTesting(store: RunStore, deps: Deps, onProgress: (step:
       invalidSetup = await addFinding(ctx, { kind: "test_defect", status: "confirmed", severity: "low", confidence: "high", title: `${graphProblems.length} planned setup step(s) were invalid and not used`, expected: "Every setup step uses real endpoints, real settings and values an earlier step produces", actual: graphProblems.slice(0, 8).map((p) => `${p.label}: ${p.reason}`).join("\n"), reproduction: "Internal to cybercheck (checked before anything ran).", rootCause: "The setup planner proposed steps that do not match the code.", location: null, obligationIds: [], executionIds: [], validation: "Static validation of the fixture graph.", limitation: null, layer: "api", nextAction: "Checks that needed these steps are listed as blocked; rerun to plan them again." });
     }
 
+    // Behaviour scenarios: compiled against the app that owns their action (one repair round), then obligations.
+    // Templates follow the requirement's own words every run, also for requirements cached by an earlier run.
+    ctx.requirements = plannedAi.behaviour.requirements.map((r) => { const t = templateFromWords(`${r.expectedBehavior} ${r.source.quote ?? ""}`) ?? r.template; return t ? { ...r, template: t } : r; });
+    const behaviourJobs = new Map<string, ScenarioJob[]>();
+    if (ep.generatedTests && plannedAi.behaviour.proposals.length) {
+      const byApp = new Map<string, unknown[]>();
+      for (const p of plannedAi.behaviour.proposals) {
+        const action = ((p as { requests?: Array<{ role?: string; method?: string; path?: string }> }).requests ?? []).find((r) => r.role === "action");
+        const e = action ? d.entryPoints.find((x) => routeKey(x.method, x.path) === routeKey(String(action.method), String(action.path))) : undefined;
+        const app = (e && appFor(e, appDirs)) ?? apps[0]?.workspace;
+        if (app) byApp.set(app, [...(byApp.get(app) ?? []), p]);
+      }
+      const refused: Array<{ id: string; problems: string[] }> = [];
+      let compiled = 0;
+      for (const [app, proposals] of byApp) {
+        const b = await compileBehaviour(deps.session, proposals, ctx.requirements, d, graphs.get(app) ?? [], Object.keys(appEnv(ctx, apps.find((a) => a.workspace === app)!)));
+        const { obligations: obs, jobs } = behaviourObligations(b, d);
+        for (const ob of obs) add(ob);
+        behaviourJobs.set(app, jobs);
+        refused.push(...b.refused);
+        compiled += b.scenarios.length;
+      }
+      await store.event("authoring", `${compiled} behaviour scenario(s) compiled${refused.length ? `; ${refused.length} refused by the compiler (${refused.slice(0, 2).map((r) => `${r.id}: ${r.problems[0]}`).join("; ")})` : ""}`);
+      if (refused.length) await addFinding(ctx, { kind: "test_defect", status: "confirmed", severity: "low", confidence: "high", title: `${refused.length} behaviour scenario(s) cybercheck wrote did not compile and were not sent`, expected: "Every scenario uses real endpoints and setup values, discriminating values, and enough assertions to prove its requirement", actual: refused.slice(0, 8).map((r) => `${r.id}: ${r.problems.slice(0, 2).join("; ")}`).join("\n"), reproduction: "Internal to cybercheck (checked before anything ran).", rootCause: "The scenario author proposed scenarios the compiler refused, and one repair round did not fix them.", location: null, obligationIds: [], executionIds: [], validation: "Static compilation of each scenario against the project.", limitation: null, layer: "api", nextAction: "Rerun the checks without a verdict; cybercheck writes these scenarios again." });
+    }
+
+    // Core templates: the engine builds each scenario from the requests the AI named, compiled like any other (no
+    // repair: a template that does not compile is a gap to fix in cybercheck). A requirement whose template could not
+    // be built still gets its check, inconclusive with the reason, so it never drops out of the count.
+    const fills = ep.generatedTests ? (plannedAi.behaviour.fills ?? []) : [];
+    if (fills.length) {
+      const tpl = templateScenarios(fills, ctx.requirements, slotContext(d, ctx.src, apps.flatMap((a) => a.identities.map((i) => i.name))));
+      const unfilled = [...tpl.unfilled];
+      const byApp = new Map<string, unknown[]>();
+      for (const { proposal } of tpl.proposals) {
+        const action = (proposal.requests as Array<{ role: string; method: string; path: string }>).find((r) => r.role === "action")!;
+        const e = d.entryPoints.find((x) => routeKey(x.method, x.path) === routeKey(action.method, action.path));
+        const app = (e && appFor(e, appDirs)) ?? apps[0]?.workspace;
+        if (app) byApp.set(app, [...(byApp.get(app) ?? []), proposal]);
+      }
+      let built = 0;
+      for (const [app, proposals] of byApp) {
+        const b = await compileBehaviour(null, proposals, ctx.requirements, d, graphs.get(app) ?? [], Object.keys(appEnv(ctx, apps.find((a) => a.workspace === app)!)));
+        const { obligations: obs, jobs } = behaviourObligations(b, d);
+        for (const ob of obs) add(ob);
+        behaviourJobs.set(app, [...(behaviourJobs.get(app) ?? []), ...jobs]);
+        built += b.scenarios.length;
+        for (const r of b.refused) unfilled.push({ requirementId: r.id.replace(/^tpl:/, ""), reason: `the built scenario did not compile (${r.problems.slice(0, 2).join("; ")})` });
+      }
+      for (const u of unfilled) {
+        const r = ctx.requirements.find((x) => x.id === u.requirementId);
+        if (!r) continue;
+        const [m, p] = (r.affectedAssets[0] ?? "").split(/\s+/);
+        const e = m && p ? d.entryPoints.find((x) => routeKey(x.method, x.path) === routeKey(m, p)) : undefined;
+        add(obligation({ id: `req:${r.id}:template`, layer: r.requiredProof === "integrity" ? "data" : "api", asset: { kind: "endpoint", ref: e?.id ?? r.affectedAssets[0] ?? r.id, label: r.affectedAssets[0] ?? r.capability }, objective: r.expectedBehavior, priority: r.priority, oracle: { source: ORACLE[r.source.kind], expected: r.expectedBehavior, evidence: r.source.path && r.source.line ? [{ path: r.source.path, line: r.source.line }] : [] }, origin: "authored", status: "inconclusive", blockedBy: "prerequisite", reason: `cybercheck could not build its ${r.template?.replace(/_/g, " ")} check: ${u.reason}. This is cybercheck's gap, not a result about your app.`, requirementIds: [r.id], capability: r.capability }));
+      }
+      await store.event("authoring", `${built} template check(s) built by the engine${unfilled.length ? `; ${unfilled.length} could not be built (${unfilled.slice(0, 2).map((u) => `${u.requirementId}: ${u.reason.slice(0, 140)}`).join("; ")})` : ""}`);
+    }
+
     // Authored request scenarios and browser journeys become obligations.
     const authoredEvidence = new Map<string, string>();
     const authoredProbes: Probe[] = [];
@@ -485,7 +642,8 @@ export async function runTesting(store: RunStore, deps: Deps, onProgress: (step:
       if (!probe.identity && !expectsRejection && ep.control.kind !== "public_intentional") probe.identity = identityFor(bootApp, ep.control.kind, ep.path);
       authoredProbes.push(probe);
     });
-    const frontend = plannedAi.boot.frontends[0];
+    // Backend-served pages: the first app is the "frontend", already running, with nothing to build.
+    const frontend: FrontendApp | undefined = plannedAi.boot.frontends[0] ?? (served?.screens.length && apps[0] ? { workspace: apps[0].workspace, build: [], start: apps[0].start, port: apps[0].port, readyPath: "/", config: [], served: true } : undefined);
     const journeys: BrowserJourney[] = [];
     if (opts.browser && frontend && plannedAi.journeys) {
       plannedAi.journeys.journeys.slice(0, prof.maxJourneys).forEach((j, i) => {
@@ -566,7 +724,7 @@ export async function runTesting(store: RunStore, deps: Deps, onProgress: (step:
     }
     // The frontend build (network on) starts right away; the browser waits for it and for the backend's setup.
     const browserPlanned = Boolean(opts.browser && frontend && prep.tools.browser && !dependsOnFailed(frontend.workspace) && apps.length > 0);
-    const frontendBuild = browserPlanned && frontend ? buildFrontend(ctx, image, { frontend, apps, graph: [], logins: [], journeys: [] }) : null;
+    const frontendBuild = browserPlanned && frontend ? (frontend.served ? Promise.resolve({ image: image as string | null, exec: null, reason: null }) : buildFrontend(ctx, image, { frontend, apps, graph: [], logins: [], journeys: [] })) : null;
     const appDependent = (o: Obligation) => ["data", "performance", "ui", "accessibility"].includes(o.layer) || o.id === "reliability:recovery-after-load";
     apps.forEach((app, appIndex) => {
       const unsupported = app.needsServices.filter((n) => !/sqlite|none|^$/i.test(n) && !ctx.services.some((s) => n.toLowerCase().includes(s === "postgres" ? "postg" : s)));
@@ -604,6 +762,7 @@ export async function runTesting(store: RunStore, deps: Deps, onProgress: (step:
       if (!needed) return;
       // Probes for protected endpoints with no way to sign in can't test the handler; nor can ones whose sign-in was invalid.
       const runnable: Probe[] = [];
+      const allowedSetting = settingSources(d, ctx.src, graph);
       const unusable: Array<{ id: string; why: string }> = [];
       const pre: Array<Promise<unknown>> = [];
       for (const p of probes) {
@@ -637,9 +796,12 @@ export async function runTesting(store: RunStore, deps: Deps, onProgress: (step:
             if (st.capture) own.add(st.capture.name);
           }
           const badActor = p.steps.find((st) => st.as && !graph.some((n) => n.id === st.as))?.as;
-          if (ob.origin === "authored" && (missing || badActor)) {
-            unusable.push({ id: p.obligationId, why: missing ? `uses {{${missing}}}, which neither the setup nor an earlier step produces` : `acts as "${badActor}", which is not a working sign-in` });
-            pre.push(setOb(ctx, p.obligationId, { status: "inconclusive", reachedTarget: false, reason: `cybercheck's scenario ${missing ? `uses {{${missing}}}, which neither the setup nor an earlier step produces` : `acts as "${badActor}", which is not a working sign-in`}; it was not sent.` }));
+          // A setting nothing defines (ALICE_PASSWORD) would be sent as literal text: refused before the sandbox.
+          const invented = inventedSettings(p.steps.map((st) => [st.path, st.json ?? null, st.form ?? null, st.headers ?? null, st.raw ?? null]), allowedSetting)[0];
+          if (ob.origin === "authored" && (missing || badActor || invented)) {
+            const why = missing ? `uses {{${missing}}}, which neither the setup nor an earlier step produces` : badActor ? `acts as "${badActor}", which is not a working sign-in` : `uses the setting ${invented}, which the code, its tests and its seed scripts never define (an invented value)`;
+            unusable.push({ id: p.obligationId, why });
+            pre.push(setOb(ctx, p.obligationId, { status: "inconclusive", reachedTarget: false, reason: `cybercheck's scenario ${why}; it was not sent.` }));
           } else runnable.push(p);
         }
       }
@@ -648,19 +810,17 @@ export async function runTesting(store: RunStore, deps: Deps, onProgress: (step:
       }
       tasks.push(
         Promise.all(pre)
-          .then(() => judgeProbes(ctx, image, app, graph, runnable, candidates, authoredEvidence))
+          .then(() => judgeProbes(ctx, image, app, graph, runnable, candidates, authoredEvidence, (behaviourJobs.get(app.workspace) ?? []).filter((j) => Object.values(j.obligations).some((id) => ctx.obligations.get(id)?.status === "planned"))))
           .then(async (r) => {
             latencies = latencies.concat(r.latencies);
             if (appIndex !== 0) return;
             fixtures = r.fixtures;
-            // Learned setup: a repair that made more setup steps succeed is kept for the next run of this exact code.
-            const okCount = (nodes: FixtureSummary["nodes"]) => nodes.filter((n) => n.ok).length;
-            if (deps.session && r.graph.some((n) => n.origin === "repair") && okCount(r.fixtures.nodes) > 0) {
-              const before = graphs.get(app.workspace) ?? [];
-              if (r.graph !== before) {
-                const current: CachedPlan | null = (await deps.objects.exists(planKey)) ? JSON.parse((await buffer(deps.objects.get(planKey))).toString("utf8")) : null;
-                if (current) await deps.objects.put(planKey, Readable.from([JSON.stringify({ ...current, graphs: { ...(current.graphs ?? {}), [app.workspace]: r.graph } } satisfies CachedPlan)])).catch(() => undefined);
-              }
+            // Learned setup: a repair is kept for the next run of this exact code only once it is verified, i.e. every
+            // repaired step worked in the sandbox. Steps that failed (and the ones depending on them) are not kept.
+            const verified = verifiedGraph(r.graph, r.fixtures.nodes);
+            if (deps.session && verified && r.graph !== (graphs.get(app.workspace) ?? [])) {
+              const current: CachedPlan | null = (await deps.objects.exists(planKey)) ? JSON.parse((await buffer(deps.objects.get(planKey))).toString("utf8")) : null;
+              if (current) await deps.objects.put(planKey, Readable.from([JSON.stringify({ ...current, graphs: { ...(current.graphs ?? {}), [app.workspace]: verified } } satisfies CachedPlan)])).catch(() => undefined);
             }
             if (ctx.obligations.get(`env:boot:${app.workspace}`)?.status !== "passed") {
               for (const o of [...ctx.obligations.values()]) if (appDependent(o) && o.status === "planned") await setOb(ctx, o.id, { status: "blocked", blockedBy: "prerequisite", reason: "Not run: the app did not start." });
@@ -668,13 +828,13 @@ export async function runTesting(store: RunStore, deps: Deps, onProgress: (step:
             }
             // Database and load only once the app is proven to start; load only after the functional checks.
             const after: Array<Promise<unknown>> = [];
-            if (opts.database) after.push(judgeDatabase(ctx, image, app));
+            if (opts.database) after.push(dbStrategy === "api_level" ? judgeInMemoryDatabase(ctx) : judgeDatabase(ctx, image, app));
             if (opts.load.length && prep.tools.k6) after.push(judgeLoad(ctx, image, app, r.graph, appDirs, opts.load as LoadStageName[]).then((l) => (load = l)));
             if (frontendBuild && frontend) {
               after.push(
                 frontendBuild.then(async (fb) => {
                   if (!fb.image) {
-                    for (const o of [...ctx.obligations.values()]) if ((o.layer === "ui" || o.layer === "accessibility") && o.status === "planned") await setOb(ctx, o.id, { status: "blocked", blockedBy: "prerequisite", reason: `The frontend could not be built for the browser: ${fb.reason?.slice(0, 300)}`, executionIds: [fb.exec.id] });
+                    for (const o of [...ctx.obligations.values()]) if ((o.layer === "ui" || o.layer === "accessibility") && o.status === "planned") await setOb(ctx, o.id, { status: "blocked", blockedBy: "prerequisite", reason: `The frontend could not be built for the browser: ${fb.reason?.slice(0, 300)}`, executionIds: fb.exec ? [fb.exec.id] : [] });
                     return;
                   }
                   const plan: BrowserPlan = { frontend, apps, graph: r.graph, logins: plannedAi.journeys?.logins ?? [], journeys };
@@ -699,6 +859,7 @@ export async function runTesting(store: RunStore, deps: Deps, onProgress: (step:
         for (const o of lost) await setOb(ctx, o.id, { findingIds: [invalidSetup.id] });
       }
     }
+    fixtures = withInvalidSetup(fixtures as FixtureSummary | null, graphProblems, [...ctx.obligations.values()]);
   }
 
   // ---------------- triage, merging and contradiction checks
@@ -728,7 +889,9 @@ export async function runTesting(store: RunStore, deps: Deps, onProgress: (step:
     const suiteRuns = [...ctx.obligations.values()].filter((x) => x.id.startsWith("suite:passes:") && x.status === "passed").flatMap((x) => x.executionIds);
     if (covering.length && suiteRuns.length) await setOb(ctx, o.id, { status: "passed", proofClass: "business_behavior", oracleStrength: "moderate", reachedTarget: true, executionIds: suiteRuns, reason: `Not checked by cybercheck, but covered by your own test(s), which passed in every clean run: ${covering.slice(0, 3).join("; ")}.` });
   }
-  const report: TestingReport = buildReport({ d, obligations: [...ctx.obligations.values()], executions: ctx.executions, findings: ctx.findings, latencies, providerName: deps.provider.name, image: POLICY.image, suiteRuns: prof.suiteRuns, profile, thresholds, targetCompleteness: ep.targetCompleteness, load, fixtures, suiteSummaries: ctx.suiteSummaries, extraLimitations: ctx.services.map((s) => SERVICE_NOTES[s]) });
+  const built: TestingReport = buildReport({ d, obligations: [...ctx.obligations.values()], executions: ctx.executions, findings: ctx.findings, latencies, providerName: deps.provider.name, image: POLICY.image, suiteRuns: prof.suiteRuns, profile, thresholds, targetCompleteness: ep.targetCompleteness, load, fixtures, suiteSummaries: ctx.suiteSummaries, extraLimitations: [...(ctx.authoringGaps ?? []), ...ctx.services.map((s) => SERVICE_NOTES[s])], engine: ENGINE_VERSION });
+  // Behaviour-first sections: requirements and sources, what was discovered versus executed, proof strength, targets.
+  const report: TestingReport = { ...built, ...behaviourSections({ d, obligations: [...ctx.obligations.values()], requirements: ctx.requirements, screensFound: ctx.screensFound, databaseStrategy: ctx.databaseStrategy }) };
   const usage = usageOf(ctx, planInfo);
   const status = report.assessment === "could_not_test" ? "partial" : "completed";
   clearInterval(usageTimer);
@@ -770,10 +933,17 @@ async function carryOver(ctx: Ctx, parentRunId: string, scope: Set<string>) {
 export const pending = (ctx: Ctx, id: string) => ctx.obligations.get(id)?.status === "planned" && !(ctx.deadline && Date.now() > ctx.deadline);
 
 /** AI spend grouped by stage, from the purpose of each call. */
+/** The budget share a call draws on: planning, setup repair and requirements; authoring; triage with its review; reconciliation. */
+export function budgetGroup(purpose: string) {
+  const s = stageOf(purpose);
+  return s === "planning" || s === "fixtures" || s === "requirements" ? "planning" : s === "critic" ? "triage" : s;
+}
+
 export function stageOf(purpose: string) {
   if (/boot plan/.test(purpose)) return "planning";
+  if (/requirements/.test(purpose)) return "requirements";
   if (/fixture/.test(purpose)) return "fixtures";
-  if (/probe scenarios|unit test|journeys/.test(purpose)) return "authoring";
+  if (/probe scenarios|template slots|unit test|journeys/.test(purpose)) return "authoring";
   if (/contradiction/.test(purpose)) return "reconcile";
   if (/review/.test(purpose)) return "critic";
   return "triage";

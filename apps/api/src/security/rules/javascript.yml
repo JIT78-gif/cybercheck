@@ -1,0 +1,359 @@
+# Cybercheck rule pack: JavaScript and TypeScript (Express, Next.js API routes, Node).
+# Our own rules, version-pinned with the engine. metadata.obligation names the Security obligation a match fails;
+# metadata.mode is taint (request input traced to the sink inside one handler: may be confirmed) or search (suspected).
+# Every pattern is single-quoted so YAML never reads it as structure.
+rules:
+  # ---------------------------------------------------------------- injection (taint: request input to a sink)
+  - id: cc.js.sql-injection
+    mode: taint
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: Request input reaches the text of a database query
+    metadata:
+      obligation: 'sec:sast:sql-injection'
+      category: sql-injection
+      cwe: ['CWE-89']
+      mode: taint
+    pattern-sources:
+      - pattern-either:
+          - pattern: '$REQ.query'
+          - pattern: '$REQ.body'
+          - pattern: '$REQ.params'
+    pattern-sinks:
+      - patterns:
+          - pattern: '$DB.$METHOD($SQL, ...)'
+          - metavariable-regex:
+              metavariable: '$METHOD'
+              regex: '^(query|prepare|exec|execute|raw|unsafe)$'
+          - pattern-not: 'cp.$M(...)'
+          - pattern-not: 'child_process.$M(...)'
+          - pattern-not: 'childProcess.$M(...)'
+          - pattern-not: 'proc.$M(...)'
+          - pattern-not: 'shell.$M(...)'
+          - pattern-not: 'execa.$M(...)'
+          - pattern-not: 'exec(...)'
+          - pattern-not: 'execSync(...)'
+          - focus-metavariable: '$SQL'
+
+  - id: cc.js.sql-string-built
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: A database query is built as text with an interpolated value; use parameters
+    metadata:
+      obligation: 'sec:sast:sql-injection'
+      category: sql-injection
+      cwe: ['CWE-89']
+      mode: search
+    patterns:
+      - pattern-either:
+          - pattern: '$DB.$METHOD(`...${$X}...`, ...)'
+          - pattern: '$DB.$METHOD("..." + $X, ...)'
+          - pattern: '$DB.$METHOD($A + $X + $B, ...)'
+      - metavariable-regex:
+          metavariable: '$METHOD'
+          regex: '^(query|prepare|exec|execute|raw)$'
+      - pattern-not: 'cp.$M(...)'
+      - pattern-not: 'child_process.$M(...)'
+      - pattern-not: 'childProcess.$M(...)'
+      - pattern-not: 'proc.$M(...)'
+      - pattern-not: 'shell.$M(...)'
+      - pattern-not: 'execa.$M(...)'
+      - pattern-not: 'exec(...)'
+      - pattern-not: 'execSync(...)'
+
+  - id: cc.js.command-injection
+    mode: taint
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: Request input reaches a shell command
+    metadata:
+      obligation: 'sec:sast:command-injection'
+      category: command-injection
+      cwe: ['CWE-78']
+      mode: taint
+    pattern-sources:
+      - pattern-either:
+          - pattern: '$REQ.query'
+          - pattern: '$REQ.body'
+          - pattern: '$REQ.params'
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: '$CP.exec($CMD, ...)'
+              - pattern: '$CP.execSync($CMD, ...)'
+              - pattern: 'exec($CMD, ...)'
+              - pattern: 'execSync($CMD, ...)'
+          - focus-metavariable: '$CMD'
+
+  - id: cc.js.code-injection
+    mode: taint
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: Request input reaches eval, Function or vm
+    metadata:
+      obligation: 'sec:sast:code-injection'
+      category: code-injection
+      cwe: ['CWE-94']
+      mode: taint
+    pattern-sources:
+      - pattern-either:
+          - pattern: '$REQ.query'
+          - pattern: '$REQ.body'
+          - pattern: '$REQ.params'
+    pattern-sinks:
+      - pattern-either:
+          - pattern: 'eval(...)'
+          - pattern: 'new Function(...)'
+          - pattern: '$VM.runInNewContext(...)'
+          - pattern: '$VM.runInThisContext(...)'
+
+  - id: cc.js.xss
+    mode: taint
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: Request input is written into an HTML response without escaping
+    metadata:
+      obligation: 'sec:sast:xss'
+      category: xss
+      cwe: ['CWE-79']
+      mode: taint
+    pattern-sources:
+      - pattern-either:
+          - pattern: '$REQ.query'
+          - pattern: '$REQ.body'
+          - pattern: '$REQ.params'
+    pattern-sanitizers:
+      - pattern-either:
+          - pattern: 'escape(...)'
+          - pattern: 'escapeHtml(...)'
+          - pattern: '$X.escape(...)'
+          - pattern: 'encodeURIComponent(...)'
+          - pattern: '$P.sanitize(...)'
+          - pattern: '$FS.readFile(...)'
+          - pattern: '$FS.readFileSync(...)'
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: '$RES.send($HTML)'
+              - pattern: '$RES.write($HTML)'
+              - pattern: '$RES.end($HTML)'
+          - pattern-not: '$R.type("text").send(...)'
+          - pattern-not: '$R.type("json").send(...)'
+          - pattern-not: '$R.type("text/plain").send(...)'
+          - pattern-not: '$R.type("application/json").send(...)'
+          - focus-metavariable: '$HTML'
+
+  - id: cc.js.path-traversal
+    mode: taint
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: A file path built from request input is read, written or sent without checking it stays in its directory
+    metadata:
+      obligation: 'sec:sast:path-traversal'
+      category: path-traversal
+      cwe: ['CWE-22']
+      mode: taint
+    pattern-sources:
+      - pattern-either:
+          - pattern: '$REQ.query'
+          - pattern: '$REQ.body'
+          - pattern: '$REQ.params'
+    pattern-sanitizers:
+      - pattern-either:
+          - pattern: 'path.basename(...)'
+          - pattern: '$P.basename(...)'
+    pattern-sinks:
+      - patterns:
+          - pattern: '$FS.$F($PATH, ...)'
+          - metavariable-regex:
+              metavariable: '$F'
+              regex: '^(readFile|readFileSync|createReadStream|writeFile|writeFileSync|appendFile|unlink|unlinkSync|rm|rmSync|open|readdir)$'
+          - focus-metavariable: '$PATH'
+      - patterns:
+          - pattern-either:
+              - pattern: '$RES.sendFile($PATH, ...)'
+              - pattern: '$RES.download($PATH, ...)'
+          - focus-metavariable: '$PATH'
+
+  - id: cc.js.ssrf
+    mode: taint
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: The server fetches a URL taken from request input
+    metadata:
+      obligation: 'sec:sast:ssrf'
+      category: ssrf
+      cwe: ['CWE-918']
+      mode: taint
+    pattern-sources:
+      - pattern-either:
+          - pattern: '$REQ.query'
+          - pattern: '$REQ.body'
+          - pattern: '$REQ.params'
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: 'fetch($URL, ...)'
+              - pattern: 'axios($URL, ...)'
+              - pattern: 'axios.$M($URL, ...)'
+              - pattern: 'got($URL, ...)'
+              - patterns:
+                  - pattern-either:
+                      - pattern: '$HTTP.get($URL, ...)'
+                      - pattern: '$HTTP.request($URL, ...)'
+                  # Only HTTP clients: a database statement's .get(id) is not a request.
+                  - metavariable-regex:
+                      metavariable: '$HTTP'
+                      regex: '^(http|https|axios|got|ky|needle|superagent|request|undici|client|httpClient)$'
+          - focus-metavariable: '$URL'
+
+  - id: cc.js.open-redirect
+    mode: taint
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: A redirect goes to a location taken from request input
+    metadata:
+      obligation: 'sec:sast:open-redirect'
+      category: open-redirect
+      cwe: ['CWE-601']
+      mode: taint
+    pattern-sources:
+      - pattern-either:
+          - pattern: '$REQ.query'
+          - pattern: '$REQ.body'
+          - pattern: '$REQ.params'
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: '$RES.redirect($URL)'
+              - pattern: '$RES.redirect($STATUS, $URL)'
+              - pattern: '$RES.location($URL)'
+          - focus-metavariable: '$URL'
+
+  # ---------------------------------------------------------------- tokens, assignment, logging, errors (search)
+  - id: cc.js.unsigned-token
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: A token is plain encoded JSON with no signature, so anyone can forge one
+    metadata:
+      obligation: 'sec:sast:token-integrity'
+      category: token-integrity
+      cwe: ['CWE-347']
+      mode: search
+    pattern-either:
+      - pattern: 'Buffer.from(JSON.stringify(...)).toString("base64url")'
+      - pattern: 'Buffer.from(JSON.stringify(...)).toString("base64")'
+      - pattern: 'JSON.parse(Buffer.from($T, "base64url").toString(...))'
+      - pattern: 'JSON.parse(Buffer.from($T, "base64").toString(...))'
+      - pattern: 'JSON.parse(atob($T))'
+      - patterns:
+          - pattern-either:
+              - pattern: '$JWT.decode($T)'
+              - pattern: '$JWT.decode($T, ...)'
+          - metavariable-regex:
+              metavariable: '$JWT'
+              regex: '^(jwt|jsonwebtoken|jose|jwtDecode)$'
+      - pattern: '$JWT.verify($T, $K, {..., algorithms: [..., "none", ...], ...})'
+
+  - id: cc.js.mass-assignment
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: The request body is copied onto a stored record wholesale, so a caller can set any field (role, owner, price)
+    metadata:
+      obligation: 'sec:sast:mass-assignment'
+      category: mass-assignment
+      cwe: ['CWE-915']
+      mode: search
+    pattern-either:
+      - pattern: 'Object.assign($OBJ, $REQ.body)'
+      - pattern: 'Object.assign($OBJ, {..., ...$REQ.body, ...})'
+      - pattern: '$MODEL.update($REQ.body, ...)'
+      - pattern: '$MODEL.create($REQ.body, ...)'
+      - pattern: 'new $MODEL($REQ.body)'
+
+  - id: cc.js.credentials-in-logs
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: A request body or a password is written to the logs
+    metadata:
+      obligation: 'sec:sast:credentials-in-logs'
+      category: credentials-in-logs
+      cwe: ['CWE-532']
+      mode: search
+    patterns:
+      - pattern-either:
+          - pattern: 'console.$F(..., $REQ.body, ...)'
+          - pattern: '$LOGGER.$F(..., $REQ.body, ...)'
+          - patterns:
+              - pattern-either:
+                  - pattern: 'console.$F(..., $PW, ...)'
+                  - pattern: '$LOGGER.$F(..., $PW, ...)'
+              - metavariable-regex:
+                  metavariable: '$PW'
+                  regex: '(?i)^(.*\.)?(password|passwd|pwd|secret|token)$'
+      - metavariable-regex:
+          metavariable: '$F'
+          regex: '^(log|info|debug|warn|error|trace)$'
+
+  - id: cc.js.error-disclosure
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: An error response includes the stack trace
+    metadata:
+      obligation: 'sec:sast:error-disclosure'
+      category: error-disclosure
+      cwe: ['CWE-209']
+      mode: search
+    pattern-either:
+      - pattern: '$RES.json({..., stack: $E.stack, ...})'
+      - pattern: '$RES.send({..., stack: $E.stack, ...})'
+      - pattern: '$RES.send($E.stack)'
+      - pattern: '$RES.json({..., error: $E.stack, ...})'
+
+  - id: cc.js.cors-any-origin
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: CORS allows every origin
+    metadata:
+      obligation: 'sec:config:cors'
+      category: cors
+      cwe: ['CWE-942']
+      mode: search
+    pattern-either:
+      - patterns:
+          - pattern-either:
+              - pattern: '$RES.setHeader($H, "*")'
+              - pattern: '$RES.header($H, "*")'
+              - pattern: '$RES.set($H, "*")'
+          - metavariable-regex:
+              metavariable: '$H'
+              regex: '(?i)^.access-control-allow-origin.$'
+      - pattern: 'cors({..., origin: "*", ...})'
+      - pattern: 'cors({..., origin: true, credentials: true, ...})'
+
+  - id: cc.js.weak-crypto
+    languages: [javascript, typescript]
+    severity: INFO
+    message: A broken hash or a non-cryptographic random source is used
+    metadata:
+      obligation: 'sec:sast:weak-crypto'
+      category: weak-crypto
+      cwe: ['CWE-327', 'CWE-338']
+      mode: search
+    pattern-either:
+      - pattern: '$CRYPTO.createHash("md5")'
+      - pattern: '$CRYPTO.createHash("sha1")'
+      - pattern: 'Math.random().toString(36)'
+
+  - id: cc.js.unsafe-deserialization
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: Untrusted data is deserialised in a way that can run code
+    metadata:
+      obligation: 'sec:sast:unsafe-deserialization'
+      category: unsafe-deserialization
+      cwe: ['CWE-502']
+      mode: search
+    pattern-either:
+      - pattern: '$S.unserialize(...)'
+      - pattern: '$YAML.load($X, {..., schema: $Y.DEFAULT_FULL_SCHEMA, ...})'

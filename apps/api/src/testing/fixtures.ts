@@ -98,6 +98,121 @@ export function aliasPlaceholders<T>(steps: T, produced: Set<string>): T {
   return JSON.parse(text) as T;
 }
 
+const DOC_FILE = /\.(md|mdx|markdown|txt|rst|adoc)$/i;
+
+/**
+ * Where a setting a check refers to (${ENV:NAME}) may come from: a setting the code reads, a value a seed command
+ * exports, a test or fixture file of the project, or a CC_ value cybercheck generates for accounts it creates.
+ * A name that only appears in documentation, or nowhere, was invented and is refused before anything runs.
+ */
+export function settingSources(d: Pick<ProjectDossier, "config">, src: SnapshotSource, graph: FixtureNode[] = []) {
+  const known = new Set([...d.config.envVars.map((e) => e.name), ...graph.flatMap((n) => (n.kind === "command" ? (n.exports ?? []) : []))]);
+  let corpus: string | null = null;
+  return (name: string) => {
+    if (name.startsWith("CC_") || known.has(name)) return true;
+    corpus ??= [...src.files.entries()].filter(([path]) => !DOC_FILE.test(path)).map(([, f]) => f.text).join("\n");
+    return new RegExp(`\\b${name}\\b`).test(corpus);
+  };
+}
+
+const TEST_OR_SEED = /(\.|\/)(test|spec)\.[cm]?[jt]sx?$|(^|\/)(tests?|__tests__|spec|fixtures?|seeds?)\/|(^|\/)test_\w+\.py$|seed[\w-]*\.[cm]?[jt]s$|seed[\w-]*\.py$/i;
+
+/**
+ * The password the project's own tests, fixtures or seed scripts use for an account: the other string literal on a
+ * line (or the two after it) that names the account, e.g. login("alice@example.test", "AlicePass123!"). Documentation
+ * does not count. Null when there is none or more than one.
+ */
+export function credentialFromTests(src: SnapshotSource, account: string): string | null {
+  const found = new Set<string>();
+  for (const [path, f] of src.files) {
+    if (!TEST_OR_SEED.test(path) || DOC_FILE.test(path) || !f.text.includes(account)) continue;
+    const lines = f.text.split("\n");
+    const candidates = (text: string) =>
+      [...text.matchAll(/["'`]([^"'`\s$]{6,64})["'`]/g)].map((m) => m[1]!).filter((v) => v !== account && !v.includes("@") && !/^(\/|https?:|application\/|Bearer)/.test(v) && /[A-Za-z]/.test(v) && /[\d!#%&*?_]/.test(v));
+    lines.forEach((l, i) => {
+      if (!l.includes(account)) return;
+      // The same line first (a call with both); only without one there, the next two lines.
+      const same = candidates(l);
+      for (const v of same.length ? same : candidates(lines.slice(i + 1, i + 3).join("\n"))) found.add(v);
+    });
+  }
+  return found.size === 1 ? [...found][0]! : null;
+}
+
+export type SeededAccount = { account: string; accountField: string; password: string; passwordField: string; role: string | null; at: { path: string; line: number } };
+
+/**
+ * Accounts the project itself defines with a password: a seed record in its code or tests on one line, such as
+ * { id: "u2", email: "bob@example.test", password: "BobPass123!", role: "customer" }. Documentation does not count,
+ * and a value that is a setting reference (process.env.X) is not a password.
+ */
+export function seededAccounts(src: SnapshotSource): SeededAccount[] {
+  const out: SeededAccount[] = [];
+  for (const [path, f] of src.files) {
+    if (DOC_FILE.test(path) || path.includes("node_modules/") || !/\.(c|m)?[jt]sx?$|\.py$|\.json$|\.sql$/.test(path)) continue;
+    f.text.split("\n").forEach((l, i) => {
+      const acc = l.match(/["']?(email|username|user_name|login)["']?\s*[:=]\s*["'`]([^"'`\s]{3,80})["'`]/i);
+      const pw = l.match(/["']?(password|passwd|pass|pwd)["']?\s*[:=]\s*["'`]([^"'`\s]{6,64})["'`]/i);
+      if (!acc || !pw || out.some((a) => a.account === acc[2])) return;
+      const role = l.match(/["']?role["']?\s*[:=]\s*["'`]([\w-]{2,30})["'`]/i)?.[1] ?? null;
+      out.push({ account: acc[2]!, accountField: acc[1]!, password: pw[2]!, passwordField: pw[1]!, role, at: { path, line: i + 1 } });
+    });
+  }
+  return out;
+}
+
+/**
+ * Repairs a sign-in that asks for an invented password setting: when the request names the account (an email or user
+ * name) and the project's tests or seeds use one password for it, that literal is used instead. Returns the names fixed.
+ */
+export function bindTestCredentials(n: FixtureNode, src: SnapshotSource, allowed: (name: string) => boolean): string[] {
+  const fixed: string[] = [];
+  const holders = [n.auth?.request, ...(n.steps ?? [])].filter(Boolean) as Array<{ json?: unknown; form?: Record<string, string> }>;
+  for (const h of holders) {
+    const body = (h.json ?? h.form) as Record<string, unknown> | undefined;
+    if (!body || typeof body !== "object") continue;
+    const account = Object.entries(body).find(([k, v]) => /email|user(name)?|login|account/i.test(k) && typeof v === "string" && !v.includes("${"))?.[1] as string | undefined;
+    if (!account) continue;
+    for (const [k, v] of Object.entries(body)) {
+      const name = typeof v === "string" ? v.match(/^\$\{ENV:([A-Z0-9_]+)\}$/)?.[1] : undefined;
+      if (!name || allowed(name) || !/pass|pwd|secret/i.test(`${k} ${name}`)) continue;
+      const pw = credentialFromTests(src, account);
+      if (pw) {
+        body[k] = pw;
+        fixed.push(name);
+      }
+    }
+  }
+  return fixed;
+}
+
+/** The settings a value refers to that no allowed source provides. */
+export function inventedSettings(value: unknown, allowed: (name: string) => boolean) {
+  return [...new Set([...JSON.stringify(value ?? null).matchAll(ENVREF)].map((m) => m[1]!))].filter((n) => !allowed(n));
+}
+
+/** Infers a symbol's type from its name: credentials, ids, or plain values. */
+const symbolType = (name: string): "token" | "id" | "string" => (/token|jwt|session|secret|api_?key|cookie/i.test(name) ? "token" : /(^id$|_id$|Id$)/.test(name) ? "id" : "string");
+
+/**
+ * The typed fixture symbol table: every value the setup graph produces (a capture or an export), the node and JSON
+ * path that produce it, its type and scope, and every node that consumes it. A scenario or probe may only use these.
+ */
+export type FixtureSymbolEntry = { symbol: string; name: string; nodeId: string; jsonPath: string; type: "token" | "id" | "string"; scope: "run"; consumers: string[] };
+export function fixtureSymbols(graph: FixtureNode[]): FixtureSymbolEntry[] {
+  const out: FixtureSymbolEntry[] = [];
+  for (const n of graph) {
+    const made = [...(n.steps ?? []).flatMap((s) => (s.capture ? [{ name: s.capture.name, jsonPath: s.capture.path }] : [])), ...(n.exports ?? []).map((e) => ({ name: e, jsonPath: `$.${e}` }))];
+    // A sign-in gives its token, and (when the answer carries it) the signed-in account's own id.
+    if (n.kind === "identity") made.push({ name: "token", jsonPath: n.auth?.tokenPath ?? "$.token" }, { name: "id", jsonPath: "$.id" });
+    for (const m of made) {
+      const consumers = graph.filter((x) => x !== n && JSON.stringify({ steps: x.steps, auth: x.auth, verify: x.verify, command: x.command }).includes(`{{${m.name}}}`)).map((x) => x.id);
+      out.push({ symbol: `${n.id}.${m.name}`, name: m.name, nodeId: n.id, jsonPath: m.jsonPath, type: symbolType(m.name), scope: "run", consumers });
+    }
+  }
+  return out;
+}
+
 export function validateGraph(nodes: FixtureNode[], d: ProjectDossier, src: SnapshotSource): { nodes: FixtureNode[]; problems: GraphProblem[] } {
   const problems: GraphProblem[] = [];
   const seen = new Set<string>();
@@ -163,8 +278,7 @@ export function validateGraph(nodes: FixtureNode[], d: ProjectDossier, src: Snap
   }
   const { order, cyclic } = topoSort(unique);
   for (const n of cyclic) problems.push({ id: n.id, label: n.label, reason: "it depends on itself through other setup steps (a cycle)" });
-  const corpus = [...src.files.values()].map((f) => f.text).join("\n");
-  const knownEnv = new Set(d.config.envVars.map((e) => e.name));
+  const allowed = settingSources(d, src, unique);
   const valid = new Map<string, FixtureNode>();
   const available = new Map<string, Set<string>>();
   for (const n of order) {
@@ -191,10 +305,13 @@ export function validateGraph(nodes: FixtureNode[], d: ProjectDossier, src: Snap
       problems.push({ id: n.id, label: n.label, reason: `it uses {{${missingVar}}}, which no earlier setup step produces` });
       continue;
     }
-    // CC_ names are values cybercheck invents for accounts the setup creates; any other name must be a setting the code reads.
-    const guessed = [...text.matchAll(ENVREF)].map((m) => m[1]!).find((v) => !v.startsWith("CC_") && !knownEnv.has(v) && !corpus.includes(v));
+    // CC_ names are values cybercheck invents for accounts the setup creates; any other name must be a setting the code
+    // reads, a seed export, or a name the project's tests or fixtures use.
+    // One repair before refusing: an invented password for an account the project's tests sign in with.
+    bindTestCredentials(n, src, allowed);
+    const guessed = inventedSettings({ steps: n.steps, auth: n.auth, verify: n.verify, command: n.command }, allowed)[0];
     if (guessed) {
-      problems.push({ id: n.id, label: n.label, reason: `it uses the setting ${guessed}, which appears nowhere in the code` });
+      problems.push({ id: n.id, label: n.label, reason: `it uses the setting ${guessed}, which the code, its tests and its seed scripts never define (an invented value)` });
       continue;
     }
     const invented = requestsOf(n).find((r) => !r.path.startsWith("/") || !knownEndpoint(d, r.method, r.path));
@@ -259,6 +376,23 @@ export function withRecord(path: string, nodes: FixtureNode[]): { path: string; 
     return name && fx.captureFor?.[name] ? `{{${fx.captureFor[name]}}}` : m;
   });
   return { path: concretePath(filled.replace(/\{\{(\w+)\}\}/g, "@@$1@@")).replace(/@@(\w+)@@/g, "{{$1}}"), needs: [fx.id] };
+}
+
+/**
+ * The part of a repaired graph worth keeping for the next run: null unless every repaired node worked; otherwise the
+ * graph without nodes that failed or depend on one that failed. Only verified setup is cached.
+ */
+export function verifiedGraph(graph: FixtureNode[], results: Array<{ id: string; ok: boolean | null }>): FixtureNode[] | null {
+  const ok = new Map(results.map((r) => [r.id, r.ok]));
+  const repaired = graph.filter((n) => n.origin === "repair");
+  if (!repaired.length || repaired.some((n) => ok.get(n.id) !== true)) return null;
+  const bad = new Set(graph.filter((n) => ok.get(n.id) === false).map((n) => n.id));
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const n of graph) if (!bad.has(n.id) && n.dependsOn.some((x) => bad.has(x))) (bad.add(n.id), (grew = true));
+  }
+  return graph.filter((n) => !bad.has(n.id));
 }
 
 /** Every node a list of nodes needs, transitively (for targeted reruns). */

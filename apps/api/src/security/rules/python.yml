@@ -1,0 +1,292 @@
+# Cybercheck rule pack: Python (Flask, FastAPI, Django views). Our own rules, version-pinned with the engine.
+# metadata.obligation names the Security obligation a match fails; metadata.mode is taint (may be confirmed) or search.
+# Every pattern is single-quoted so YAML never reads it as structure.
+rules:
+  - id: cc.py.sql-string-built
+    languages: [python]
+    severity: WARNING
+    message: A database query is built as text with an interpolated value; use parameters
+    metadata:
+      obligation: 'sec:sast:sql-injection'
+      category: sql-injection
+      cwe: ['CWE-89']
+      mode: search
+    pattern-either:
+      - pattern: '$CUR.execute(f"...", ...)'
+      - pattern: '$CUR.execute("..." % $X, ...)'
+      - pattern: '$CUR.execute("...".format(...), ...)'
+      - pattern: '$CUR.execute("..." + $X, ...)'
+      - pattern: '$DB.text(f"...")'
+
+  - id: cc.py.sql-injection
+    mode: taint
+    languages: [python]
+    severity: ERROR
+    message: Request input reaches the text of a database query
+    metadata:
+      obligation: 'sec:sast:sql-injection'
+      category: sql-injection
+      cwe: ['CWE-89']
+      mode: taint
+    pattern-sources:
+      - pattern-either:
+          - pattern: 'request.args'
+          - pattern: 'request.form'
+          - pattern: 'request.values'
+          - pattern: 'request.json'
+          - pattern: 'request.get_json(...)'
+          - pattern: 'request.GET'
+          - pattern: 'request.POST'
+    pattern-sinks:
+      - patterns:
+          - pattern: '$CUR.execute($SQL, ...)'
+          - focus-metavariable: '$SQL'
+
+  - id: cc.py.command-injection
+    languages: [python]
+    severity: ERROR
+    message: A shell command runs with shell=True or os.system
+    metadata:
+      obligation: 'sec:sast:command-injection'
+      category: command-injection
+      cwe: ['CWE-78']
+      mode: search
+    pattern-either:
+      - pattern: 'subprocess.$F(..., shell=True, ...)'
+      - pattern: 'os.system($X)'
+      - pattern: 'os.popen($X)'
+
+  - id: cc.py.code-injection
+    languages: [python]
+    severity: ERROR
+    message: eval or exec runs a value that is not a constant
+    metadata:
+      obligation: 'sec:sast:code-injection'
+      category: code-injection
+      cwe: ['CWE-94']
+      mode: search
+    patterns:
+      - pattern-either:
+          - pattern: 'eval($X)'
+          - pattern: 'exec($X)'
+      - pattern-not: 'eval("...")'
+      - pattern-not: 'exec("...")'
+
+  - id: cc.py.ssti
+    mode: taint
+    languages: [python]
+    severity: ERROR
+    message: Request input is compiled as a template
+    metadata:
+      obligation: 'sec:sast:code-injection'
+      category: code-injection
+      cwe: ['CWE-1336']
+      mode: taint
+    pattern-sources:
+      - pattern-either:
+          - pattern: 'request.args'
+          - pattern: 'request.form'
+          - pattern: 'request.values'
+          - pattern: 'request.json'
+    pattern-sinks:
+      - pattern: 'render_template_string(...)'
+
+  - id: cc.py.xss
+    mode: taint
+    languages: [python]
+    severity: ERROR
+    message: Request input is marked safe or returned as HTML without escaping
+    metadata:
+      obligation: 'sec:sast:xss'
+      category: xss
+      cwe: ['CWE-79']
+      mode: taint
+    pattern-sources:
+      - pattern-either:
+          - pattern: 'request.args'
+          - pattern: 'request.form'
+          - pattern: 'request.values'
+    pattern-sinks:
+      - pattern-either:
+          - pattern: 'Markup(...)'
+          - pattern: 'HTMLResponse(...)'
+          - pattern: 'make_response(...)'
+
+  - id: cc.py.path-traversal
+    mode: taint
+    languages: [python]
+    severity: ERROR
+    message: A file path built from request input is opened or sent without checking it stays in its directory
+    metadata:
+      obligation: 'sec:sast:path-traversal'
+      category: path-traversal
+      cwe: ['CWE-22']
+      mode: taint
+    pattern-sources:
+      - pattern-either:
+          - pattern: 'request.args'
+          - pattern: 'request.form'
+          - pattern: 'request.values'
+          - pattern: 'request.json'
+    pattern-sanitizers:
+      - pattern-either:
+          - pattern: 'secure_filename(...)'
+          - pattern: 'os.path.basename(...)'
+    pattern-sinks:
+      - pattern-either:
+          - pattern: 'open(...)'
+          - pattern: 'send_file(...)'
+          - pattern: 'FileResponse(...)'
+
+  - id: cc.py.ssrf
+    mode: taint
+    languages: [python]
+    severity: ERROR
+    message: The server fetches a URL taken from request input
+    metadata:
+      obligation: 'sec:sast:ssrf'
+      category: ssrf
+      cwe: ['CWE-918']
+      mode: taint
+    pattern-sources:
+      - pattern-either:
+          - pattern: 'request.args'
+          - pattern: 'request.form'
+          - pattern: 'request.values'
+          - pattern: 'request.json'
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: 'requests.$M($URL, ...)'
+              - pattern: 'httpx.$M($URL, ...)'
+              - pattern: 'urllib.request.urlopen($URL, ...)'
+          - focus-metavariable: '$URL'
+
+  - id: cc.py.open-redirect
+    mode: taint
+    languages: [python]
+    severity: WARNING
+    message: A redirect goes to a location taken from request input
+    metadata:
+      obligation: 'sec:sast:open-redirect'
+      category: open-redirect
+      cwe: ['CWE-601']
+      mode: taint
+    pattern-sources:
+      - pattern-either:
+          - pattern: 'request.args'
+          - pattern: 'request.form'
+          - pattern: 'request.values'
+    pattern-sinks:
+      - pattern-either:
+          - pattern: 'redirect(...)'
+          - pattern: 'RedirectResponse(...)'
+
+  - id: cc.py.unsafe-deserialization
+    languages: [python]
+    severity: ERROR
+    message: Untrusted data is deserialised in a way that can run code
+    metadata:
+      obligation: 'sec:sast:unsafe-deserialization'
+      category: unsafe-deserialization
+      cwe: ['CWE-502']
+      mode: search
+    pattern-either:
+      - pattern: 'pickle.loads(...)'
+      - pattern: 'pickle.load(...)'
+      - pattern: 'marshal.loads(...)'
+      - patterns:
+          - pattern: 'yaml.load(...)'
+          - pattern-not: 'yaml.load(..., Loader=yaml.SafeLoader, ...)'
+          - pattern-not: 'yaml.load(..., Loader=SafeLoader, ...)'
+
+  - id: cc.py.unverified-token
+    languages: [python]
+    severity: ERROR
+    message: A token is decoded without verifying its signature
+    metadata:
+      obligation: 'sec:sast:token-integrity'
+      category: token-integrity
+      cwe: ['CWE-347']
+      mode: search
+    pattern-either:
+      - pattern: 'jwt.decode(..., options={..., "verify_signature": False, ...}, ...)'
+      - pattern: 'jwt.decode(..., verify=False, ...)'
+      - pattern: 'jwt.decode(..., algorithms=[..., "none", ...], ...)'
+
+  - id: cc.py.debug-mode
+    languages: [python]
+    severity: WARNING
+    message: The app runs with debug mode on
+    metadata:
+      obligation: 'sec:sast:debug-mode'
+      category: debug-mode
+      cwe: ['CWE-489']
+      mode: search
+    pattern-either:
+      - pattern: '$APP.run(..., debug=True, ...)'
+      - pattern: 'DEBUG = True'
+
+  - id: cc.py.credentials-in-logs
+    languages: [python]
+    severity: WARNING
+    message: A request body or a password is written to the logs
+    metadata:
+      obligation: 'sec:sast:credentials-in-logs'
+      category: credentials-in-logs
+      cwe: ['CWE-532']
+      mode: search
+    pattern-either:
+      - pattern: '$LOG.$F(..., request.form, ...)'
+      - pattern: '$LOG.$F(..., request.json, ...)'
+      - pattern: 'print(..., request.form, ...)'
+      - pattern: 'print(..., request.json, ...)'
+      - patterns:
+          - pattern-either:
+              - pattern: '$LOG.$F(..., $PW, ...)'
+              - pattern: 'print(..., $PW, ...)'
+          - metavariable-regex:
+              metavariable: '$PW'
+              regex: '(?i)^(.*\.)?(password|passwd|pwd|secret|token)$'
+
+  - id: cc.py.error-disclosure
+    languages: [python]
+    severity: WARNING
+    message: An error response includes the stack trace
+    metadata:
+      obligation: 'sec:sast:error-disclosure'
+      category: error-disclosure
+      cwe: ['CWE-209']
+      mode: search
+    pattern-either:
+      - pattern: 'return traceback.format_exc()'
+      - pattern: 'jsonify(..., trace=traceback.format_exc(), ...)'
+      - pattern: '{..., "trace": traceback.format_exc(), ...}'
+
+  - id: cc.py.cors-any-origin
+    languages: [python]
+    severity: WARNING
+    message: CORS allows every origin
+    metadata:
+      obligation: 'sec:config:cors'
+      category: cors
+      cwe: ['CWE-942']
+      mode: search
+    pattern-either:
+      - pattern: 'CORS($APP)'
+      - pattern: 'CORS($APP, origins="*", ...)'
+      - pattern: '$APP.add_middleware(CORSMiddleware, ..., allow_origins=["*"], ...)'
+
+  - id: cc.py.weak-crypto
+    languages: [python]
+    severity: INFO
+    message: A broken hash or a non-cryptographic random source is used
+    metadata:
+      obligation: 'sec:sast:weak-crypto'
+      category: weak-crypto
+      cwe: ['CWE-327', 'CWE-338']
+      mode: search
+    pattern-either:
+      - pattern: 'hashlib.md5(...)'
+      - pattern: 'hashlib.sha1(...)'
+      - pattern: 'random.random()'

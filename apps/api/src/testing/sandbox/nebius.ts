@@ -1,4 +1,4 @@
-import type { SandboxProvider, SandboxRunRequest, SandboxRunResult } from "./provider.ts";
+import type { ProviderHealth, SandboxProvider, SandboxRunRequest, SandboxRunResult } from "./provider.ts";
 import { SandboxUnavailableError } from "./provider.ts";
 
 /**
@@ -61,8 +61,25 @@ export class NebiusSandboxProvider implements SandboxProvider {
       await sleep(Number(res.headers.get("retry-after")) * 1000 || 1000 * 2 ** attempt);
       return this.call(method, path, body, contentType, attempt + 1);
     }
+    if (res.status === 402) throw new SandboxUnavailableError("Nebius billing or credits are unavailable (HTTP 402).");
     if (res.status === 401 || res.status === 403) throw new SandboxUnavailableError(`Sandbox access denied (HTTP ${res.status}). Check NEBIUS_API_KEY and NEBIUS_PROJECT_ID.`);
     return res;
+  }
+
+  /** Classify whether Nebius can run now, from a cheap authenticated probe (a GET for an operation that does not exist). */
+  async preflight(): Promise<ProviderHealth> {
+    const f = this.opts.fetchImpl ?? fetch;
+    try {
+      const res = await f(`${this.base}/operations/cc-preflight-probe`, { method: "GET", headers: { Authorization: `Bearer ${this.opts.apiKey}`, Project: this.opts.projectId }, signal: AbortSignal.timeout(15_000) });
+      if (res.status === 402) return { ok: false, status: "billing_unavailable", detail: "Nebius billing or credits are unavailable (HTTP 402)." };
+      if (res.status === 401 || res.status === 403) return { ok: false, status: "access_denied", detail: `Nebius denied access (HTTP ${res.status}). Check NEBIUS_API_KEY and NEBIUS_PROJECT_ID.` };
+      if (res.status === 429) return { ok: false, status: "rate_limited", detail: "Nebius is rate limiting requests (HTTP 429)." };
+      if (res.status >= 500) return { ok: false, status: "temporarily_unavailable", detail: `Nebius returned HTTP ${res.status}.` };
+      // Any other status (a 404 for the unknown operation, or a 2xx) means the key and project work and the service answers.
+      return { ok: true, status: "available", detail: "Nebius sandboxes are reachable." };
+    } catch (err) {
+      return { ok: false, status: "temporarily_unavailable", detail: `Nebius is unreachable: ${(err as Error).message}` };
+    }
   }
 
   private async json<T>(method: string, path: string, body?: unknown): Promise<T> {

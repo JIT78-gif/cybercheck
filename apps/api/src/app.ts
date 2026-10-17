@@ -11,6 +11,8 @@ import { githubRoutes } from "./routes/github.ts";
 import { projectRoutes } from "./routes/projects.ts";
 import { testingRoutes } from "./routes/testing.ts";
 import { testingReviewRoutes } from "./routes/testing-review.ts";
+import { securityRoutes } from "./routes/security.ts";
+import { aiEvaluatorRoutes } from "./routes/ai-evaluator.ts";
 import { understandingRoutes } from "./routes/understanding.ts";
 
 export async function buildApp() {
@@ -80,5 +82,7 @@ export async function buildApp() {
   await app.register(understandingRoutes);
   await app.register(testingRoutes);
   await app.register(testingReviewRoutes);
+  await app.register(securityRoutes);
+  await app.register(aiEvaluatorRoutes);
   return app;
 }

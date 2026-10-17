@@ -4,26 +4,19 @@
 // Answer keys (expected.json) are read only by the scorer, never by the engine or its agents.
 // Output: ../../.data/eval/testing-round-<n>/{scorecard.md, <project>.run.json}
 import { randomUUID } from "node:crypto";
-import { createReadStream, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { dirname, join, relative, resolve } from "node:path";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createGzip } from "node:zlib";
-import { pipeline } from "node:stream/promises";
-import { createWriteStream } from "node:fs";
-import tar from "tar-stream";
 import { eq } from "drizzle-orm";
 import type { ProjectDossier, TestingRunDetail } from "@cybercheck/contracts";
 import { db, pool } from "../src/db/client.ts";
-import { project, snapshot, testExecution, testFinding, testingRun, testObligation, understandingRun, user, workspace, workspaceMember } from "../src/db/schema.ts";
+import { testExecution, testFinding, testingRun, testObligation } from "../src/db/schema.ts";
 import { env } from "../src/env.ts";
-import { startIntake } from "../src/intake/pipeline.ts";
-import { INTAKE_POLICY_VERSION } from "../src/intake/policy.ts";
 import { ENGINE_VERSION, POLICY } from "../src/testing/orchestrator.ts";
 import { processRun, sandboxProvider, sessionFor, TESTING_MODELS } from "../src/testing/worker.ts";
-import { ensureUnderstanding } from "../src/understanding/run.ts";
 import { scoreRun, type Expected } from "../test/testing-score.ts";
 import { scoreStrict } from "../test/testing-score-strict.ts";
+import { evalUser, readyUnderstanding, snapshotOf } from "./eval-common.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, "../../..");
@@ -33,68 +26,6 @@ const round = process.argv[2] ?? "0";
 const only = process.argv.slice(3);
 const outDir = join(root, ".data/eval", `testing-round-${round}`);
 mkdirSync(outDir, { recursive: true });
-const SKIP = /(^|\/)(node_modules|\.git|dist|build|coverage|\.venv|venv|__pycache__|\.pytest_cache|\.next)(\/|$)/;
-
-function walk(dir: string, base = dir): string[] {
-  return readdirSync(dir).flatMap((name) => {
-    const full = join(dir, name);
-    const rel = relative(base, full).replace(/\\/g, "/");
-    if (SKIP.test(rel)) return [];
-    return statSync(full).isDirectory() ? walk(full, base) : [rel];
-  });
-}
-
-async function packDir(dir: string) {
-  const out = join(tmpdir(), `cc-eval-${randomUUID()}.tar.gz`);
-  const pack = tar.pack();
-  const files = walk(dir);
-  const done = pipeline(pack, createGzip(), createWriteStream(out));
-  for (const f of files) {
-    const body = readFileSync(join(dir, f));
-    await new Promise<void>((res, rej) => pack.entry({ name: f, size: body.length, mode: 0o644 }, body, (e) => (e ? rej(e) : res())));
-  }
-  pack.finalize();
-  await done;
-  return out;
-}
-
-async function evalUser() {
-  const email = "eval-testing@cybercheck.local";
-  let [u] = await db.select().from(user).where(eq(user.email, email));
-  if (!u) [u] = await db.insert(user).values({ id: randomUUID(), name: "Testing evaluation", email, emailVerified: true }).returning();
-  let [ws] = await db.select().from(workspace).where(eq(workspace.createdBy, u!.id));
-  if (!ws) {
-    [ws] = await db.insert(workspace).values({ id: randomUUID(), name: "Evaluation", personal: true, createdBy: u!.id }).returning();
-    await db.insert(workspaceMember).values({ workspaceId: ws!.id, userId: u!.id, role: "owner" });
-  }
-  return { userId: u!.id, workspaceId: ws!.id };
-}
-
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
-async function snapshotOf(dir: string, name: string, who: { userId: string; workspaceId: string }) {
-  const [p] = await db.insert(project).values({ id: randomUUID(), workspaceId: who.workspaceId, name: `${name}-r${round}-${Date.now().toString(36)}`, sourceType: "archive", createdBy: who.userId }).returning();
-  const [s] = await db.insert(snapshot).values({ id: randomUUID(), projectId: p!.id, status: "RECEIVED", sourceType: "archive", sourceRef: `${name}.tar.gz`, intakePolicyVersion: INTAKE_POLICY_VERSION, ownershipAttestedAt: new Date(), attestedBy: who.userId }).returning();
-  startIntake(s!.id, await packDir(dir));
-  for (let i = 0; i < 120; i++) {
-    const [now] = await db.select().from(snapshot).where(eq(snapshot.id, s!.id));
-    if (now!.status === "BASELINED") return now!;
-    if (now!.status === "REJECTED" || now!.status === "FAILED") throw new Error(`${name}: snapshot ${now!.status}: ${JSON.stringify(now!.rejectionReasons ?? now!.error)}`);
-    await sleep(500);
-  }
-  throw new Error(`${name}: intake timed out`);
-}
-
-async function readyUnderstanding(snapId: string, name: string) {
-  for (let i = 0; i < 400; i++) {
-    const run = await ensureUnderstanding(snapId);
-    const d = run.dossier as ProjectDossier | null;
-    if (run.status === "failed") throw new Error(`${name}: analysis failed`);
-    if (run.status === "ready" && d && d.ai?.status !== "running") return run;
-    await sleep(3000);
-  }
-  throw new Error(`${name}: analysis timed out`);
-}
 
 async function detail(runId: string): Promise<TestingRunDetail> {
   const [r] = await db.select().from(testingRun).where(eq(testingRun.id, runId));
@@ -115,7 +46,7 @@ async function detail(runId: string): Promise<TestingRunDetail> {
 async function evalProject(name: string, dir: string, expected: Expected | null, who: { userId: string; workspaceId: string }) {
   const t0 = Date.now();
   const log = (m: string) => console.log(`[${name}] ${m}`);
-  const snap = await snapshotOf(dir, name, who);
+  const snap = await snapshotOf(dir, name, who, round);
   log(`snapshot ${snap.id.slice(0, 8)} baselined; waiting for the analysis`);
   const ur = await readyUnderstanding(snap.id, name);
   log(`analysis ready (AI ${(ur.dossier as ProjectDossier).ai?.status ?? "off"}); starting Testing`);
@@ -133,11 +64,19 @@ async function evalProject(name: string, dir: string, expected: Expected | null,
 /** The strict scorecard: one row per project with the plan's parts and gates, then the pooled precision. */
 function strictTable(results: Array<{ name: string; strict: ReturnType<typeof scoreStrict> | null }>) {
   const pct = (n: number | null | undefined) => (n == null ? "n/a" : `${Math.round(n * 100)}%`);
-  const rows = ["| Project | Strict score | Gates failed | Mandatory | Testing defects | Conf. precision | Oracle | Discovery | Reliability | Integrity | Unadjudicated | Duplicates | Abstention | AI $ |", "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"];
-  for (const r of results.filter((x) => x.strict).sort((a, b) => a.name.localeCompare(b.name))) {
+  const rows = ["| Project | Strict score | Gates failed | Mandatory | Testing defects | Conf. precision | Oracle | Discovery | Reliability | Integrity | Needs review | Duplicates | Abstention | AI $ |", "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"];
+  const sorted = results.filter((x) => x.strict).sort((a, b) => a.name.localeCompare(b.name));
+  for (const r of sorted) {
     const s = r.strict!;
     const prec = s.counts.confirmedTrue + s.counts.confirmedFalse ? s.counts.confirmedTrue / (s.counts.confirmedTrue + s.counts.confirmedFalse) : null;
-    rows.push(`| ${r.name} | ${s.score.toFixed(1)}${s.failedGates ? ` (composite ${s.composite.toFixed(1)})` : ""} | ${s.failedGates} | ${s.counts.mandatoryFound}/${s.counts.mandatory} | ${s.counts.found}/${s.counts.testingDefects} | ${pct(prec)} | ${pct(s.parts.oracle)} | ${pct(s.parts.discovery)} | ${pct(s.parts.reliability)} | ${pct(s.parts.integrity)} | ${s.counts.unadjudicated} | ${s.counts.duplicates} | ${pct(s.abstention)} | ${s.costUsd.toFixed(3)} |`);
+    const score = s.control ? `control ${s.control.ok ? "passed" : "FAILED"}` : `${s.score!.toFixed(1)}${s.failedGates ? ` (composite ${s.composite.toFixed(1)})` : ""}`;
+    rows.push(`| ${r.name} | ${score} | ${s.failedGates} | ${s.counts.mandatoryFound}/${s.counts.mandatory} | ${s.counts.found}/${s.counts.testingDefects} | ${pct(prec)} | ${pct(s.parts.oracle)} | ${pct(s.parts.discovery)} | ${pct(s.parts.reliability)} | ${pct(s.parts.integrity)} | ${s.counts.needsReview} | ${s.counts.duplicates} | ${pct(s.abstention)} | ${s.costUsd.toFixed(3)} |`);
+  }
+  // What each run was, and the success criteria of the review of rounds 43 to 45.
+  rows.push("", "| Project | Engine | Plan | Invalid setup steps | Checks blocked by setup | req:* checks | Compile failures | Templates not built | Journeys |", "|---|---|---|---|---|---|---|---|---|");
+  for (const r of sorted) {
+    const m = r.strict!.meta;
+    rows.push(`| ${r.name} | ${m.engine ?? "not recorded"} | ${m.planSource ?? "?"}${m.planSourceRunId ? ` (from ${m.planSourceRunId})` : ""} | ${m.invalidFixtureNodes} | ${m.fixtureBlocked} | ${m.requirementChecks} | ${m.compileFailures} | ${m.templatesNotBuilt} | ${m.journeys} |`);
   }
   const all = results.filter((x) => x.strict).map((x) => x.strict!.counts);
   const tp = all.reduce((n, c) => n + c.confirmedTrue, 0);

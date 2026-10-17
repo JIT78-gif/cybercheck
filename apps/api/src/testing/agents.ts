@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { ControlKind, EntryPoint, Evidence, ProjectDossier } from "@cybercheck/contracts";
+import { seededAccounts, type SeededAccount } from "./fixtures.ts";
 import type { AiSession } from "../understanding/ai/gateway.ts";
 import { numbered } from "../understanding/ai/context.ts";
 import type { SnapshotSource } from "../understanding/source.ts";
@@ -106,6 +107,8 @@ export type SetupStep = z.infer<typeof SetupStep>;
 
 /** A frontend served for browser tests: built with network (fonts and the like), started for real, wired to the backend. */
 export const FrontendApp = z.object({
+  /** Pages served by the backend app itself: nothing to build or start, the browser opens them on that app. */
+  served: z.boolean().optional(),
   workspace: z.string(),
   build: z.array(z.string()).default([]),
   start: z.string(),
@@ -320,6 +323,53 @@ Reply with JSON exactly in this shape:
  "needsServices":[],"notes":["..."]}],
  "frontends":[{"workspace":"web","build":["npm run build"],"start":"npm start -- -p 3100","port":3100,"readyPath":"/","config":[{"name":"NEXT_PUBLIC_API_URL","value":"http://127.0.0.1:3000","why":"read in web/lib/api.ts:3"}]}]}`;
 
+const LOGIN_PATH = /\/(login|log-in|signin|sign-in|sessions?|auth\/(login|token|signin)|token)$/i;
+
+/**
+ * Sign-ins should not depend on how one model answers (Gemini proposed none, or one, of three seeded accounts). Every
+ * account the project's own code or tests seed with a password gets a sign-in, named after its role (admin, customer,
+ * customer-2), shaped like the planner's login when there is one or posted to the app's login route otherwise. A
+ * proposed sign-in for a seeded account that asks for a made-up or cybercheck-generated password gets the seeded one.
+ * Each sign-in is still verified against the running app before any check relies on it.
+ */
+export function completeIdentities(proposed: Identity[], d: Pick<ProjectDossier, "entryPoints">, src: SnapshotSource, accounts: SeededAccount[] = seededAccounts(src)): Identity[] {
+  const accountOf = (i: Identity) => {
+    const json = i.request?.json;
+    return json && typeof json === "object" ? Object.values(json as Record<string, unknown>).find((v): v is string => typeof v === "string" && accounts.some((a) => a.account === v)) : undefined;
+  };
+  // A seeded account signs in with its seeded password, never a synthetic CC_ value or an invented setting.
+  const fixed = proposed.map((i) => {
+    const seeded = accounts.find((a) => a.account === accountOf(i));
+    if (!seeded || !i.request?.json || typeof i.request.json !== "object") return i;
+    const json = Object.fromEntries(Object.entries(i.request.json as Record<string, unknown>).map(([k, v]) => [k, /pass|pwd/i.test(k) && typeof v === "string" && v.includes("${ENV:") ? seeded.password : v]));
+    return { ...i, request: { ...i.request, json } };
+  });
+  const template = fixed.find((i) => i.kind === "login" && i.request && LOGIN_PATH.test(i.request.path));
+  const login = template?.request?.path ?? d.entryPoints.find((e) => e.method === "POST" && LOGIN_PATH.test(e.path))?.path;
+  if (!login || !accounts.length) return fixed;
+  const taken = new Set(fixed.map((i) => i.name));
+  const added: Identity[] = [];
+  for (const a of accounts) {
+    if (fixed.some((i) => accountOf(i) === a.account) || fixed.length + added.length >= 6) continue;
+    const base = (a.role ?? a.account.split("@")[0]!).toLowerCase().replace(/[^\w-]+/g, "-").slice(0, 30) || "user";
+    let name = base;
+    for (let n = 2; taken.has(name); n++) name = `${base}-${n}`;
+    taken.add(name);
+    const admin = /admin|staff|owner|manager/i.test(base);
+    added.push({
+      name,
+      kind: "login",
+      appliesTo: admin ? ["session_required", "role_required"] : ["session_required"],
+      request: { method: "POST", path: login, json: { [a.accountField]: a.account, [a.passwordField]: a.password } },
+      ...(template?.tokenPath ? { tokenPath: template.tokenPath } : {}),
+      dependsOn: [],
+      verify: null,
+      evidence: [a.at],
+    });
+  }
+  return [...fixed, ...added];
+}
+
 export async function planBoot(session: AiSession | null, d: ProjectDossier, src: SnapshotSource, workspaces: WorkspacePlan[]): Promise<{ apps: BootApp[]; frontends: FrontendApp[]; source: "ai" | "rules"; error: string | null }> {
   const fallback = fallbackBoot(d, workspaces);
   if (!session) return { apps: fallback, frontends: [], source: "rules", error: null };
@@ -340,7 +390,7 @@ export async function planBoot(session: AiSession | null, d: ProjectDossier, src
         // Secrets are never chosen by a model.
         config: safeConfig(a.config),
         // An identity built on a variable name that appears nowhere in the code is a guess: drop it.
-        identities: a.identities.map((i) => bindLiteralSecrets(i, d)).filter((i) => unknownVars(src, i).length === 0).map((i) => ({ ...i, evidence: validEvidence(src, i.evidence) })),
+        identities: completeIdentities(a.identities.map((i) => bindLiteralSecrets(i, d)), d, src).filter((i) => unknownVars(src, i).length === 0).map((i) => ({ ...i, evidence: validEvidence(src, i.evidence) })),
         setup: a.setup.map((s) => ({ ...s, evidence: validEvidence(src, s.evidence) })),
       }));
     // A frontend setting the code never reads is a guess; the backend apps must be among the planned ones.

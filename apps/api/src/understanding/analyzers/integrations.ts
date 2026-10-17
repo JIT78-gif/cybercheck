@@ -93,6 +93,16 @@ const ENV_HINTS: Array<[RegExp, string]> = [
 
 const AI_CALL = /(chat\.completions\.create|responses\.create|messages\.create|completions\.create|embeddings\.create|generateText|streamText|generateObject|streamObject|embed\(|\.invoke\(|\.generate_content|generateContent|generateContentStream|files\.upload|ChatOpenAI|ChatAnthropic|ChatGoogleGenerativeAI)/;
 const AI_PATH = /\/(chat\/completions|completions|responses|messages|embeddings|generateContent)\b/;
+/** Paths specific enough to mean a model API even when the host comes from configuration. */
+const CONFIGURED_AI_PATH = /\/(chat\/completions|embeddings)\b|:generateContent\b/;
+/** A constant holding an assistant's instructions, or an instruction-style literal. */
+const PROMPT_NAME = /^(SYSTEM_?PROMPT\w*|SYSTEM_?INSTRUCTIONS?|system_?prompt\w*|systemInstructions?|ASSISTANT_?PROMPT\w*|BASE_?PROMPT|PROMPT_?TEMPLATE)$/i;
+const PROMPT_TEXT = /^\s*You are [\s\S]{30,}/;
+const PROMPT_WORDS = /\b(assistant|answer|respond|reply|instructions?|helpful|support|agent)\b/i;
+/** Where a constant's value ends: a semicolon at a line end, a blank line, or the next declaration. */
+const PROMPT_END = /;[ \t]*\r?\n|\n[ \t]*\r?\n|\n(?:const|let|var|export|def|class|function)\b/;
+/** Tool definitions written as data: OpenAI-style { type: "function", function: { name } } or { name, ..., parameters }. */
+const TOOL_DEF = /\btype\s*:\s*["']function["']\s*,\s*function\s*:\s*\{\s*name\s*:|\bname\s*:\s*["'][\w-]+["']\s*,\s*description\s*:\s*["'`][^\n]*\n?[^\n]*\b(parameters|input_schema|inputSchema)\s*:|functionDeclarations\s*:/g;
 
 function catalogMatch(pkg: string): [string, Cat] | null {
   for (const [re, name, cat] of CATALOG) if (re.test(pkg)) return [name, cat];
@@ -110,6 +120,28 @@ function urlHost(n: Node | null | undefined): string | null {
   if (!n) return null;
   const raw = n.type === "template_string" ? n.text.slice(1).split("${")[0]! : (stringValue(n) ?? (n.type === "string" ? n.text.replace(/^[rbuf]*["']|["']$/g, "") : ""));
   return raw.match(/^https?:\/\/([^/"'`\s:?#]+)/)?.[1] ?? null;
+}
+
+/**
+ * Instruction constants in one file: a prompt-named variable (SYSTEM_PROMPT, systemInstruction, ...) whose value reads
+ * like instructions to an assistant. `used` is true when the constant is referenced again (a prompt is built from it).
+ */
+export function promptConstants(text: string, path: string): Array<{ evidence: Evidence; preview: string; used: boolean }> {
+  const out: Array<{ evidence: Evidence; preview: string; used: boolean }> = [];
+  for (const m of text.matchAll(/^[ \t]*(?:export\s+)?(?:const|let|var|final)?\s*([A-Za-z_]\w*)\s*(?::\s*[\w<>[\]]+\s*)?=\s*(\[|`|"""|'''|"|')/gm)) {
+    const name = m[1]!;
+    if (!PROMPT_NAME.test(name)) continue;
+    const raw = text.slice(m.index! + m[0].length - m[2]!.length, m.index! + m[0].length + 600);
+    // The value ends with its statement: a semicolon at a line end, a blank line, or the next declaration.
+    const end = raw.slice(1).search(PROMPT_END);
+    const value = end >= 0 ? raw.slice(0, end + 2) : raw;
+    const literal = [...value.matchAll(/(["'`])((?:(?!\1)[^\\]|\\.){4,}?)\1/g)].map((x) => x[2]).join(" ").replace(/\s+/g, " ").trim();
+    const preview = literal || value.replace(/^["'`[]+/, "").split(/["'`]/)[0]!.trim();
+    if (!PROMPT_WORDS.test(preview) && !PROMPT_TEXT.test(preview)) continue;
+    const used = text.split(new RegExp(`\\b${name}\\b`)).length - 1 >= 2;
+    out.push({ evidence: { path, line: lineAt(text, m.index!) }, preview: preview.slice(0, 160), used });
+  }
+  return out;
 }
 
 export function analyzeIntegrations(ctx: Ctx, structure: StructureResult, envVars: EnvVar[]) {
@@ -201,6 +233,11 @@ export function analyzeIntegrations(ctx: Ctx, structure: StructureResult, envVar
         if (known?.[1] === "ai" || (host && AI_PATH.test(arg?.text ?? "") && /ai|llm|model|openai|router/i.test(host))) {
           const c = comp(`${known?.[0] ?? host} (HTTP)`);
           if (c.calls.length < 40) c.calls.push({ evidence: { path, line: line(n) }, model: modelOf(n.text), api: `HTTP ${(arg?.text ?? "").match(AI_PATH)?.[0] ?? "request"}` });
+        } else if (!host && CONFIGURED_AI_PATH.test(arg?.text ?? "")) {
+          // The provider's address comes from configuration: `${process.env.AI_BASE_URL}/chat/completions`.
+          const gemini = /generateContent/.test(arg?.text ?? "");
+          const c = comp(gemini ? "Google Gemini API (HTTP, address from configuration)" : "OpenAI-compatible API (HTTP, address from configuration)");
+          if (c.calls.length < 40) c.calls.push({ evidence: { path, line: line(n) }, model: modelOf(n.text), api: `HTTP ${(arg?.text ?? "").match(CONFIGURED_AI_PATH)?.[0] ?? "request"}` });
         }
       } else if (isCall && wrappers.has(short)) {
         const providers = wrappers.get(short)!;
@@ -225,6 +262,31 @@ export function analyzeIntegrations(ctx: Ctx, structure: StructureResult, envVar
         if (c.systemPrompts.length < 10) c.systemPrompts.push({ evidence: { path, line: line(n) }, preview });
       }
     }
+  }
+
+  // Prompts and tool definitions in the files that feed a provider call. A client written with fetch has no SDK import,
+  // so they are found in the file that calls the model and in the files importing it (two hops: route -> logic -> client).
+  const importers = new Map<string, Set<string>>();
+  for (const [a, b] of structure.edges) (importers.get(b) ?? importers.set(b, new Set()).get(b)!).add(a);
+  const reach = new Map<string, AiComponent>();
+  for (const c of aiBySdk.values()) for (const call of c.calls) if (!reach.has(call.evidence.path)) reach.set(call.evidence.path, c);
+  for (let hop = 0; hop < 2; hop++) for (const [f, c] of [...reach]) for (const imp of importers.get(f) ?? []) if (!reach.has(imp) && !ctx.isTest(imp)) reach.set(imp, c);
+  for (const [path, c] of reach) {
+    const text = ctx.src.files.get(path)?.text ?? "";
+    for (const p of promptConstants(text, path)) if (c.systemPrompts.length < 10 && !c.systemPrompts.some((x) => x.evidence.path === p.evidence.path && x.evidence.line === p.evidence.line)) c.systemPrompts.push({ evidence: p.evidence, preview: p.preview });
+    for (const m of text.matchAll(TOOL_DEF)) {
+      const ev = { path, line: lineAt(text, m.index!) };
+      if (c.toolDefinitions.length < 20 && !c.toolDefinitions.some((x) => x.path === ev.path && x.line === ev.line)) c.toolDefinitions.push(ev);
+    }
+  }
+  // Assistants that build a prompt and a reply in local code without calling any provider (rule engines, stubs, demos):
+  // still an AI feature with instructions to protect and inputs to test, so AI Evaluator applies.
+  for (const [path, p] of ctx.parsed) {
+    if (ctx.isTest(path) || reach.has(path)) continue;
+    const prompts = promptConstants(p.text, path).filter((x) => x.used);
+    if (!prompts.length) continue;
+    const c = comp("Local assistant logic (no model provider)");
+    for (const x of prompts) if (c.systemPrompts.length < 10) c.systemPrompts.push({ evidence: x.evidence, preview: x.preview });
   }
 
   // OAuth scopes written in code (Google-style scope URLs and space-separated scope strings).
@@ -304,6 +366,17 @@ export function analyzeSecurityModel(ctx: Ctx, entryPoints: EntryPoint[], enums:
   }
   const jwt = LIB(d, JWT_LIBS);
   if (jwt.length) authMechanisms.push({ kind: "jwt", detail: `Signed tokens (${jwt.join(", ")})`, library: jwt[0]!, evidence: firstUse(ctx, /jwt\.(verify|sign|decode)\(|jwtVerify\(|SignJWT|decode_token|jwt_required/) });
+  // A hand-made bearer token: the app reads "Authorization: Bearer" and encodes or decodes its own token
+  // (no JWT library). This is a real authentication mechanism; whether the token is signed is a separate concern
+  // (an unsigned token is flagged as a token-integrity weakness, not as "no authentication").
+  if (!jwt.length) {
+    const bearer = firstUse(ctx, /\b(req(uest)?|ctx)\.(get\(\s*["']authorization|headers(\.authorization|\[\s*["']authorization))|["']authorization["'][\s\S]{0,40}[Bb]earer|headers\.get\(\s*["']authorization/);
+    const encode = firstUse(ctx, /Buffer\.from\(\s*JSON\.stringify\([\s\S]{0,80}\.toString\(\s*["']base64(url)?["']\)|JSON\.parse\(\s*Buffer\.from\([\s\S]{0,60}["']base64(url)?["']|jwt\.decode\(|\batob\(|base64url\.decode\(/);
+    if (bearer.length && encode.length) {
+      const signed = firstUse(ctx, /createHmac\(|createSign\(|crypto\.subtle\.sign\(|hmac\.new\(|timingSafeEqual\(|compare_digest\(/).length > 0;
+      authMechanisms.push({ kind: "bearer_token", detail: signed ? "Hand-made bearer token (signed and verified)" : "Hand-made bearer token (no signature verification found)", library: null, evidence: [...bearer, ...encode].slice(0, 3) });
+    }
+  }
   for (const [re, name] of THIRD_PARTY_AUTH) {
     // Declared is not enough: the library must be imported somewhere.
     const lib = [...d].find((x) => re.test(x));

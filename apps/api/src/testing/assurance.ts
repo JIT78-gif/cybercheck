@@ -10,6 +10,8 @@ import { RISK_WEIGHT, type Obligation, type OracleStrength, type ProofClass, typ
 
 /** The completeness target when the run has none of its own (old runs and direct calls); runs take theirs from the policy. */
 export const COMPLETENESS_THRESHOLD = 90;
+/** The fixed bar for calling a product release-ready, whatever target a run chose for itself. */
+export const RELEASE_EVIDENCE_BAR = 90;
 
 const DECISIVE = new Set(["passed", "failed", "flaky"]);
 export const isDecisive = (o: Obligation) => DECISIVE.has(o.status);
@@ -23,8 +25,20 @@ export function testedFactor(o: Obligation) {
   return 0;
 }
 
+/**
+ * A business or state check whose compiled scenario only asserted status codes. It shows the endpoint answered,
+ * nothing about the behaviour, so it never counts as business proof. Checks from before scenarios (no proofLevel)
+ * keep their own oracle strength.
+ */
+export const statusOnlyBusiness = (o: Pick<Obligation, "proofClass" | "proofLevel">) => o.proofLevel === "availability" && (o.proofClass === "business_behavior" || o.proofClass === "state_change");
+
+/** The proof class a check really earned: a status-only business check earned availability. */
+export const earnedProofClass = (o: Pick<Obligation, "proofClass" | "proofLevel">): ProofClass | undefined => (statusOnlyBusiness(o) ? "availability" : o.proofClass);
+
 /** strong with the target reached (and, for writes, the state read back) = 1, moderate = 0.7, weak = 0.35. */
 export function evidenceFactor(o: Obligation) {
+  // The proof gate: a business check that only saw status codes proved availability, whatever it claims.
+  if (statusOnlyBusiness(o)) return 0.35;
   const s = o.oracleStrength ?? "moderate";
   if (s === "weak") return 0.35;
   if (s === "moderate") return 0.7;
@@ -213,6 +227,9 @@ export function releaseDecision(input: {
   const perf = obs.filter((o) => o.layer === "performance" && !/:smoke$/.test(o.id));
   add("performance", "Load thresholds met", input.thresholdsSet && perf.length ? perf.every((o) => o.status === "passed") : null, !input.thresholdsSet ? "no thresholds were set, so load results are measurements" : perf.length ? `${perf.filter((o) => o.status === "passed").length} of ${perf.length} load stages within thresholds` : "no load stage ran");
 
+  // The fixed release bar: a run may aim lower (Fast 50%, Standard 70%), but release readiness needs this much evidence.
+  add("release_evidence", `Testing evidence sufficient for release (${RELEASE_EVIDENCE_BAR}% completeness)`, c.percent >= RELEASE_EVIDENCE_BAR, `${c.percent}% of the risk-weighted applicable scope has decisive, strong evidence; releasing needs ${RELEASE_EVIDENCE_BAR}%`);
+
   const unknowns = obs.filter((o) => !["passed", "failed", "flaky", "not_applicable"].includes(o.status));
   add("unknowns", "Every unknown has a reason", unknowns.every((o) => Boolean(o.reason)), `${unknowns.length} check(s) without a verdict, each with its reason`);
 
@@ -225,17 +242,20 @@ export function releaseDecision(input: {
     ? "not_ready_product_failures"
     : nothingDecisive || coreEnv
       ? "not_ready_environment_blocked"
-      : failed.length
+      : failed.some((g) => g.id !== "release_evidence")
         ? "not_ready_insufficient_evidence"
-        : "ready";
+        : failed.length
+          ? "selected_checks_passed"
+          : "ready";
   return { decision, gates, reasons: failed.map((g) => `${g.label}: ${g.detail}`) };
 }
 
 export const DECISION_LABEL: Record<NonNullable<TestingReport["release"]>["decision"], string> = {
   ready: "Ready to release",
   ready_with_accepted_risk: "Ready with accepted risk",
+  selected_checks_passed: "Selected checks passed (not enough evidence for a release decision)",
   not_ready_product_failures: "Not ready: confirmed product defects",
-  not_ready_insufficient_evidence: "Not ready: insufficient evidence",
+  not_ready_insufficient_evidence: "Not ready: cybercheck could not test enough",
   not_ready_environment_blocked: "Not ready: the environment blocked testing",
 };
 

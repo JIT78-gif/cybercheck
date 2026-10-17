@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Ask Harbor Support</title>
+  </head>
+  <body>
+    <main>
+      <h1>Ask Harbor Support</h1>
+      <form id="ask">
+        <label for="message">Your question</label>
+        <textarea id="message" maxlength="2000" required></textarea>
+        <button>Send</button>
+      </form>
+      <div id="answer" aria-live="polite"></div>
+      <ul id="sources"></ul>
+    </main>
+    <script src="/assistant.js"></script>
+  </body>
+</html>

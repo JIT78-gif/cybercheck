@@ -14,7 +14,8 @@
     "eval:understanding": "node --env-file-if-exists=../../.env --import tsx scripts/eval-understanding.ts",
     "worker": "tsx watch --include ../../.env --env-file-if-exists=../../.env src/worker.ts",
     "worker:start": "node --env-file-if-exists=../../.env --import tsx src/worker.ts",
-    "eval:testing": "node --env-file-if-exists=../../.env --import tsx scripts/eval-testing.ts"
+    "eval:testing": "node --env-file-if-exists=../../.env --import tsx scripts/eval-testing.ts",
+    "eval:security": "node --env-file-if-exists=../../.env --import tsx scripts/eval-security.ts"
   },
   "devDependencies": {
     "@types/node": "^24.19.2",

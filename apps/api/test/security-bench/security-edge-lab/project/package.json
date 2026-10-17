@@ -1,0 +1,17 @@
+{
+  "name": "security-edge-lab-deliberately-vulnerable",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Intentionally vulnerable Cybercheck security benchmark. Never deploy.",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test",
+    "check": "node --check src/app.js && node --check src/server.js"
+  },
+  "dependencies": {
+    "express": "4.22.1"
+  }
+}

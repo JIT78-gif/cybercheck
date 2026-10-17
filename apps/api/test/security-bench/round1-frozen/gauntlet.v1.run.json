@@ -1,0 +1,4698 @@
+{
+  "id": "09ac58b0-6949-4222-aab3-d35e6d65be92",
+  "snapshotId": "26196076-47b6-4609-9e6c-efa3fd63cb31",
+  "projectId": "1a6f79ad-d18e-40db-92b6-14dd240e6b45",
+  "status": "completed",
+  "phase": "done",
+  "step": null,
+  "progress": null,
+  "headline": "Not ready: not enough evidence. 8 of 95 applicable obligations produced decisive evidence (3 of 31 critical); 2 confirmed finding(s); 11 suspected risk(s) to review.",
+  "decision": "not_ready_insufficient_evidence",
+  "counts": {
+    "obligations": 99,
+    "terminal": 99,
+    "confirmed": 2,
+    "suspected": 11
+  },
+  "error": null,
+  "createdAt": "2026-10-14T13:20:42.810Z",
+  "startedAt": "2026-10-14T13:20:42.841Z",
+  "finishedAt": "2026-10-14T13:21:07.784Z",
+  "obligations": [
+    {
+      "id": "sec:endpoint:POST /__test/reset:authentication",
+      "lane": "auth",
+      "asset": {
+        "ref": "endpoint:POST /__test/reset",
+        "kind": "endpoint",
+        "label": "POST /__test/reset"
+      },
+      "reason": "The project analysis contradicts itself (guards-without-mechanism, auth-negative-contradiction), so the auth facts this check relies on are not trusted. Needs a runtime proof against the running app, which arrives in Round 2; counted as not yet tested.",
+      "status": "inconclusive",
+      "category": "authentication",
+      "priority": "critical",
+      "standards": [
+        "ASVS-5.0:V6 Authentication",
+        "API2:2023",
+        "CWE-306"
+      ],
+      "findingIds": [],
+      "requirement": "POST /__test/reset refuses a request without valid credentials unless it is public by design",
+      "dependencies": [
+        "endpoint:POST /__test/reset",
+        "auth:model"
+      ],
+      "executionIds": [],
+      "proofStrategy": "runtime_proof",
+      "expectedControl": "A guard, or a documented reason it is public",
+      "applicabilityEvidence": [
+        {
+          "line": 186,
+          "path": "src/app.js",
+          "endLine": 193
+        },
+        {
+          "line": 186,
+          "path": "src/app.js",
+          "endLine": 193
+        }
+      ]
+    },
+    {
+      "id": "sec:endpoint:GET /admin:authentication",
+      "lane": "auth",
+      "asset": {
+        "ref": "endpoint:GET /admin",
+        "kind": "endpoint",
+        "label": "GET /admin"
+      },
+      "reason": "The project analysis contradicts itself (guards-without-mechanism, auth-negative-contradiction), so the auth facts this check relies on are not trusted. Needs a runtime proof against the running app, which arrives in Round 2; counted as not yet tested.",
+      "status": "inconclusive",
+      "category": "authentication",
+      "priority": "critical",
+      "standards": [
+        "ASVS-5.0:V6 Authentication",
+        "API2:2023",
+        "CWE-306"
+      ],
+      "findingIds": [],
+      "requirement": "GET /admin refuses a request without valid credentials unless it is public by design",
+      "dependencies": [
+        "endpoint:GET /admin",
+        "auth:model"
+      ],
+      "executionIds": [],
+      "proofStrategy": "runtime_proof",
+      "expectedControl": "A guard, or a documented reason it is public",
+      "applicabilityEvidence": [
+        {
+          "line": 21,
+          "path": "src/app.js",
+          "endLine": 21
+        },
+        {
+          "line": 21,
+          "path": "src/app.js",
+          "endLine": 21
+        }
+      ]
+    },
+    {
+      "id": "sec:endpoint:GET /admin:function-authorization",
+      "lane": "access_control",
+      "asset": {
+        "ref": "endpoint:GET /admin",
+        "kind": "endpoint",
+        "label": "GET /admin"
+      },
+      "reason": "The project analysis contradicts itself (guards-without-mechanism, auth-negative-contradiction), so the access control facts this check relies on are not trusted. Needs a runtime proof against the running app, which arrives in Round 2; counted as not yet tested.",
+      "status": "inconclusive",
+      "category": "authorization",
+      "priority": "critical",
+      "standards": [
+        "ASVS-5.0:V8 Authorization",
+        "API5:2023",
+        "CWE-285"
+      ],
+      "findingIds": [],
+      "requirement": "GET /admin is refused to callers without the required role",
+      "dependencies": [
+        "endpoint:GET /admin",
+        "auth:model"
+      ],
+      "executionIds": [],
+      "proofStrategy": "runtime_proof",
+      "expectedControl": "A role check before the handler runs",
+      "applicabilityEvidence": [
+        {
+          "line": 21,
+          "path": "src/app.js",
+          "endLine": 21
+        },
+        {
+          "line": 21,
+          "path": "src/app.js",
+          "endLine": 21
+        }
+      ]
+    },
+    {
+      "id": "sec:endpoint:GET /api/admin/users:authentication",
+      "lane": "auth",
+      "asset": {
+        "ref": "endpoint:GET /api/admin/users",
+        "kind": "endpoint",
+        "label": "GET /api/admin/users"
+      },
+      "reason": "The project analysis contradicts itself (guards-without-mechanism, auth-negative-contradiction), so the auth facts this check relies on are not trusted. Needs a runtime proof against the running app, which arrives in Round 2; counted as not yet tested.",
+      "status": "inconclusive",
+      "category": "authentication",
+      "priority": "critical",
+      "standards": [
+        "ASVS-5.0:V6 Authentication",
+        "API2:2023",
+        "CWE-306"
+      ],
+      "findingIds": [],
+      "requirement": "GET /api/admin/users refuses a request without valid credentials unless it is public by design",
+      "dependencies": [
+        "endpoint:GET /api/admin/users",
+        "auth:model"
+      ],
+      "executionIds": [],
+      "proofStrategy": "runtime_proof",
+      "expectedControl": "session_required (requireUser runs before the handler (route options))",
+      "applicabilityEvidence": [
+        {
+          "line": 53,
+          "path": "src/app.js",
+          "endLine": 53
+        },
+        {
+          "line": 53,
+          "path": "src/app.js",
+          "endLine": 53
+        },
+        {
+          "line": 19,
+          "path": "src/auth.js",
+          "endLine": 24
+        }
+      ]
+    },
+    {
+      "id": "sec:endpoint:GET /api/admin/users:function-authorization",
+      "lane": "access_control",
+      "asset": {
+        "ref": "endpoint:GET /api/admin/users",
+        "kind": "endpoint",
+        "label": "GET /api/admin/users"
+      },
+      "reason": "The project analysis contradicts itself (guards-without-mechanism, auth-negative-contradiction), so the access control facts this check relies on are not trusted. Needs a runtime proof against the running app, which arrives in Round 2; counted as not yet tested.",
+      "status": "inconclusive",
+      "category": "authorization",
+      "priority": "critical",
+      "standards": [
+        "ASVS-5.0:V8 Authorization",
+        "API5:2023",
+        "CWE-285"
+      ],
+      "findingIds": [],
+      "requirement": "GET /api/admin/users is refused to callers without the required role",
+      "dependencies": [
+        "endpoint:GET /api/admin/users",
+        "auth:model"
+      ],
+      "executionIds": [],
+      "proofStrategy": "runtime_proof",
+      "expectedControl": "A role check before the handler runs",
+      "applicabilityEvidence": [
+        {
+          "line": 53,
+          "path": "src/app.js",
+          "endLine": 53
+        },
+        {
+          "line": 53,
+          "path": "src/app.js",
+          "endLine": 53
+        },
+        {
+          "line": 19,
+          "path": "src/auth.js",
+          "endLine": 24
+        }
+      ]
+    },
+    {
+      "id": "sec:endpoint:POST /api/admin/users/:id/role:authentication",
+      "lane": "auth",
+      "asset": {
+        "ref": "endpoint:POST /api/admin/users/:id/role",
+        "kind": "endpoint",
+        "label": "POST /api/admin/users/:id/role"
+      },
+      "reason": "The project analysis contradicts itself (guards-without-mechanism, auth-negative-contradiction), so the auth facts this check relies on are not trusted. Needs a runtime proof against the running app, which arrives in Round 2; counted as not yet tested.",
+      "status": "inconclusive",
+      "category": "authentication",
+      "priority": "critical",
+      "standards": [
+        "ASVS-5.0:V6 Authentication",
+        "API2:2023",
+        "CWE-306"
+      ],
+      "findingIds": [],
+      "requirement": "POST /api/admin/users/:id/role refuses a request without valid credentials unless it is public by design",
+      "dependencies": [
+        "endpoint:POST /api/admin/users/:id/role",
+        "auth:model"
+      ],
+      "executionIds": [],
+      "proofStrategy": "runtime_proof",
+      "expectedControl": "session_required (requireUser runs before the handler (route options))",
+      "applicabilityEvidence": [
+        {
+          "line": 54,
+          "path": "src/app.js",
+          "endLine": 59
+        },
+        {
+          "line": 54,
+          "path": "src/app.js",
+          "endLine": 59
+        },
+        {
+          "line": 19,
+          "path": "src/auth.js",
+          "endLine": 24
+        }
+      ]
+    },
+    {
+      "id": "sec:endpoint:POST /api/admin/users/:id/role:object-authorization",
+      "lane": "access_control",
+      "asset": {
+        "ref": "endpoint:POST /api/admin/users/:id/role",
+        "kind": "endpoint",
+        "label": "POST /api/admin/users/:id/role"
+      },
+      "reason": "The project analysis contradicts itself (guards-without-mechanism, auth-negative-contradiction), so the access control facts this check relies on are not trusted. Needs a runtime proof against the running app, which arrives in Round 2; counted as not yet tested.",
+      "status": "inconclusive",
+      "category": "authorization",
+      "priority": "critical",
+      "standards": [
+        "ASVS-5.0:V8 Authorization",
+        "API1:2023",
+        "CWE-639"
+      ],
+      "findingIds": [],
+      "requirement": "POST /api/admin/users/:id/role only returns or changes records the caller owns or may access",
+      "dependencies": [
+        "endpoint:POST /api/admin/users/:id/role",
+        "auth:model"
+      ],
+      "executionIds": [],
+      "proofStrategy": "runtime_proof",
+      "expectedControl": "An ownership or tenant check on the record id",
+      "applicabilityEvidence": [
+        {
+          "line": 54,
+          "path": "src/app.js",
+          "endLine": 59
+        },
+        {
+          "line": 54,
+          "path": "src/app.js",
+          "endLine": 59
+        },
+        {
+          "line": 19,
+          "path": "src/auth.js",
+          "endLine": 24
+        }
+      ]
+    },
+    {
+      "id": "sec:endpoint:POST /api/admin/users/:id/role:function-authorization",
+      "lane": "access_control",
+      "asset": {
+        "ref": "endpoint:POST /api/admin/users/:id/role",
+        "kind": "endpoint",
+        "label": "POST /api/admin/users/:id/role"
+      },
+      "reason": "The project analysis contradicts itself (guards-without-mechanism, auth-negative-contradiction), so the access control facts this check relies on are not trusted. Needs a runtime proof against the running app, which arrives in Round 2; counted as not yet tested.",
+      "status": "inconclusive",
+      "category": "authorization",
+      "priority": "critical",
+      "standards": [
+        "ASVS-5.0:V8 Authorization",
+        "API5:2023",
+        "CWE-285"
+      ],
+      "findingIds": [],
+      "requirement": "POST /api/admin/users/:id/role is refused to callers without the required role",
+      "dependencies": [
+        "endpoint:POST /api/admin/users/:id/role",
+        "auth:model"
+      ],
+      "executionIds": [],
+      "proofStrategy": "runtime_proof",
+      "expectedControl": "A role check before the handler runs",
+      "applicabilityEvidence": [
+        {
+          "line": 54,
+          "path": "src/app.js",
+          "endLine": 59
+        },
+        {
+          "line": 54,
+          "path": "src/app.js",
+          "endLine": 59
+        },
+        {
+          "line": 19,
+          "path": "src/auth.js",
+          "endLine": 24
+        }
+      ]
+    },
+    {
+      "id": "sec:endpoint:POST /api/assistant:authentication",
+      "lane": "auth",
+      "asset": {
+        "ref": "endpoint:POST /api/assistant",
+        "kind": "endpoint",
+        "label": "POST /api/assistant"
+      },
+      "reason": "The project analysis contradicts itself (guards-without-mechanism, auth-negative-contradiction), so the auth facts this check relies on are not trusted. Needs a runtime proof against the running app, which arrives in Round 2; counted as not yet tested.",
+      "status": "inconclusive",
+      "category": "authentication",
+      "priority": "critical",
+      "standards": [
+        "ASVS-5.0:V6 Authentication",
+        "API2:2023",
+        "CWE-306"
+      ],
+      "findingIds": [],
+      "requirement": "POST /api/assistant refuses a request without valid credentials unless it is public by design",
+      "dependencies": [
+        "endpoint:POST /api/assistant",
+        "auth:model"
+      ],
+      "executionIds": [],
+      "proofStrategy": "runtime_proof",
+      "expectedControl": "session_required (requireUser runs before the handler (route options))",
+      "applicabilityEvidence": [
+        {
+          "line": 151,
+          "path": "src/app.js",
+          "endLine": 157
+        },
+        {
+          "line": 151,
+          "path": "src/app.js",
+          "endLine": 157
+        },
+        {
+          "line": 19,
+          "path": "src/auth.js",
+          "endLine": 24
+        }
+      ]
+    },
+    {
+      "id": "sec:endpoint:POST /api/coupons/validate:authentication",
+      "lane": "auth",
+      "asset": {
+        "ref": "endpoint:POST /api/coupons/validate",
+        "kind": "endpoint",
+        "label": "POST /api/coupons/validate"
+      },
+      "reason": "The project analysis contradicts itself (guards-without-mechanism, auth-negative-contradiction), so the auth facts this check relies on are not trusted. Needs a runtime proof against the running app, which arrives in Round 2; counted as not yet tested.",
+      "status": "inconclusive",
+      "category": "authentication",
+      "priority": "critical",
+      "standards": [
+        "ASVS-5.0:V6 Authentication",
+        "API2:2023",
+        "CWE-306"
+      ],
+      "findingIds": [],
+      "requirement": "POST /api/coupons/validate refuses a request without valid credentials unless it is public by design",
+      "dependencies": [
+        "endpoint:POST /api/coupons/validate",
+        "auth:model"
+      ],
+      "executionIds": [],
+      "proofStrategy": "runtime_proof",
+      "expectedControl": "session_required (requireUser runs before the handler (route options))",
+      "applicabilityEvidence": [
+        {
+          "line": 124,
+          "path": "src/app.js",
+          "endLine": 129
+        },
+        {
+          "line": 124,
+          "path": "src/app.js",
+          "endLine": 129
+        },
+        {
+          "line": 19,
+          "path": "src/auth.js",
+          "endLine": 24
+        }
+      ]
+    },
+    {
+      "id": "sec:endpoint:DELETE /api/data/customers/:id:authentication",
+      "lane": "auth",
+      "asset": {
+        "ref": "endpoint:DELETE /api/data/customers/:id",
+        "kind": "endpoint",
+        "label": "DELETE /api/data/customers/:id"
+      },
+      "reason": "The project analysis contradicts itself (guards-without-mechanism, auth-negative-contradiction), so the auth facts this check relies on are not trusted. Needs a runtime proof against the running app, which arrives in Round 2; counted as not yet tested.",
+      "status": "inconclusive",
+      "category": "authentication",
+      "priority": "critical",
+      "standards": [
+        "ASVS-5.0:V6 Authentication",
+        "API2:2023",
+        "CWE-306"
+      ],
+      "findingIds": [],
+      "requirement": "DELETE /api/data/customers/:id refuses a request without valid credentials unless it is public by design",
+      "dependencies": [
+        "endpoint:DELETE /api/data/customers/:id",
+        "auth:model"
+      ],
+      "executionIds": [],
+      "proofStrategy": "runtime_proof",
+      "expectedControl": "session_required (requireUser runs before the handler (route options))",
+      "applicabilityEvidence": [
+        {
+          "line": 181,
+          "path": "src/app.js",
+          "endLine": 184
+        },
+        {
+          "line": 181,
+          "path": "src/app.js",
+          "endLine": 184
+        },
+        {
+          "line": 19,
+          "path": "src/auth.js",
+          "endLine": 24
+        }
+      ]
+    },
+    {
+      "id": "sec:endpoint:DELETE /api/data/customers/:id:object-authorization",
+      "lane": "access_control",
+      "asset": {
+        "ref": "endpoint:DELETE /api/data/customers/:id",
+        "kind": "endpoint",
+        "label": "DELETE /api/data/customers/:id"
+      },
+      "reason": "The project analysis contradicts itself (guards-without-mechanism, auth-negative-contradiction), so the access control facts this check relies on are not trusted. Needs a runtime proof against the running app, which arrives in Round 2; counted as not yet tested.",
+      "status": "inconclusive",
+      "category": "authorization",
+      "priority": "critical",
+      "standards": [
+        "ASVS-5.0:V8 Authorization",
+        "API1:2023",
+        "CWE-639"
+      ],
+      "findingIds": [],
+      "requirement": "DELETE /api/data/customers/:id only returns or changes records the caller owns or may access",
+      "dependencies": [
+        "endpoint:DELETE /api/data/customers/:id",
+        "auth:model"
+      ],
+      "executionIds": [],
+      "proofStrategy": "runtime_proof",
+      "expectedControl": "An ownership or tenant check on the record id",
+      "applicabilityEvidence": [
+        {
+          "line": 181,
+          "path": "src/app.js",
+          "endLine": 184
+        },
+        {
+          "line": 181,
+          "path": "src/app.js",
+          "endLine": 184
+        },
+        {
+          "line": 19,
+          "path": "src/auth.js",
+          "endLine": 24
+        }
+      ]
+    },
+    {
+      "id": "sec:endpoint:POST /api/diagnostics/leak:authentication",
+      "lane": "auth",
+      "asset": {
+        "ref": "endpoint:POST /api/diagnostics/leak",
+        "kind": "endpoint",
+        "label": "POST /api/diagnostics/leak"
+      },
+      "reason": "The project analysis contradicts itself (guards-without-mechanism, auth-negative-contradiction), so the auth facts this check relies on are not trusted. Needs a runtime proof against the running app, which arrives in Round 2; counted as not yet tested.",
+      "status": "inconclusive",
+      "category": "authentication",
+      "priority": "critical",
+      "standards": [
+        "ASVS-5.0:V6 Authentication",
+        "API2:2023",
+        "CWE-306"
+      ],
+      "findingIds": [],
+      "requirement": "POST /api/diagnostics/leak refuses a request without valid credentials unless it is public by design",
+      "dependencies": [
+        "endpoint:POST /api/diagnostics/leak",
+        "auth:model"
+      ],
+      "executionIds": [],
+      "proofStrategy": "runtime_proof",
+      "expectedControl": "session_required (requireUser runs before the handler (route options))",
+      "applicabilityEvidence": [
+        {
+          "line": 168,
+          "path": "src/app.js",
+          "endLine": 171
+        },
+        {
+          "line": 168,
+          "path": "src/app.js",
+          "endLine": 171
+        },
+        {
+          "line": 19,
+          "path": "src/auth.js",
+          "endLine": 24
+        }
+      ]
+    },
+    {
+      "id": "sec:endpoint:POST /api/integrations/preview:authentication",
+      "lane": "auth",
+      "asset": {
+        "ref": "endpoint:POST /api/integrations/preview",
+        "kind": "endpoint",
+        "label": "POST /api/integrations/preview"
+      },
+      "reason": "The project analysis contradicts itself (guards-without-mechanism, auth-negative-contradiction), so the auth facts this check relies on are not trusted. Needs a runtime proof against the running app, which arrives in Round 2; counted as not yet tested.",
+      "status": "inconclusive",
+      "category": "authentication",
+      "priority": "critical",
+      "standards": [
+        "ASVS-5.0:V6 Authentication",
+        "API2:2023",
+        "CWE-306"
+      ],
+      "findingIds": [],
+      "requirement": "POST /api/integrations/preview refuses a request without valid credentials unless it is public by design",
+      "dependencies": [
+        "endpoint:POST /api/integrations/preview",
+        "auth:model"
+      ],
+      "executionIds": [],
+      "proofStrategy": "runtime_proof",
+      "expectedControl": "session_required (requireUser runs before the handler (route options))",
+      "applicabilityEvidence": [
+        {
+          "line": 142,
+          "path": "src/app.js",
+          "endLine": 149
+        },
+        {
+          "line": 142,
+          "path": "src/app.js",
+          "endLine": 149
+        },
+        {
+          "line": 19,
+          "path": "src/auth.js",
+          "endLine": 24
+        }
+      ]
+    },
+    {
+      "id": "sec:endpoint:POST /api/login:authentication",
+      "lane": "auth",
+      "asset": {
+        "ref": "endpoint:POST /api/login",
+        "kind": "endpoint",
+        "label": "POST /api/login"
+      },
+      "reason": "Public by design: Sign-in and account recovery endpoints must work before a session exists. A public route is never reported for being public.",
+      "status": "not_applicable",
+      "category": "authentication",
+      "priority": "critical",
+      "standards": [
+        "ASVS-5.0:V6 Authentication",
+        "API2:2023",
+        "CWE-306"
+      ],
+      "findingIds": [],
+      "requirement": "POST /api/login refuses a request without valid credentials unless it is public by design",
+      "dependencies": [
+        "endpoint:POST /api/login",
+        "auth:model"
+      ],
+      "executionIds": [],
+      "proofStrategy": "runtime_proof",
+      "expectedControl": "public_intentional (Sign-in and account recovery endpoints must work before a session exists)",
+      "applicabilityEvidence": [
+        {
+          "line": 26,
+          "path": "src/app.js",
+          "endLine": 31
+        },
+        {
+          "line": 26,
+          "path": "src/app.js",
+          "endLine": 31
+        }
+      ]
+    },
+    {
+      "id": "sec:endpoint:POST /api/orders:authentication",
+      "lane": "auth",
+      "asset": {
+        "ref": "endpoint:POST /api/orders",
+        "kind": "endpoint",
+        "label": "POST /api/orders"
+      },
+      "reason": "The project analysis contradicts itself (guards-without-mechanism, auth-negative-contradiction), so the auth facts this check relies on are not trusted. Needs a runtime proof against the running app, which arrives in Round 2; counted as not yet tested.",
+      "status": "inconclusive",
+      "category": "authentication",
+      "priority": "critical",
+      "standards": [
+        "ASVS-5.0:V6 Authentication",
+        "API2:2023",
+        "CWE-306"
+      ],
+      "findingIds": [],
+      "requirement": "POST /api/orders refuses a request without valid credentials unless it is public by design",
+      "dependencies": [
+        "endpoint:POST /api/orders",
+        "auth:model"
+      ],
+      "executionIds": [],
+      "proofStrategy": "runtime_proof",
+      "expectedControl": "session_required (requireUser runs before the handler (route options))",
+      "applicabilityEvidence": [
+        {
+          "line": 78,
+          "path": "src/app.js",
+          "endLine": 91
+        },
+        {
+          "line": 78,
+          "path": "src/app.js",
+          "endLine": 91
+        },
+        {
+          "line": 19,
+          "path": "src/auth.js",
+          "endLine": 24
+        }
+      ]
+    },
+    {
+      "id": "sec:endpoint:POST /api/orders/:id/status:authentication",
+      "lane": "auth",
+      "asset": {
+        "ref": "endpoint:POST /api/orders/:id/status",
+        "kind": "endpoint",
+        "label": "POST /api/orders/:id/status"
+      },
+      "reason": "The project analysis contradicts itself (guards-without-mechanism, auth-negative-contradiction), so the auth facts this check relies on are not trusted. Needs a runtime proof against the running app, which arrives in Round 2; counted as not yet tested.",
+      "status": "inconclusive",
+      "category": "authentication",
+      "priority": "critical",
+      "standards": [
+        "ASVS-5.0:V6 Authentication",
+        "API2:2023",
+        "CWE-306"
+      ],
+      "findingIds": [],
+      "requirement": "POST /api/orders/:id/status refuses a request without valid credentials unless it is public by design",
+      "dependencies": [
+        "endpoint:POST /api/orders/:id/status",
+        "auth:model"
+      ],
+      "executionIds": [],
+      "proofStrategy": "runtime_proof",
+      "expectedControl": "session_required (requireUser runs before the handler (route options))",
+      "applicabilityEvidence": [
+        {
+          "line": 100,
+          "path": "src/app.js",
+          "endLine": 105
+        },
+        {
+          "line": 100,
+          "path": "src/app.js",
+          "endLine": 105
+        },
+        {
+          "line": 19,
+          "path": "src/auth.js",
+          "endLine": 24
+        }
+      ]
+    },
+    {
+      "id": "sec:endpoint:POST /api/orders/:id/status:object-authorization",
+      "lane": "access_control",
+      "asset": {
+        "ref": "endpoint:POST /api/orders/:id/status",
+        "kind": "endpoint",
+        "label": "POST /api/orders/:id/status"
+      },
+      "reason": "The project analysis contradicts itself (guards-without-mechanism, auth-negative-contradiction), so the access control facts this check relies on are not trusted. Needs a runtime proof against the running app, which arrives in Round 2; counted as not yet tested.",
+      "status": "inconclusive",
+      "category": "authorization",
+      "priority": "critical",
+      "standards": [
+        "ASVS-5.0:V8 Authorization",
+        "API1:2023",
+        "CWE-639"
+      ],
+      "findingIds": [],
+      "requirement": "POST /api/orders/:id/status only returns or changes records the caller owns or may access",
+      "dependencies": [
+        "endpoint:POST /api/orders/:id/status",
+        "auth:model"
+      ],
+      "executionIds": [],
+      "proofStrategy": "runtime_proof",
+      "expectedControl": "An ownership or tenant check on the record id",
+      "applicabilityEvidence": [
+        {
+          "line": 100,
+          "path": "src/app.js",
+          "endLine": 105
+        },
+        {
+          "line": 100,
+          "path": "src/app.js",
+          "endLine": 105
+        },
+        {
+          "line": 19,
+          "path": "src/auth.js",
+          "endLine": 24
+        }
+      ]
+    },
+    {
+      "id": "sec:endpoint:POST /api/payments:authentication",
+      "lane": "auth",
+      "asset": {
+        "ref": "endpoint:POST /api/payments",
+        "kind": "endpoint",
+        "label": "POST /api/payments"
+      },
+      "reason": "The project analysis contradicts itself (guards-without-mechanism, auth-negative-contradiction), so the auth facts this check relies on are not trusted. Needs a runtime proof against the running app, which arrives in Round 2; counted as not yet tested.",
+      "status": "inconclusive",
+      "category": "authentication",
+      "priority": "critical",
+      "standards": [
+        "ASVS-5.0:V6 Authentication",
+        "API2:2023",
+        "CWE-306"
+      ],
+      "findingIds": [],
+      "requirement": "POST /api/payments refuses a request without valid credentials unless it is public by design",
+      "dependencies": [
+        "endpoint:POST /api/payments",
+        "auth:model"
+      ],
+      "executionIds": [],
+      "proofStrategy": "runtime_proof",
+      "expectedControl": "session_required (requireUser runs before the handler (route options))",
+      "applicabilityEvidence": [
+        {
+          "line": 107,
+          "path": "src/app.js",
+          "endLine": 111
+        },
+        {
+          "line": 107,
+          "path": "src/app.js",
+          "endLine": 111
+        },
+        {
+          "line": 19,
+          "path": "src/auth.js",
+          "endLine": 24
+        }
+      ]
+    },
+    {
+      "id": "sec:endpoint:POST /api/transfers:authentication",
+      "lane": "auth",
+      "asset": {
+        "ref": "endpoint:POST /api/transfers",
+        "kind": "endpoint",
+        "label": "POST /api/transfers"
+      },
+      "reason": "The project analysis contradicts itself (guards-without-mechanism, auth-negative-contradiction), so the auth facts this check relies on are not trusted. Needs a runtime proof against the running app, which arrives in Round 2; counted as not yet tested.",
+      "status": "inconclusive",
+      "category": "authentication",
+      "priority": "critical",
+      "standards": [
+        "ASVS-5.0:V6 Authentication",
+        "API2:2023",
+        "CWE-306"
+      ],
+      "findingIds": [],
+      "requirement": "POST /api/transfers refuses a request without valid credentials unless it is public by design",
+      "dependencies": [
+        "endpoint:POST /api/transfers",
+        "auth:model"
+      ],
+      "executionIds": [],
+      "proofStrategy": "runtime_proof",
+      "expectedControl": "session_required (requireUser runs before the handler (route options))",
+      "applicabilityEvidence": [
+        {
+          "line": 113,
+          "path": "src/app.js",
+          "endLine": 122
+        },
+        {
+          "line": 113,
+          "path": "src/app.js",
+          "endLine": 122
+        },
+        {
+          "line": 19,
+          "path": "src/auth.js",
+          "endLine": 24
+        }
+      ]
+    },
+    {
+      "id": "sec:endpoint:DELETE /api/users/:id:authentication",
+      "lane": "auth",
+      "asset": {
+        "ref": "endpoint:DELETE /api/users/:id",
+        "kind": "endpoint",
+        "label": "DELETE /api/users/:id"
+      },
+      "reason": "The project analysis contradicts itself (guards-without-mechanism, auth-negative-contradiction), so the auth facts this check relies on are not trusted. Needs a runtime proof against the running app, which arrives in Round 2; counted as not yet tested.",
+      "status": "inconclusive",
+      "category": "authentication",
+      "priority": "critical",
+      "standards": [
+        "ASVS-5.0:V6 Authentication",
+        "API2:2023",
+        "CWE-306"
+      ],
+      "findingIds": [],
+      "requirement": "DELETE /api/users/:id refuses a request without valid credentials unless it is public by design",
+      "dependencies": [
+        "endpoint:DELETE /api/users/:id",
+        "auth:model"
+      ],
+      "executionIds": [],
+      "proofStrategy": "runtime_proof",
+      "expectedControl": "session_required (requireUser runs before the handler (route options))",
+      "applicabilityEvidence": [
+        {
+          "line": 46,
+          "path": "src/app.js",
+          "endLine": 51
+        },
+        {
+          "line": 46,
+          "path": "src/app.js",
+          "endLine": 51
+        },
+        {
+          "line": 19,
+          "path": "src/auth.js",
+          "endLine": 24
+        }
+      ]
+    },
+    {
+      "id": "sec:endpoint:DELETE /api/users/:id:object-authorization",
+      "lane": "access_control",
+      "asset": {
+        "ref": "endpoint:DELETE /api/users/:id",
+        "kind": "endpoint",
+        "label": "DELETE /api/users/:id"
+      },
+      "reason": "The project analysis contradicts itself (guards-without-mechanism, auth-negative-contradiction), so the access control facts this check relies on are not trusted. Needs a runtime proof against the running app, which arrives in Round 2; counted as not yet tested.",
+      "status": "inconclusive",
+      "category": "authorization",
+      "priority": "critical",
+      "standards": [
+        "ASVS-5.0:V8 Authorization",
+        "API1:2023",
+        "CWE-639"
+      ],
+      "findingIds": [],
+      "requirement": "DELETE /api/users/:id only returns or changes records the caller owns or may access",
+      "dependencies": [
+        "endpoint:DELETE /api/users/:id",
+        "auth:model"
+      ],
+      "executionIds": [],
+      "proofStrategy": "runtime_proof",
+      "expectedControl": "An ownership or tenant check on the record id",
+      "applicabilityEvidence": [
+        {
+          "line": 46,
+          "path": "src/app.js",
+          "endLine": 51
+        },
+        {
+          "line": 46,
+          "path": "src/app.js",
+          "endLine": 51
+        },
+        {
+          "line": 19,
+          "path": "src/auth.js",
+          "endLine": 24
+        }
+      ]
+    },
+    {
+      "id": "sec:endpoint:GET /api/users/:id:authentication",
+      "lane": "auth",
+      "asset": {
+        "ref": "endpoint:GET /api/users/:id",
+        "kind": "endpoint",
+        "label": "GET /api/users/:id"
+      },
+      "reason": "The project analysis contradicts itself (guards-without-mechanism, auth-negative-contradiction), so the auth facts this check relies on are not trusted. Needs a runtime proof against the running app, which arrives in Round 2; counted as not yet tested.",
+      "status": "inconclusive",
+      "category": "authentication",
+      "priority": "critical",
+      "standards": [
+        "ASVS-5.0:V6 Authentication",
+        "API2:2023",
+        "CWE-306"
+      ],
+      "findingIds": [],
+      "requirement": "GET /api/users/:id refuses a request without valid credentials unless it is public by design",
+      "dependencies": [
+        "endpoint:GET /api/users/:id",
+        "auth:model"
+      ],
+      "executionIds": [],
+      "proofStrategy": "runtime_proof",
+      "expectedControl": "session_required (requireUser runs before the handler (route options))",
+      "applicabilityEvidence": [
+        {
+          "line": 33,
+          "path": "src/app.js",
+          "endLine": 37
+        },
+        {
+          "line": 33,
+          "path": "src/app.js",
+          "endLine": 37
+        },
+        {
+          "line": 19,
+          "path": "src/auth.js",
+          "endLine": 24
+        }
+      ]
+    },
+    {
+      "id": "sec:endpoint:GET /api/users/:id:object-authorization",
+      "lane": "access_control",
+      "asset": {
+        "ref": "endpoint:GET /api/users/:id",
+        "kind": "endpoint",
+        "label": "GET /api/users/:id"
+      },
+      "reason": "The project analysis contradicts itself (guards-without-mechanism, auth-negative-contradiction), so the access control facts this check relies on are not trusted. Needs a runtime proof against the running app, which arrives in Round 2; counted as not yet tested.",
+      "status": "inconclusive",
+      "category": "authorization",
+      "priority": "critical",
+      "standards": [
+        "ASVS-5.0:V8 Authorization",
+        "API1:2023",
+        "CWE-639"
+      ],
+      "findingIds": [],
+      "requirement": "GET /api/users/:id only returns or changes records the caller owns or may access",
+      "dependencies": [
+        "endpoint:GET /api/users/:id",
+        "auth:model"
+      ],
+      "executionIds": [],
+      "proofStrategy": "runtime_proof",
+      "expectedControl": "An ownership or tenant check on the record id",
+      "applicabilityEvidence": [
+        {
+          "line": 33,
+          "path": "src/app.js",
+          "endLine": 37
+        },
+        {
+          "line": 33,
+          "path": "src/app.js",
+          "endLine": 37
+        },
+        {
+          "line": 19,
+          "path": "src/auth.js",
+          "endLine": 24
+        }
+      ]
+    },
+    {
+      "id": "sec:endpoint:PATCH /api/users/:id:authentication",
+      "lane": "auth",
+      "asset": {
+        "ref": "endpoint:PATCH /api/users/:id",
+        "kind": "endpoint",
+        "label": "PATCH /api/users/:id"
+      },
+      "reason": "The project analysis contradicts itself (guards-without-mechanism, auth-negative-contradiction), so the auth facts this check relies on are not trusted. Needs a runtime proof against the running app, which arrives in Round 2; counted as not yet tested.",
+      "status": "inconclusive",
+      "category": "authentication",
+      "priority": "critical",
+      "standards": [
+        "ASVS-5.0:V6 Authentication",
+        "API2:2023",
+        "CWE-306"
+      ],
+      "findingIds": [],
+      "requirement": "PATCH /api/users/:id refuses a request without valid credentials unless it is public by design",
+      "dependencies": [
+        "endpoint:PATCH /api/users/:id",
+        "auth:model"
+      ],
+      "executionIds": [],
+      "proofStrategy": "runtime_proof",
+      "expectedControl": "session_required (requireUser runs before the handler (route options))",
+      "applicabilityEvidence": [
+        {
+          "line": 39,
+          "path": "src/app.js",
+          "endLine": 44
+        },
+        {
+          "line": 39,
+          "path": "src/app.js",
+          "endLine": 44
+        },
+        {
+          "line": 19,
+          "path": "src/auth.js",
+          "endLine": 24
+        }
+      ]
+    },
+    {
+      "id": "sec:endpoint:PATCH /api/users/:id:object-authorization",
+      "lane": "access_control",
+      "asset": {
+        "ref": "endpoint:PATCH /api/users/:id",
+        "kind": "endpoint",
+        "label": "PATCH /api/users/:id"
+      },
+      "reason": "The project analysis contradicts itself (guards-without-mechanism, auth-negative-contradiction), so the access control facts this check relies on are not trusted. Needs a runtime proof against the running app, which arrives in Round 2; counted as not yet tested.",
+      "status": "inconclusive",
+      "category": "authorization",
+      "priority": "critical",
+      "standards": [
+        "ASVS-5.0:V8 Authorization",
+        "API1:2023",
+        "CWE-639"
+      ],
+      "findingIds": [],
+      "requirement": "PATCH /api/users/:id only returns or changes records the caller owns or may access",
+      "dependencies": [
+        "endpoint:PATCH /api/users/:id",
+        "auth:model"
+      ],
+      "executionIds": [],
+      "proofStrategy": "runtime_proof",
+      "expectedControl": "An ownership or tenant check on the record id",
+      "applicabilityEvidence": [
+        {
+          "line": 39,
+          "path": "src/app.js",
+          "endLine": 44
+        },
+        {
+          "line": 39,
+          "path": "src/app.js",
+          "endLine": 44
+        },
+        {
+          "line": 19,
+          "path": "src/auth.js",
+          "endLine": 24
+        }
+      ]
+    },
+    {
+      "id": "sec:secrets:repository",
+      "lane": "secrets",
+      "asset": {
+        "ref": ".",
+        "kind": "repository",
+        "label": "the whole snapshot"
+      },
+      "reason": "No secret found by gitleaks 8.21.2 across the snapshot.",
+      "status": "passed",
+      "category": "secrets",
+      "priority": "critical",
+      "standards": [
+        "ASVS-5.0:V13 Configuration",
+        "CWE-798"
+      ],
+      "findingIds": [],
+      "requirement": "No credentials, private keys or tokens are committed to the code",
+      "dependencies": [],
+      "executionIds": [
+        "3d61d3ed-ca8b-44b0-9a79-1ee34c42957b"
+      ],
+      "proofStrategy": "secret_scan",
+      "expectedControl": "Secrets come from the environment or a secret manager",
+      "applicabilityEvidence": []
+    },
+    {
+      "id": "sec:sast:sql-injection",
+      "lane": "injection",
+      "asset": {
+        "ref": ".",
+        "kind": "repository",
+        "label": "7 JavaScript, TypeScript and Python file(s)"
+      },
+      "reason": "1 suspected match(es): they need a runtime proof (Round 2) or a review.",
+      "status": "inconclusive",
+      "category": "sql-injection",
+      "priority": "critical",
+      "standards": [
+        "ASVS-5.0:V1 Encoding and Sanitization",
+        "CWE-89",
+        "CWE-943"
+      ],
+      "findingIds": [
+        "S11"
+      ],
+      "requirement": "Database queries never build SQL or NoSQL from request input as text",
+      "dependencies": [],
+      "executionIds": [
+        "3d61d3ed-ca8b-44b0-9a79-1ee34c42957b"
+      ],
+      "proofStrategy": "sast_rule",
+      "expectedControl": "Parameterised queries or query builders",
+      "applicabilityEvidence": []
+    },
+    {
+      "id": "sec:sast:command-injection",
+      "lane": "injection",
+      "asset": {
+        "ref": ".",
+        "kind": "repository",
+        "label": "7 JavaScript, TypeScript and Python file(s)"
+      },
+      "reason": "No match in 7 JavaScript, TypeScript and Python file(s) for Cybercheck's rule pack 2194c1374f4ba2e8; static rules cover known patterns only.",
+      "status": "passed",
+      "category": "command-injection",
+      "priority": "critical",
+      "standards": [
+        "ASVS-5.0:V1 Encoding and Sanitization",
+        "CWE-78"
+      ],
+      "findingIds": [],
+      "requirement": "Shell commands never include request input",
+      "dependencies": [],
+      "executionIds": [
+        "3d61d3ed-ca8b-44b0-9a79-1ee34c42957b"
+      ],
+      "proofStrategy": "sast_rule",
+      "expectedControl": "No shell, or arguments passed as a list",
+      "applicabilityEvidence": []
+    },
+    {
+      "id": "sec:sast:code-injection",
+      "lane": "injection",
+      "asset": {
+        "ref": ".",
+        "kind": "repository",
+        "label": "7 JavaScript, TypeScript and Python file(s)"
+      },
+      "reason": "No match in 7 JavaScript, TypeScript and Python file(s) for Cybercheck's rule pack 2194c1374f4ba2e8; static rules cover known patterns only.",
+      "status": "passed",
+      "category": "code-injection",
+      "priority": "critical",
+      "standards": [
+        "ASVS-5.0:V1 Encoding and Sanitization",
+        "CWE-94",
+        "CWE-1336"
+      ],
+      "findingIds": [],
+      "requirement": "Request input never reaches eval, Function or template compilation",
+      "dependencies": [],
+      "executionIds": [
+        "3d61d3ed-ca8b-44b0-9a79-1ee34c42957b"
+      ],
+      "proofStrategy": "sast_rule",
+      "expectedControl": "No dynamic code from input",
+      "applicabilityEvidence": []
+    },
+    {
+      "id": "sec:sast:token-integrity",
+      "lane": "auth",
+      "asset": {
+        "ref": ".",
+        "kind": "repository",
+        "label": "7 JavaScript, TypeScript and Python file(s)"
+      },
+      "reason": "1 suspected match(es): they need a runtime proof (Round 2) or a review.",
+      "status": "inconclusive",
+      "category": "token-integrity",
+      "priority": "critical",
+      "standards": [
+        "ASVS-5.0:V9 Self-contained Tokens",
+        "API2:2023",
+        "CWE-347"
+      ],
+      "findingIds": [
+        "S10"
+      ],
+      "requirement": "Session and API tokens are signed and verified, never decoded or built by hand",
+      "dependencies": [],
+      "executionIds": [
+        "3d61d3ed-ca8b-44b0-9a79-1ee34c42957b"
+      ],
+      "proofStrategy": "sast_rule",
+      "expectedControl": "A maintained token library with signature and expiry checks",
+      "applicabilityEvidence": []
+    },
+    {
+      "id": "sec:crypto:password-storage",
+      "lane": "crypto",
+      "asset": {
+        "ref": ".",
+        "kind": "repository",
+        "label": "stored passwords"
+      },
+      "reason": "1 suspected match(es): they need a runtime proof (Round 2) or a review.",
+      "status": "inconclusive",
+      "category": "password storage",
+      "priority": "critical",
+      "standards": [
+        "ASVS-5.0:V6 Authentication",
+        "ASVS-5.0:V11 Cryptography",
+        "CWE-256",
+        "CWE-916"
+      ],
+      "findingIds": [
+        "S12"
+      ],
+      "requirement": "Stored passwords are hashed with a slow, salted algorithm and compared in constant time",
+      "dependencies": [
+        "auth:credential:plain_compare:1",
+        "control:password_hashing"
+      ],
+      "executionIds": [],
+      "proofStrategy": "fact_rule",
+      "expectedControl": "bcrypt, scrypt or Argon2; no plain-text storage or === comparison",
+      "applicabilityEvidence": [
+        {
+          "line": 26,
+          "path": "src/app.js",
+          "endLine": 31
+        }
+      ]
+    },
+    {
+      "id": "sec:endpoint:POST /__test/reset:property-authorization",
+      "lane": "access_control",
+      "asset": {
+        "ref": "endpoint:POST /__test/reset",
+        "kind": "endpoint",
+        "label": "POST /__test/reset"
+      },
+      "reason": "The project analysis contradicts itself (guards-without-mechanism, auth-negative-contradiction), so the access control facts this check relies on are not trusted. Needs a runtime proof against the running app, which arrives in Round 2; counted as not yet tested.",
+      "status": "inconclusive",
+      "category": "authorization",
+      "priority": "high",
+      "standards": [
+        "ASVS-5.0:V2 Validation and Business Logic",
+        "API3:2023",
+        "CWE-915"
+      ],
+      "findingIds": [],
+      "requirement": "POST /__test/reset ignores fields the caller may not set (role, owner, price)",
+      "dependencies": [
+        "endpoint:POST /__test/reset"
+      ],
+      "executionIds": [],
+      "proofStrategy": "runtime_proof",
+      "expectedControl": "An allow-list of writable fields",
+      "applicabilityEvidence": [
+        {
+          "line": 186,
+          "path": "src/app.js",
+          "endLine": 193
+        },
+        {
+          "line": 186,
+          "path": "src/app.js",
+          "endLine": 193
+        }
+      ]
+    },
+    {
+      "id": "sec:endpoint:POST /__test/reset:input-handling",
+      "lane": "injection",
+      "asset": {
+        "ref": "endpoint:POST /__test/reset",
+        "kind": "endpoint",
+        "label": "POST /__test/reset"
+      },
+      "reason": "Needs a runtime proof against the running app, which arrives in Round 2; counted as not yet tested.",
+      "status": "unsupported",
+      "category": "injection",
+      "priority": "high",
+      "standards": [
+        "ASVS-5.0:V1 Encoding and Sanitization",
+        "ASVS-5.0:V2 Validation and Business Logic",
+        "CWE-74"
+      ],
+      "findingIds": [],
+      "requirement": "POST /__test/reset treats its inputs as data (no injection into queries, commands, paths, URLs or HTML)",
+      "dependencies": [],
+      "executionIds": [],
+      "proofStrategy": "runtime_proof",
+      "expectedControl": "Validation and context-specific encoding",
+      "applicabilityEvidence": [
+        {
+          "line": 186,
+          "path": "src/app.js",
+          "endLine": 193
+        },
+        {
+          "line": 186,
+          "path": "src/app.js",
+          "endLine": 193
+        }
+      ]
+    },
+    {
+      "id": "sec:endpoint:GET /admin:input-handling",
+      "lane": "injection",
+      "asset": {
+        "ref": "endpoint:GET /admin",
+        "kind": "endpoint",
+        "label": "GET /admin"
+      },
+      "reason": "Needs a runtime proof against the running app, which arrives in Round 2; counted as not yet tested.",
+      "status": "unsupported",
+      "category": "injection",
+      "priority": "high",
+      "standards": [
+        "ASVS-5.0:V1 Encoding and Sanitization",
+        "ASVS-5.0:V2 Validation and Business Logic",
+        "CWE-74"
+      ],
+      "findingIds": [],
+      "requirement": "GET /admin treats its inputs as data (no injection into queries, commands, paths, URLs or HTML)",
+      "dependencies": [],
+      "executionIds": [],
+      "proofStrategy": "runtime_proof",
+      "expectedControl": "Validation and context-specific encoding",
+      "applicabilityEvidence": [
+        {
+          "line": 21,
+          "path": "src/app.js",
+          "endLine": 21
+        },
+        {
+          "line": 21,
+          "path": "src/app.js",
+          "endLine": 21
+        }
+      ]
+    },
+    {
+      "id": "sec:endpoint:GET /api/admin/users:input-handling",
+      "lane": "injection",
+      "asset": {
+        "ref": "endpoint:GET /api/admin/users",
+        "kind": "endpoint",
+        "label": "GET /api/admin/users"
+      },
+      "reason": "Needs a runtime proof against the running app, which arrives in Round 2; counted as not yet tested.",
+      "status": "unsupported",
+      "category": "injection",
+      "priority": "high",
+      "standards": [
+        "ASVS-5.0:V1 Encoding and Sanitization",
+        "ASVS-5.0:V2 Validation and Business Logic",
+        "CWE-74"
+      ],
+      "findingIds": [],
+      "requirement": "GET /api/admin/users treats its inputs as data (no injection into queries, commands, paths, URLs or HTML)",
+      "dependencies": [],
+      "executionIds": [],
+      "proofStrategy": "runtime_proof",
+      "expectedControl": "Validation and context-specific encoding",
+      "applicabilityEvidence": [
+        {
+          "line": 53,
+          "path": "src/app.js",
+          "endLine": 53
+        },
+        {
+          "line": 53,
+          "path": "src/app.js",
+          "endLine": 53
+        },
+        {
+          "line": 19,
+          "path": "src/auth.js",
+          "endLine": 24
+        }
+      ]
+    },
+    {
+      "id": "sec:endpoint:POST /api/admin/users/:id/role:property-authorization",
+      "lane": "access_control",
+      "asset": {
+        "ref": "endpoint:POST /api/admin/users/:id/role",
+        "kind": "endpoint",
+        "label": "POST /api/admin/users/:id/role"
+      },
+      "reason": "The project analysis contradicts itself (guards-without-mechanism, auth-negative-contradiction), so the access control facts this check relies on are not trusted. Needs a runtime proof against the running app, which arrives in Round 2; counted as not yet tested.",
+      "status": "inconclusive",
+      "category": "authorization",
+      "priority": "high",
+      "standards": [
+        "ASVS-5.0:V2 Validation and Business Logic",
+        "API3:2023",
+        "CWE-915"
+      ],
+      "findingIds": [],
+      "requirement": "POST /api/admin/users/:id/role ignores fields the caller may not set (role, owner, price)",
+      "dependencies": [
+        "endpoint:POST /api/admin/users/:id/role"
+      ],
+      "executionIds": [],
+      "proofStrategy": "runtime_proof",
+      "expectedControl": "An allow-list of writable fields",
+      "applicabilityEvidence": [
+        {
+          "line": 54,
+          "path": "src/app.js",
+          "endLine": 59
+        },
+        {
+          "line": 54,
+          "path": "src/app.js",
+          "endLine": 59
+        },
+        {
+          "line": 19,
+          "path": "src/auth.js",
+          "endLine": 24
+        }
+      ]
+    },
+    {
+      "id": "sec:endpoint:POST /api/admin/users/:id/role:input-handling",
+      "lane": "injection",
+      "asset": {
+        "ref": "endpoint:POST /api/admin/users/:id/role",
+        "kind": "endpoint",
+        "label": "POST /api/admin/users/:id/role"
+      },
+      "reason": "Needs a runtime proof against the running app, which arrives in Round 2; counted as not yet tested.",
+      "status": "unsupported",
+      "category": "injection",
+      "priority": "high",
+      "standards": [
+        "ASVS-5.0:V1 Encoding and Sanitization",
+        "ASVS-5.0:V2 Validation and Business Logic",
+        "CWE-74"
+      ],
+      "findingIds": [],
+      "requirement": "POST /api/admin/users/:id/role treats its inputs as data (no injection into queries, commands, paths, URLs or HTML)",
+      "dependencies": [],
+      "executionIds": [],
+      "proofStrategy": "runtime_proof",
+      "expectedControl": "Validation and context-specific encoding",
+      "applicabilityEvidence": [
+        {
+          "line": 54,
+          "path": "src/app.js",
+          "endLine": 59
+        },
+        {
+          "line": 54,
+          "path": "src/app.js",
+          "endLine": 59
+        },
+        {
+          "line": 19,
+          "path": "src/auth.js",
+          "endLine": 24
+        }
+      ]
+    },
+    {
+      "id": "sec:endpoint:POST /api/assistant:property-authorization",
+      "lane": "access_control",
+      "asset": {
+        "ref": "endpoint:POST /api/assistant",
+        "kind": "endpoint",
+        "label": "POST /api/assistant"
+      },
+      "reason": "The project analysis contradicts itself (guards-without-mechanism, auth-negative-contradiction), so the access control facts this check relies on are not trusted. Needs a runtime proof against the running app, which arrives in Round 2; counted as not yet tested.",
+      "status": "inconclusive",
+      "category": "authorization",
+      "priority": "high",
+      "standards": [
+        "ASVS-5.0:V2 Validation and Business Logic",
+        "API3:2023",
+        "CWE-915"
+      ],
+      "findingIds": [],
+      "requirement": "POST /api/assistant ignores fields the caller may not set (role, owner, price)",
+      "dependencies": [
+        "endpoint:POST /api/assistant"
+      ],
+      "executionIds": [],
+      "proofStrategy": "runtime_proof",
+      "expectedControl": "An allow-list of writable fields",
+      "applicabilityEvidence": [
+        {
+          "line": 151,
+          "path": "src/app.js",
+          "endLine": 157
+        },
+        {
+          "line": 151,
+          "path": "src/app.js",
+          "endLine": 157
+        },
+        {
+          "line": 19,
+          "path": "src/auth.js",
+          "endLine": 24
+        }
+      ]
+    },
+    {
+      "id": "sec:endpoint:POST /api/assistant:input-handling",
+      "lane": "injection",
+      "asset": {
+        "ref": "endpoint:POST /api/assistant",
+        "kind": "endpoint",
+        "label": "POST /api/assistant"
+      },
+      "reason": "Needs a runtime proof against the running app, which arrives in Round 2; counted as not yet tested.",
+      "status": "unsupported",
+      "category": "injection",
+      "priority": "high",
+      "standards": [
+        "ASVS-5.0:V1 Encoding and Sanitization",
+        "ASVS-5.0:V2 Validation and Business Logic",
+        "CWE-74"
+      ],
+      "findingIds": [],
+      "requirement": "POST /api/assistant treats its inputs as data (no injection into queries, commands, paths, URLs or HTML)",
+      "dependencies": [],
+      "executionIds": [],
+      "proofStrategy": "runtime_proof",
+      "expectedControl": "Validation and context-specific encoding",
+      "applicabilityEvidence": [
+        {
+          "line": 151,
+          "path": "src/app.js",
+          "endLine": 157
+        },
+        {
+          "line": 151,
+          "path": "src/app.js",
+          "endLine": 157
+        },
+        {
+          "line": 19,
+          "path": "src/auth.js",
+          "endLine": 24
+        }
+      ]
+    },
+    {
+      "id": "sec:endpoint:GET /api/assistant/history:authentication",
+      "lane": "auth",
+      "asset": {
+        "ref": "endpoint:GET /api/assistant/history",
+        "kind": "endpoint",
+        "label": "GET /api/assistant/history"
+      },
+      "reason": "The project analysis contradicts itself (guards-without-mechanism, auth-negative-contradiction), so the auth facts this check relies on are not trusted. Needs a runtime proof against the running app, which arrives in Round 2; counted as not yet tested.",
+      "status": "inconclusive",
+      "category": "authentication",
+      "priority": "high",
+      "standards": [
+        "ASVS-5.0:V6 Authentication",
+        "API2:2023",
+        "CWE-306"
+      ],
+      "findingIds": [],
+      "requirement": "GET /api/assistant/history refuses a request without valid credentials unless it is public by design",
+      "dependencies": [
+        "endpoint:GET /api/assistant/history",
+        "auth:model"
+      ],
+      "executionIds": [],
+      "proofStrategy": "runtime_proof",
+      "expectedControl": "session_required (requireUser runs before the handler (route options))",
+      "applicabilityEvidence": [
+        {
+          "line": 159,
+          "path": "src/app.js",
+          "endLine": 159
+        },
+        {
+          "line": 159,
+          "path": "src/app.js",
+          "endLine": 159
+        },
+        {
+          "line": 19,
+          "path": "src/auth.js",
+          "endLine": 24
+        }
+      ]
+    },
+    {
+      "id": "sec:endpoint:GET /api/catalog:authentication",
+      "lane": "auth",
+      "asset": {
+        "ref": "endpoint:GET /api/catalog",
+        "kind": "endpoint",
+        "label": "GET /api/catalog"
+      },
+      "reason": "The project analysis contradicts itself (guards-without-mechanism, auth-negative-contradiction), so the auth facts this check relies on are not trusted. Needs a runtime proof against the running app, which arrives in Round 2; counted as not yet tested.",
+      "status": "inconclusive",
+      "category": "authentication",
+      "priority": "high",
+      "standards": [
+        "ASVS-5.0:V6 Authentication",
+        "API2:2023",
+        "CWE-306"
+      ],
+      "findingIds": [],
+      "requirement": "GET /api/catalog refuses a request without valid credentials unless it is public by design",
+      "dependencies": [
+        "endpoint:GET /api/catalog",
+        "auth:model"
+      ],
+      "executionIds": [],
+      "proofStrategy": "runtime_proof",
+      "expectedControl": "A guard, or a documented reason it is public",
+      "applicabilityEvidence": [
+        {
+          "line": 61,
+          "path": "src/app.js",
+          "endLine": 68
+        },
+        {
+          "line": 61,
+          "path": "src/app.js",
+          "endLine": 68
+        }
+      ]
+    },
+    {
+      "id": "sec:endpoint:POST /api/coupons/validate:property-authorization",
+      "lane": "access_control",
+      "asset": {
+        "ref": "endpoint:POST /api/coupons/validate",
+        "kind": "endpoint",
+        "label": "POST /api/coupons/validate"
+      },
+      "reason": "The project analysis contradicts itself (guards-without-mechanism, auth-negative-contradiction), so the access control facts this check relies on are not trusted. Needs a runtime proof against the running app, which arrives in Round 2; counted as not yet tested.",
+      "status": "inconclusive",
+      "category": "authorization",
+      "priority": "high",
+      "standards": [
+        "ASVS-5.0:V2 Validation and Business Logic",
+        "API3:2023",
+        "CWE-915"
+      ],
+      "findingIds": [],
+      "requirement": "POST /api/coupons/validate ignores fields the caller may not set (role, owner, price)",
+      "dependencies": [
+        "endpoint:POST /api/coupons/validate"
+      ],
+      "executionIds": [],
+      "proofStrategy": "runtime_proof",
+      "expectedControl": "An allow-list of writable fields",
+      "applicabilityEvidence": [
+        {
+          "line": 124,
+          "path": "src/app.js",
+          "endLine": 129
+        },
+        {
+          "line": 124,
+          "path": "src/app.js",
+          "endLine": 129
+        },
+        {
+          "line": 19,
+          "path": "src/auth.js",
+          "endLine": 24
+        }
+      ]
+    },
+    {
+      "id": "sec:endpoint:POST /api/coupons/validate:input-handling",
+      "lane": "injection",
+      "asset": {
+        "ref": "endpoint:POST /api/coupons/validate",
+        "kind": "endpoint",
+        "label": "POST /api/coupons/validate"
+      },
+      "reason": "Needs a runtime proof against the running app, which arrives in Round 2; counted as not yet tested.",
+      "status": "unsupported",
+      "category": "injection",
+      "priority": "high",
+      "standards": [
+        "ASVS-5.0:V1 Encoding and Sanitization",
+        "ASVS-5.0:V2 Validation and Business Logic",
+        "CWE-74"
+      ],
+      "findingIds": [],
+      "requirement": "POST /api/coupons/validate treats its inputs as data (no injection into queries, commands, paths, URLs or HTML)",
+      "dependencies": [],
+      "executionIds": [],
+      "proofStrategy": "runtime_proof",
+      "expectedControl": "Validation and context-specific encoding",
+      "applicabilityEvidence": [
+        {
+          "line": 124,
+          "path": "src/app.js",
+          "endLine": 129
+        },
+        {
+          "line": 124,
+          "path": "src/app.js",
+          "endLine": 129
+        },
+        {
+          "line": 19,
+          "path": "src/auth.js",
+          "endLine": 24
+        }
+      ]
+    },
+    {
+      "id": "sec:endpoint:GET /api/data/customers:authentication",
+      "lane": "auth",
+      "asset": {
+        "ref": "endpoint:GET /api/data/customers",
+        "kind": "endpoint",
+        "label": "GET /api/data/customers"
+      },
+      "reason": "The project analysis contradicts itself (guards-without-mechanism, auth-negative-contradiction), so the auth facts this check relies on are not trusted. Needs a runtime proof against the running app, which arrives in Round 2; counted as not yet tested.",
+      "status": "inconclusive",
+      "category": "authentication",
+      "priority": "high",
+      "standards": [
+        "ASVS-5.0:V6 Authentication",
+        "API2:2023",
+        "CWE-306"
+      ],
+      "findingIds": [],
+      "requirement": "GET /api/data/customers refuses a request without valid credentials unless it is public by design",
+      "dependencies": [
+        "endpoint:GET /api/data/customers",
+        "auth:model"
+      ],
+      "executionIds": [],
+      "proofStrategy": "runtime_proof",
+      "expectedControl": "session_required (requireUser runs before the handler (route options))",
+      "applicabilityEvidence": [
+        {
+          "line": 177,
+          "path": "src/app.js",
+          "endLine": 179
+        },
+        {
+          "line": 177,
+          "path": "src/app.js",
+          "endLine": 179
+        },
+        {
+          "line": 19,
+          "path": "src/auth.js",
+          "endLine": 24
+        }
+      ]
+    },
+    {
+      "id": "sec:endpoint:DELETE /api/data/customers/:id:input-handling",
+      "lane": "injection",
+      "asset": {
+        "ref": "endpoint:DELETE /api/data/customers/:id",
+        "kind": "endpoint",
+        "label": "DELETE /api/data/customers/:id"
+      },
+      "reason": "Needs a runtime proof against the running app, which arrives in Round 2; counted as not yet tested.",
+      "status": "unsupported",
+      "category": "injection",
+      "priority": "high",
+      "standards": [
+        "ASVS-5.0:V1 Encoding and Sanitization",
+        "ASVS-5.0:V2 Validation and Business Logic",
+        "CWE-74"
+      ],
+      "findingIds": [],
+      "requirement": "DELETE /api/data/customers/:id treats its inputs as data (no injection into queries, commands, paths, URLs or HTML)",
+      "dependencies": [],
+      "executionIds": [],
+      "proofStrategy": "runtime_proof",
+      "expectedControl": "Validation and context-specific encoding",
+      "applicabilityEvidence": [
+        {
+          "line": 181,
+          "path": "src/app.js",
+          "endLine": 184
+        },
+        {
+          "line": 181,
+          "path": "src/app.js",
+          "endLine": 184
+        },
+        {
+          "line": 19,
+          "path": "src/auth.js",
+          "endLine": 24
+        }
+      ]
+    },
+    {
+      "id": "sec:endpoint:GET /api/diagnostics/error:authentication",
+      "lane": "auth",
+      "asset": {
+        "ref": "endpoint:GET /api/diagnostics/error",
+        "kind": "endpoint",
+        "label": "GET /api/diagnostics/error"
+      },
+      "reason": "The project analysis contradicts itself (guards-without-mechanism, auth-negative-contradiction), so the auth facts this check relies on are not trusted. Needs a runtime proof against the running app, which arrives in Round 2; counted as not yet tested.",
+      "status": "inconclusive",
+      "category": "authentication",
+      "priority": "high",
+      "standards": [
+        "ASVS-5.0:V6 Authentication",
+        "API2:2023",
+        "CWE-306"
+      ],
+      "findingIds": [],
+      "requirement": "GET /api/diagnostics/error refuses a request without valid credentials unless it is public by design",
+      "dependencies": [
+        "endpoint:GET /api/diagnostics/error",
+        "auth:model"
+      ],
+      "executionIds": [],
+      "proofStrategy": "runtime_proof",
+      "expectedControl": "A guard, or a documented reason it is public",
+      "applicabilityEvidence": [
+        {
+          "line": 173,
+          "path": "src/app.js",
+          "endLine": 175
+        },
+        {
+          "line": 173,
+          "path": "src/app.js",
+          "endLine": 175
+        }
+      ]
+    },
+    {
+      "id": "sec:endpoint:POST /api/diagnostics/leak:property-authorization",
+      "lane": "access_control",
+      "asset": {
+        "ref": "endpoint:POST /api/diagnostics/leak",
+        "kind": "endpoint",
+        "label": "POST /api/diagnostics/leak"
+      },
+      "reason": "The project analysis contradicts itself (guards-without-mechanism, auth-negative-contradiction), so the access control facts this check relies on are not trusted. Needs a runtime proof against the running app, which arrives in Round 2; counted as not yet tested.",
+      "status": "inconclusive",
+      "category": "authorization",
+      "priority": "high",
+      "standards": [
+        "ASVS-5.0:V2 Validation and Business Logic",
+        "API3:2023",
+        "CWE-915"
+      ],
+      "findingIds": [],
+      "requirement": "POST /api/diagnostics/leak ignores fields the caller may not set (role, owner, price)",
+      "dependencies": [
+        "endpoint:POST /api/diagnostics/leak"
+      ],
+      "executionIds": [],
+      "proofStrategy": "runtime_proof",
+      "expectedControl": "An allow-list of writable fields",
+      "applicabilityEvidence": [
+        {
+          "line": 168,
+          "path": "src/app.js",
+          "endLine": 171
+        },
+        {
+          "line": 168,
+          "path": "src/app.js",
+          "endLine": 171
+        },
+        {
+          "line": 19,
+          "path": "src/auth.js",
+          "endLine": 24
+        }
+      ]
+    },
+    {
+      "id": "sec:endpoint:POST /api/diagnostics/leak:input-handling",
+      "lane": "injection",
+      "asset": {
+        "ref": "endpoint:POST /api/diagnostics/leak",
+        "kind": "endpoint",
+        "label": "POST /api/diagnostics/leak"
+      },
+      "reason": "Needs a runtime proof against the running app, which arrives in Round 2; counted as not yet tested.",
+      "status": "unsupported",
+      "category": "injection",
+      "priority": "high",
+      "standards": [
+        "ASVS-5.0:V1 Encoding and Sanitization",
+        "ASVS-5.0:V2 Validation and Business Logic",
+        "CWE-74"
+      ],
+      "findingIds": [],
+      "requirement": "POST /api/diagnostics/leak treats its inputs as data (no injection into queries, commands, paths, URLs or HTML)",
+      "dependencies": [],
+      "executionIds": [],
+      "proofStrategy": "runtime_proof",
+      "expectedControl": "Validation and context-specific encoding",
+      "applicabilityEvidence": [
+        {
+          "line": 168,
+          "path": "src/app.js",
+          "endLine": 171
+        },
+        {
+          "line": 168,
+          "path": "src/app.js",
+          "endLine": 171
+        },
+        {
+          "line": 19,
+          "path": "src/auth.js",
+          "endLine": 24
+        }
+      ]
+    },
+    {
+      "id": "sec:endpoint:GET /api/files:authentication",
+      "lane": "auth",
+      "asset": {
+        "ref": "endpoint:GET /api/files",
+        "kind": "endpoint",
+        "label": "GET /api/files"
+      },
+      "reason": "The project analysis contradicts itself (guards-without-mechanism, auth-negative-contradiction), so the auth facts this check relies on are not trusted. Needs a runtime proof against the running app, which arrives in Round 2; counted as not yet tested.",
+      "status": "inconclusive",
+      "category": "authentication",
+      "priority": "high",
+      "standards": [
+        "ASVS-5.0:V6 Authentication",
+        "API2:2023",
+        "CWE-306"
+      ],
+      "findingIds": [],
+      "requirement": "GET /api/files refuses a request without valid credentials unless it is public by design",
+      "dependencies": [
+        "endpoint:GET /api/files",
+        "auth:model"
+      ],
+      "executionIds": [],
+      "proofStrategy": "runtime_proof",
+      "expectedControl": "session_required (requireUser runs before the handler (route options))",
+      "applicabilityEvidence": [
+        {
+          "line": 131,
+          "path": "src/app.js",
+          "endLine": 140
+        },
+        {
+          "line": 131,
+          "path": "src/app.js",
+          "endLine": 140
+        },
+        {
+          "line": 19,
+          "path": "src/auth.js",
+          "endLine": 24
+        }
+      ]
+    },
+    {
+      "id": "sec:endpoint:POST /api/integrations/preview:property-authorization",
+      "lane": "access_control",
+      "asset": {
+        "ref": "endpoint:POST /api/integrations/preview",
+        "kind": "endpoint",
+        "label": "POST /api/integrations/preview"
+      },
+      "reason": "The project analysis contradicts itself (guards-without-mechanism, auth-negative-contradiction), so the access control facts this check relies on are not trusted. Needs a runtime proof against the running app, which arrives in Round 2; counted as not yet tested.",
+      "status": "inconclusive",
+      "category": "authorization",
+      "priority": "high",
+      "standards": [
+        "ASVS-5.0:V2 Validation and Business Logic",
+        "API3:2023",
+        "CWE-915"
+      ],
+      "findingIds": [],
+      "requirement": "POST /api/integrations/preview ignores fields the caller may not set (role, owner, price)",
+      "dependencies": [
+        "endpoint:POST /api/integrations/preview"
+      ],
+      "executionIds": [],
+      "proofStrategy": "runtime_proof",
+      "expectedControl": "An allow-list of writable fields",
+      "applicabilityEvidence": [
+        {
+          "line": 142,
+          "path": "src/app.js",
+          "endLine": 149
+        },
+        {
+          "line": 142,
+          "path": "src/app.js",
+          "endLine": 149
+        },
+        {
+          "line": 19,
+          "path": "src/auth.js",
+          "endLine": 24
+        }
+      ]
+    },
+    {
+      "id": "sec:endpoint:POST /api/integrations/preview:input-handling",
+      "lane": "injection",
+      "asset": {
+        "ref": "endpoint:POST /api/integrations/preview",
+        "kind": "endpoint",
+        "label": "POST /api/integrations/preview"
+      },
+      "reason": "Needs a runtime proof against the running app, which arrives in Round 2; counted as not yet tested.",
+      "status": "unsupported",
+      "category": "injection",
+      "priority": "high",
+      "standards": [
+        "ASVS-5.0:V1 Encoding and Sanitization",
+        "ASVS-5.0:V2 Validation and Business Logic",
+        "CWE-74"
+      ],
+      "findingIds": [],
+      "requirement": "POST /api/integrations/preview treats its inputs as data (no injection into queries, commands, paths, URLs or HTML)",
+      "dependencies": [],
+      "executionIds": [],
+      "proofStrategy": "runtime_proof",
+      "expectedControl": "Validation and context-specific encoding",
+      "applicabilityEvidence": [
+        {
+          "line": 142,
+          "path": "src/app.js",
+          "endLine": 149
+        },
+        {
+          "line": 142,
+          "path": "src/app.js",
+          "endLine": 149
+        },
+        {
+          "line": 19,
+          "path": "src/auth.js",
+          "endLine": 24
+        }
+      ]
+    },
+    {
+      "id": "sec:endpoint:POST /api/login:input-handling",
+      "lane": "injection",
+      "asset": {
+        "ref": "endpoint:POST /api/login",
+        "kind": "endpoint",
+        "label": "POST /api/login"
+      },
+      "reason": "Needs a runtime proof against the running app, which arrives in Round 2; counted as not yet tested.",
+      "status": "unsupported",
+      "category": "injection",
+      "priority": "high",
+      "standards": [
+        "ASVS-5.0:V1 Encoding and Sanitization",
+        "ASVS-5.0:V2 Validation and Business Logic",
+        "CWE-74"
+      ],
+      "findingIds": [],
+      "requirement": "POST /api/login treats its inputs as data (no injection into queries, commands, paths, URLs or HTML)",
+      "dependencies": [],
+      "executionIds": [],
+      "proofStrategy": "runtime_proof",
+      "expectedControl": "Validation and context-specific encoding",
+      "applicabilityEvidence": [
+        {
+          "line": 26,
+          "path": "src/app.js",
+          "endLine": 31
+        },
+        {
+          "line": 26,
+          "path": "src/app.js",
+          "endLine": 31
+        }
+      ]
+    },
+    {
+      "id": "sec:endpoint:GET /api/orders:authentication",
+      "lane": "auth",
+      "asset": {
+        "ref": "endpoint:GET /api/orders",
+        "kind": "endpoint",
+        "label": "GET /api/orders"
+      },
+      "reason": "The project analysis contradicts itself (guards-without-mechanism, auth-negative-contradiction), so the auth facts this check relies on are not trusted. Needs a runtime proof against the running app, which arrives in Round 2; counted as not yet tested.",
+      "status": "inconclusive",
+      "category": "authentication",
+      "priority": "high",
+      "standards": [
+        "ASVS-5.0:V6 Authentication",
+        "API2:2023",
+        "CWE-306"
+      ],
+      "findingIds": [],
+      "requirement": "GET /api/orders refuses a request without valid credentials unless it is public by design",
+      "dependencies": [
+        "endpoint:GET /api/orders",
+        "auth:model"
+      ],
+      "executionIds": [],
+      "proofStrategy": "runtime_proof",
+      "expectedControl": "session_required (requireUser runs before the handler (route options))",
+      "applicabilityEvidence": [
+        {
+          "line": 93,
+          "path": "src/app.js",
+          "endLine": 98
+        },
+        {
+          "line": 93,
+          "path": "src/app.js",
+          "endLine": 98
+        },
+        {
+          "line": 19,
+          "path": "src/auth.js",
+          "endLine": 24
+        }
+      ]
+    },
+    {
+      "id": "sec:endpoint:POST /api/orders:property-authorization",
+      "lane": "access_control",
+      "asset": {
+        "ref": "endpoint:POST /api/orders",
+        "kind": "endpoint",
+        "label": "POST /api/orders"
+      },
+      "reason": "The project analysis contradicts itself (guards-without-mechanism, auth-negative-contradiction), so the access control facts this check relies on are not trusted. Needs a runtime proof against the running app, which arrives in Round 2; counted as not yet tested.",
+      "status": "inconclusive",
+      "category": "authorization",
+      "priority": "high",
+      "standards": [
+        "ASVS-5.0:V2 Validation and Business Logic",
+        "API3:2023",
+        "CWE-915"
+      ],
+      "findingIds": [],
+      "requirement": "POST /api/orders ignores fields the caller may not set (role, owner, price)",
+      "dependencies": [
+        "endpoint:POST /api/orders"
+      ],
+      "executionIds": [],
+      "proofStrategy": "runtime_proof",
+      "expectedControl": "An allow-list of writable fields",
+      "applicabilityEvidence": [
+        {
+          "line": 78,
+          "path": "src/app.js",
+          "endLine": 91
+        },
+        {
+          "line": 78,
+          "path": "src/app.js",
+          "endLine": 91
+        },
+        {
+          "line": 19,
+          "path": "src/auth.js",
+          "endLine": 24
+        }
+      ]
+    },
+    {
+      "id": "sec:endpoint:POST /api/orders:input-handling",
+      "lane": "injection",
+      "asset": {
+        "ref": "endpoint:POST /api/orders",
+        "kind": "endpoint",
+        "label": "POST /api/orders"
+      },
+      "reason": "Needs a runtime proof against the running app, which arrives in Round 2; counted as not yet tested.",
+      "status": "unsupported",
+      "category": "injection",
+      "priority": "high",
+      "standards": [
+        "ASVS-5.0:V1 Encoding and Sanitization",
+        "ASVS-5.0:V2 Validation and Business Logic",
+        "CWE-74"
+      ],
+      "findingIds": [],
+      "requirement": "POST /api/orders treats its inputs as data (no injection into queries, commands, paths, URLs or HTML)",
+      "dependencies": [],
+      "executionIds": [],
+      "proofStrategy": "runtime_proof",
+      "expectedControl": "Validation and context-specific encoding",
+      "applicabilityEvidence": [
+        {
+          "line": 78,
+          "path": "src/app.js",
+          "endLine": 91
+        },
+        {
+          "line": 78,
+          "path": "src/app.js",
+          "endLine": 91
+        },
+        {
+          "line": 19,
+          "path": "src/auth.js",
+          "endLine": 24
+        }
+      ]
+    },
+    {
+      "id": "sec:endpoint:POST /api/orders/:id/status:property-authorization",
+      "lane": "access_control",
+      "asset": {
+        "ref": "endpoint:POST /api/orders/:id/status",
+        "kind": "endpoint",
+        "label": "POST /api/orders/:id/status"
+      },
+      "reason": "The project analysis contradicts itself (guards-without-mechanism, auth-negative-contradiction), so the access control facts this check relies on are not trusted. Needs a runtime proof against the running app, which arrives in Round 2; counted as not yet tested.",
+      "status": "inconclusive",
+      "category": "authorization",
+      "priority": "high",
+      "standards": [
+        "ASVS-5.0:V2 Validation and Business Logic",
+        "API3:2023",
+        "CWE-915"
+      ],
+      "findingIds": [],
+      "requirement": "POST /api/orders/:id/status ignores fields the caller may not set (role, owner, price)",
+      "dependencies": [
+        "endpoint:POST /api/orders/:id/status"
+      ],
+      "executionIds": [],
+      "proofStrategy": "runtime_proof",
+      "expectedControl": "An allow-list of writable fields",
+      "applicabilityEvidence": [
+        {
+          "line": 100,
+          "path": "src/app.js",
+          "endLine": 105
+        },
+        {
+          "line": 100,
+          "path": "src/app.js",
+          "endLine": 105
+        },
+        {
+          "line": 19,
+          "path": "src/auth.js",
+          "endLine": 24
+        }
+      ]
+    },
+    {
+      "id": "sec:endpoint:POST /api/orders/:id/status:input-handling",
+      "lane": "injection",
+      "asset": {
+        "ref": "endpoint:POST /api/orders/:id/status",
+        "kind": "endpoint",
+        "label": "POST /api/orders/:id/status"
+      },
+      "reason": "Needs a runtime proof against the running app, which arrives in Round 2; counted as not yet tested.",
+      "status": "unsupported",
+      "category": "injection",
+      "priority": "high",
+      "standards": [
+        "ASVS-5.0:V1 Encoding and Sanitization",
+        "ASVS-5.0:V2 Validation and Business Logic",
+        "CWE-74"
+      ],
+      "findingIds": [],
+      "requirement": "POST /api/orders/:id/status treats its inputs as data (no injection into queries, commands, paths, URLs or HTML)",
+      "dependencies": [],
+      "executionIds": [],
+      "proofStrategy": "runtime_proof",
+      "expectedControl": "Validation and context-specific encoding",
+      "applicabilityEvidence": [
+        {
+          "line": 100,
+          "path": "src/app.js",
+          "endLine": 105
+        },
+        {
+          "line": 100,
+          "path": "src/app.js",
+          "endLine": 105
+        },
+        {
+          "line": 19,
+          "path": "src/auth.js",
+          "endLine": 24
+        }
+      ]
+    },
+    {
+      "id": "sec:endpoint:POST /api/payments:property-authorization",
+      "lane": "access_control",
+      "asset": {
+        "ref": "endpoint:POST /api/payments",
+        "kind": "endpoint",
+        "label": "POST /api/payments"
+      },
+      "reason": "The project analysis contradicts itself (guards-without-mechanism, auth-negative-contradiction), so the access control facts this check relies on are not trusted. Needs a runtime proof against the running app, which arrives in Round 2; counted as not yet tested.",
+      "status": "inconclusive",
+      "category": "authorization",
+      "priority": "high",
+      "standards": [
+        "ASVS-5.0:V2 Validation and Business Logic",
+        "API3:2023",
+        "CWE-915"
+      ],
+      "findingIds": [],
+      "requirement": "POST /api/payments ignores fields the caller may not set (role, owner, price)",
+      "dependencies": [
+        "endpoint:POST /api/payments"
+      ],
+      "executionIds": [],
+      "proofStrategy": "runtime_proof",
+      "expectedControl": "An allow-list of writable fields",
+      "applicabilityEvidence": [
+        {
+          "line": 107,
+          "path": "src/app.js",
+          "endLine": 111
+        },
+        {
+          "line": 107,
+          "path": "src/app.js",
+          "endLine": 111
+        },
+        {
+          "line": 19,
+          "path": "src/auth.js",
+          "endLine": 24
+        }
+      ]
+    },
+    {
+      "id": "sec:endpoint:POST /api/payments:input-handling",
+      "lane": "injection",
+      "asset": {
+        "ref": "endpoint:POST /api/payments",
+        "kind": "endpoint",
+        "label": "POST /api/payments"
+      },
+      "reason": "Needs a runtime proof against the running app, which arrives in Round 2; counted as not yet tested.",
+      "status": "unsupported",
+      "category": "injection",
+      "priority": "high",
+      "standards": [
+        "ASVS-5.0:V1 Encoding and Sanitization",
+        "ASVS-5.0:V2 Validation and Business Logic",
+        "CWE-74"
+      ],
+      "findingIds": [],
+      "requirement": "POST /api/payments treats its inputs as data (no injection into queries, commands, paths, URLs or HTML)",
+      "dependencies": [],
+      "executionIds": [],
+      "proofStrategy": "runtime_proof",
+      "expectedControl": "Validation and context-specific encoding",
+      "applicabilityEvidence": [
+        {
+          "line": 107,
+          "path": "src/app.js",
+          "endLine": 111
+        },
+        {
+          "line": 107,
+          "path": "src/app.js",
+          "endLine": 111
+        },
+        {
+          "line": 19,
+          "path": "src/auth.js",
+          "endLine": 24
+        }
+      ]
+    },
+    {
+      "id": "sec:endpoint:GET /api/redirect:authentication",
+      "lane": "auth",
+      "asset": {
+        "ref": "endpoint:GET /api/redirect",
+        "kind": "endpoint",
+        "label": "GET /api/redirect"
+      },
+      "reason": "The project analysis contradicts itself (guards-without-mechanism, auth-negative-contradiction), so the auth facts this check relies on are not trusted. Needs a runtime proof against the running app, which arrives in Round 2; counted as not yet tested.",
+      "status": "inconclusive",
+      "category": "authentication",
+      "priority": "high",
+      "standards": [
+        "ASVS-5.0:V6 Authentication",
+        "API2:2023",
+        "CWE-306"
+      ],
+      "findingIds": [],
+      "requirement": "GET /api/redirect refuses a request without valid credentials unless it is public by design",
+      "dependencies": [
+        "endpoint:GET /api/redirect",
+        "auth:model"
+      ],
+      "executionIds": [],
+      "proofStrategy": "runtime_proof",
+      "expectedControl": "A guard, or a documented reason it is public",
+      "applicabilityEvidence": [
+        {
+          "line": 76,
+          "path": "src/app.js",
+          "endLine": 76
+        },
+        {
+          "line": 76,
+          "path": "src/app.js",
+          "endLine": 76
+        }
+      ]
+    },
+    {
+      "id": "sec:endpoint:GET /api/reports/slow:authentication",
+      "lane": "auth",
+      "asset": {
+        "ref": "endpoint:GET /api/reports/slow",
+        "kind": "endpoint",
+        "label": "GET /api/reports/slow"
+      },
+      "reason": "The project analysis contradicts itself (guards-without-mechanism, auth-negative-contradiction), so the auth facts this check relies on are not trusted. Needs a runtime proof against the running app, which arrives in Round 2; counted as not yet tested.",
+      "status": "inconclusive",
+      "category": "authentication",
+      "priority": "high",
+      "standards": [
+        "ASVS-5.0:V6 Authentication",
+        "API2:2023",
+        "CWE-306"
+      ],
+      "findingIds": [],
+      "requirement": "GET /api/reports/slow refuses a request without valid credentials unless it is public by design",
+      "dependencies": [
+        "endpoint:GET /api/reports/slow",
+        "auth:model"
+      ],
+      "executionIds": [],
+      "proofStrategy": "runtime_proof",
+      "expectedControl": "session_required (requireUser runs before the handler (route options))",
+      "applicabilityEvidence": [
+        {
+          "line": 161,
+          "path": "src/app.js",
+          "endLine": 166
+        },
+        {
+          "line": 161,
+          "path": "src/app.js",
+          "endLine": 166
+        },
+        {
+          "line": 19,
+          "path": "src/auth.js",
+          "endLine": 24
+        }
+      ]
+    },
+    {
+      "id": "sec:endpoint:GET /api/search:authentication",
+      "lane": "auth",
+      "asset": {
+        "ref": "endpoint:GET /api/search",
+        "kind": "endpoint",
+        "label": "GET /api/search"
+      },
+      "reason": "The project analysis contradicts itself (guards-without-mechanism, auth-negative-contradiction), so the auth facts this check relies on are not trusted. Needs a runtime proof against the running app, which arrives in Round 2; counted as not yet tested.",
+      "status": "inconclusive",
+      "category": "authentication",
+      "priority": "high",
+      "standards": [
+        "ASVS-5.0:V6 Authentication",
+        "API2:2023",
+        "CWE-306"
+      ],
+      "findingIds": [],
+      "requirement": "GET /api/search refuses a request without valid credentials unless it is public by design",
+      "dependencies": [
+        "endpoint:GET /api/search",
+        "auth:model"
+      ],
+      "executionIds": [],
+      "proofStrategy": "runtime_proof",
+      "expectedControl": "A guard, or a documented reason it is public",
+      "applicabilityEvidence": [
+        {
+          "line": 70,
+          "path": "src/app.js",
+          "endLine": 74
+        },
+        {
+          "line": 70,
+          "path": "src/app.js",
+          "endLine": 74
+        }
+      ]
+    },
+    {
+      "id": "sec:endpoint:POST /api/transfers:property-authorization",
+      "lane": "access_control",
+      "asset": {
+        "ref": "endpoint:POST /api/transfers",
+        "kind": "endpoint",
+        "label": "POST /api/transfers"
+      },
+      "reason": "The project analysis contradicts itself (guards-without-mechanism, auth-negative-contradiction), so the access control facts this check relies on are not trusted. Needs a runtime proof against the running app, which arrives in Round 2; counted as not yet tested.",
+      "status": "inconclusive",
+      "category": "authorization",
+      "priority": "high",
+      "standards": [
+        "ASVS-5.0:V2 Validation and Business Logic",
+        "API3:2023",
+        "CWE-915"
+      ],
+      "findingIds": [],
+      "requirement": "POST /api/transfers ignores fields the caller may not set (role, owner, price)",
+      "dependencies": [
+        "endpoint:POST /api/transfers"
+      ],
+      "executionIds": [],
+      "proofStrategy": "runtime_proof",
+      "expectedControl": "An allow-list of writable fields",
+      "applicabilityEvidence": [
+        {
+          "line": 113,
+          "path": "src/app.js",
+          "endLine": 122
+        },
+        {
+          "line": 113,
+          "path": "src/app.js",
+          "endLine": 122
+        },
+        {
+          "line": 19,
+          "path": "src/auth.js",
+          "endLine": 24
+        }
+      ]
+    },
+    {
+      "id": "sec:endpoint:POST /api/transfers:input-handling",
+      "lane": "injection",
+      "asset": {
+        "ref": "endpoint:POST /api/transfers",
+        "kind": "endpoint",
+        "label": "POST /api/transfers"
+      },
+      "reason": "Needs a runtime proof against the running app, which arrives in Round 2; counted as not yet tested.",
+      "status": "unsupported",
+      "category": "injection",
+      "priority": "high",
+      "standards": [
+        "ASVS-5.0:V1 Encoding and Sanitization",
+        "ASVS-5.0:V2 Validation and Business Logic",
+        "CWE-74"
+      ],
+      "findingIds": [],
+      "requirement": "POST /api/transfers treats its inputs as data (no injection into queries, commands, paths, URLs or HTML)",
+      "dependencies": [],
+      "executionIds": [],
+      "proofStrategy": "runtime_proof",
+      "expectedControl": "Validation and context-specific encoding",
+      "applicabilityEvidence": [
+        {
+          "line": 113,
+          "path": "src/app.js",
+          "endLine": 122
+        },
+        {
+          "line": 113,
+          "path": "src/app.js",
+          "endLine": 122
+        },
+        {
+          "line": 19,
+          "path": "src/auth.js",
+          "endLine": 24
+        }
+      ]
+    },
+    {
+      "id": "sec:endpoint:DELETE /api/users/:id:input-handling",
+      "lane": "injection",
+      "asset": {
+        "ref": "endpoint:DELETE /api/users/:id",
+        "kind": "endpoint",
+        "label": "DELETE /api/users/:id"
+      },
+      "reason": "Needs a runtime proof against the running app, which arrives in Round 2; counted as not yet tested.",
+      "status": "unsupported",
+      "category": "injection",
+      "priority": "high",
+      "standards": [
+        "ASVS-5.0:V1 Encoding and Sanitization",
+        "ASVS-5.0:V2 Validation and Business Logic",
+        "CWE-74"
+      ],
+      "findingIds": [],
+      "requirement": "DELETE /api/users/:id treats its inputs as data (no injection into queries, commands, paths, URLs or HTML)",
+      "dependencies": [],
+      "executionIds": [],
+      "proofStrategy": "runtime_proof",
+      "expectedControl": "Validation and context-specific encoding",
+      "applicabilityEvidence": [
+        {
+          "line": 46,
+          "path": "src/app.js",
+          "endLine": 51
+        },
+        {
+          "line": 46,
+          "path": "src/app.js",
+          "endLine": 51
+        },
+        {
+          "line": 19,
+          "path": "src/auth.js",
+          "endLine": 24
+        }
+      ]
+    },
+    {
+      "id": "sec:endpoint:GET /api/users/:id:input-handling",
+      "lane": "injection",
+      "asset": {
+        "ref": "endpoint:GET /api/users/:id",
+        "kind": "endpoint",
+        "label": "GET /api/users/:id"
+      },
+      "reason": "Needs a runtime proof against the running app, which arrives in Round 2; counted as not yet tested.",
+      "status": "unsupported",
+      "category": "injection",
+      "priority": "high",
+      "standards": [
+        "ASVS-5.0:V1 Encoding and Sanitization",
+        "ASVS-5.0:V2 Validation and Business Logic",
+        "CWE-74"
+      ],
+      "findingIds": [],
+      "requirement": "GET /api/users/:id treats its inputs as data (no injection into queries, commands, paths, URLs or HTML)",
+      "dependencies": [],
+      "executionIds": [],
+      "proofStrategy": "runtime_proof",
+      "expectedControl": "Validation and context-specific encoding",
+      "applicabilityEvidence": [
+        {
+          "line": 33,
+          "path": "src/app.js",
+          "endLine": 37
+        },
+        {
+          "line": 33,
+          "path": "src/app.js",
+          "endLine": 37
+        },
+        {
+          "line": 19,
+          "path": "src/auth.js",
+          "endLine": 24
+        }
+      ]
+    },
+    {
+      "id": "sec:endpoint:PATCH /api/users/:id:property-authorization",
+      "lane": "access_control",
+      "asset": {
+        "ref": "endpoint:PATCH /api/users/:id",
+        "kind": "endpoint",
+        "label": "PATCH /api/users/:id"
+      },
+      "reason": "The project analysis contradicts itself (guards-without-mechanism, auth-negative-contradiction), so the access control facts this check relies on are not trusted. Needs a runtime proof against the running app, which arrives in Round 2; counted as not yet tested.",
+      "status": "inconclusive",
+      "category": "authorization",
+      "priority": "high",
+      "standards": [
+        "ASVS-5.0:V2 Validation and Business Logic",
+        "API3:2023",
+        "CWE-915"
+      ],
+      "findingIds": [],
+      "requirement": "PATCH /api/users/:id ignores fields the caller may not set (role, owner, price)",
+      "dependencies": [
+        "endpoint:PATCH /api/users/:id"
+      ],
+      "executionIds": [],
+      "proofStrategy": "runtime_proof",
+      "expectedControl": "An allow-list of writable fields",
+      "applicabilityEvidence": [
+        {
+          "line": 39,
+          "path": "src/app.js",
+          "endLine": 44
+        },
+        {
+          "line": 39,
+          "path": "src/app.js",
+          "endLine": 44
+        },
+        {
+          "line": 19,
+          "path": "src/auth.js",
+          "endLine": 24
+        }
+      ]
+    },
+    {
+      "id": "sec:endpoint:PATCH /api/users/:id:input-handling",
+      "lane": "injection",
+      "asset": {
+        "ref": "endpoint:PATCH /api/users/:id",
+        "kind": "endpoint",
+        "label": "PATCH /api/users/:id"
+      },
+      "reason": "Needs a runtime proof against the running app, which arrives in Round 2; counted as not yet tested.",
+      "status": "unsupported",
+      "category": "injection",
+      "priority": "high",
+      "standards": [
+        "ASVS-5.0:V1 Encoding and Sanitization",
+        "ASVS-5.0:V2 Validation and Business Logic",
+        "CWE-74"
+      ],
+      "findingIds": [],
+      "requirement": "PATCH /api/users/:id treats its inputs as data (no injection into queries, commands, paths, URLs or HTML)",
+      "dependencies": [],
+      "executionIds": [],
+      "proofStrategy": "runtime_proof",
+      "expectedControl": "Validation and context-specific encoding",
+      "applicabilityEvidence": [
+        {
+          "line": 39,
+          "path": "src/app.js",
+          "endLine": 44
+        },
+        {
+          "line": 39,
+          "path": "src/app.js",
+          "endLine": 44
+        },
+        {
+          "line": 19,
+          "path": "src/auth.js",
+          "endLine": 24
+        }
+      ]
+    },
+    {
+      "id": "sec:endpoint:GET /assistant:authentication",
+      "lane": "auth",
+      "asset": {
+        "ref": "endpoint:GET /assistant",
+        "kind": "endpoint",
+        "label": "GET /assistant"
+      },
+      "reason": "The project analysis contradicts itself (guards-without-mechanism, auth-negative-contradiction), so the auth facts this check relies on are not trusted. Needs a runtime proof against the running app, which arrives in Round 2; counted as not yet tested.",
+      "status": "inconclusive",
+      "category": "authentication",
+      "priority": "high",
+      "standards": [
+        "ASVS-5.0:V6 Authentication",
+        "API2:2023",
+        "CWE-306"
+      ],
+      "findingIds": [],
+      "requirement": "GET /assistant refuses a request without valid credentials unless it is public by design",
+      "dependencies": [
+        "endpoint:GET /assistant",
+        "auth:model"
+      ],
+      "executionIds": [],
+      "proofStrategy": "runtime_proof",
+      "expectedControl": "A guard, or a documented reason it is public",
+      "applicabilityEvidence": [
+        {
+          "line": 22,
+          "path": "src/app.js",
+          "endLine": 22
+        },
+        {
+          "line": 22,
+          "path": "src/app.js",
+          "endLine": 22
+        }
+      ]
+    },
+    {
+      "id": "sec:endpoint:GET /health:authentication",
+      "lane": "auth",
+      "asset": {
+        "ref": "endpoint:GET /health",
+        "kind": "endpoint",
+        "label": "GET /health"
+      },
+      "reason": "Public by design: Health and status checks are meant for load balancers and monitors. A public route is never reported for being public.",
+      "status": "not_applicable",
+      "category": "authentication",
+      "priority": "high",
+      "standards": [
+        "ASVS-5.0:V6 Authentication",
+        "API2:2023",
+        "CWE-306"
+      ],
+      "findingIds": [],
+      "requirement": "GET /health refuses a request without valid credentials unless it is public by design",
+      "dependencies": [
+        "endpoint:GET /health",
+        "auth:model"
+      ],
+      "executionIds": [],
+      "proofStrategy": "runtime_proof",
+      "expectedControl": "public_intentional (Health and status checks are meant for load balancers and monitors)",
+      "applicabilityEvidence": [
+        {
+          "line": 24,
+          "path": "src/app.js",
+          "endLine": 24
+        },
+        {
+          "line": 24,
+          "path": "src/app.js",
+          "endLine": 24
+        }
+      ]
+    },
+    {
+      "id": "sec:endpoint:POST /api/login:login-throttling",
+      "lane": "auth",
+      "asset": {
+        "ref": "endpoint:POST /api/login",
+        "kind": "endpoint",
+        "label": "POST /api/login"
+      },
+      "reason": "Needs a runtime proof against the running app, which arrives in Round 2; counted as not yet tested.",
+      "status": "unsupported",
+      "category": "authentication",
+      "priority": "high",
+      "standards": [
+        "ASVS-5.0:V6 Authentication",
+        "API4:2023",
+        "CWE-307"
+      ],
+      "findingIds": [],
+      "requirement": "Repeated failed sign-ins are slowed down or locked",
+      "dependencies": [],
+      "executionIds": [],
+      "proofStrategy": "runtime_proof",
+      "expectedControl": "Rate limiting or lockout on sign-in",
+      "applicabilityEvidence": [
+        {
+          "line": 26,
+          "path": "src/app.js",
+          "endLine": 31
+        },
+        {
+          "line": 26,
+          "path": "src/app.js",
+          "endLine": 31
+        }
+      ]
+    },
+    {
+      "id": "sec:deps:package.json",
+      "lane": "dependencies",
+      "asset": {
+        "ref": "package.json",
+        "kind": "manifest",
+        "label": "package.json"
+      },
+      "reason": "1 confirmed finding(s).",
+      "status": "failed",
+      "category": "dependencies",
+      "priority": "high",
+      "standards": [
+        "ASVS-5.0:V15 Secure Coding and Architecture",
+        "CWE-1395"
+      ],
+      "findingIds": [
+        "S1"
+      ],
+      "requirement": "No dependency in package.json has a known vulnerability at its resolved version",
+      "dependencies": [
+        "manifest:package.json"
+      ],
+      "executionIds": [
+        "3d61d3ed-ca8b-44b0-9a79-1ee34c42957b"
+      ],
+      "proofStrategy": "dependency_scan",
+      "expectedControl": "Patched versions, pinned by a lockfile",
+      "applicabilityEvidence": [
+        {
+          "line": 1,
+          "path": "package.json"
+        }
+      ]
+    },
+    {
+      "id": "sec:sast:xss",
+      "lane": "injection",
+      "asset": {
+        "ref": ".",
+        "kind": "repository",
+        "label": "7 JavaScript, TypeScript and Python file(s)"
+      },
+      "reason": "1 suspected match(es): they need a runtime proof (Round 2) or a review.",
+      "status": "inconclusive",
+      "category": "xss",
+      "priority": "high",
+      "standards": [
+        "ASVS-5.0:V1 Encoding and Sanitization",
+        "ASVS-5.0:V3 Web Frontend Security",
+        "CWE-79"
+      ],
+      "findingIds": [
+        "S5"
+      ],
+      "requirement": "Request input is never written into HTML unescaped",
+      "dependencies": [],
+      "executionIds": [
+        "3d61d3ed-ca8b-44b0-9a79-1ee34c42957b"
+      ],
+      "proofStrategy": "sast_rule",
+      "expectedControl": "Output encoding or a templating engine that escapes",
+      "applicabilityEvidence": []
+    },
+    {
+      "id": "sec:sast:path-traversal",
+      "lane": "injection",
+      "asset": {
+        "ref": ".",
+        "kind": "repository",
+        "label": "7 JavaScript, TypeScript and Python file(s)"
+      },
+      "reason": "1 suspected match(es): they need a runtime proof (Round 2) or a review.",
+      "status": "inconclusive",
+      "category": "path-traversal",
+      "priority": "high",
+      "standards": [
+        "ASVS-5.0:V5 File Handling",
+        "CWE-22"
+      ],
+      "findingIds": [
+        "S7"
+      ],
+      "requirement": "File paths built from request input stay inside their directory",
+      "dependencies": [],
+      "executionIds": [
+        "3d61d3ed-ca8b-44b0-9a79-1ee34c42957b"
+      ],
+      "proofStrategy": "sast_rule",
+      "expectedControl": "Resolve and check the path, or an allow-list of names",
+      "applicabilityEvidence": []
+    },
+    {
+      "id": "sec:sast:ssrf",
+      "lane": "injection",
+      "asset": {
+        "ref": ".",
+        "kind": "repository",
+        "label": "7 JavaScript, TypeScript and Python file(s)"
+      },
+      "reason": "1 suspected match(es): they need a runtime proof (Round 2) or a review.",
+      "status": "inconclusive",
+      "category": "ssrf",
+      "priority": "high",
+      "standards": [
+        "ASVS-5.0:V4 API and Web Service",
+        "API7:2023",
+        "CWE-918"
+      ],
+      "findingIds": [
+        "S8"
+      ],
+      "requirement": "The server never fetches a URL taken from request input without an allow-list",
+      "dependencies": [],
+      "executionIds": [
+        "3d61d3ed-ca8b-44b0-9a79-1ee34c42957b"
+      ],
+      "proofStrategy": "sast_rule",
+      "expectedControl": "Allow-listed hosts, no internal addresses",
+      "applicabilityEvidence": []
+    },
+    {
+      "id": "sec:sast:unsafe-deserialization",
+      "lane": "injection",
+      "asset": {
+        "ref": ".",
+        "kind": "repository",
+        "label": "7 JavaScript, TypeScript and Python file(s)"
+      },
+      "reason": "No match in 7 JavaScript, TypeScript and Python file(s) for Cybercheck's rule pack 2194c1374f4ba2e8; static rules cover known patterns only.",
+      "status": "passed",
+      "category": "unsafe-deserialization",
+      "priority": "high",
+      "standards": [
+        "ASVS-5.0:V15 Secure Coding and Architecture",
+        "CWE-502"
+      ],
+      "findingIds": [],
+      "requirement": "Untrusted data is never deserialised into objects or code",
+      "dependencies": [],
+      "executionIds": [
+        "3d61d3ed-ca8b-44b0-9a79-1ee34c42957b"
+      ],
+      "proofStrategy": "sast_rule",
+      "expectedControl": "Safe parsers (JSON, yaml.safe_load)",
+      "applicabilityEvidence": []
+    },
+    {
+      "id": "sec:sast:mass-assignment",
+      "lane": "access_control",
+      "asset": {
+        "ref": ".",
+        "kind": "repository",
+        "label": "7 JavaScript, TypeScript and Python file(s)"
+      },
+      "reason": "1 suspected match(es): they need a runtime proof (Round 2) or a review.",
+      "status": "inconclusive",
+      "category": "mass-assignment",
+      "priority": "high",
+      "standards": [
+        "ASVS-5.0:V2 Validation and Business Logic",
+        "API3:2023",
+        "CWE-915"
+      ],
+      "findingIds": [
+        "S4"
+      ],
+      "requirement": "Request bodies are never copied onto stored records wholesale",
+      "dependencies": [],
+      "executionIds": [
+        "3d61d3ed-ca8b-44b0-9a79-1ee34c42957b"
+      ],
+      "proofStrategy": "sast_rule",
+      "expectedControl": "An allow-list of writable fields",
+      "applicabilityEvidence": []
+    },
+    {
+      "id": "sec:config:csrf",
+      "lane": "configuration",
+      "asset": {
+        "ref": "csrf",
+        "kind": "config",
+        "label": "cross-site request forgery"
+      },
+      "reason": "No cookie-authenticated state-changing request was found (bearer tokens are not sent cross-site by browsers).",
+      "status": "not_applicable",
+      "category": "session",
+      "priority": "high",
+      "standards": [
+        "ASVS-5.0:V7 Session Management",
+        "CWE-352"
+      ],
+      "findingIds": [],
+      "requirement": "State-changing requests authenticated by a cookie are protected against cross-site requests",
+      "dependencies": [
+        "control:csrf"
+      ],
+      "executionIds": [],
+      "proofStrategy": "config_rule",
+      "expectedControl": "SameSite cookies, a CSRF token, or an origin check",
+      "applicabilityEvidence": []
+    },
+    {
+      "id": "sec:privacy:entity:sql:customers",
+      "lane": "privacy",
+      "asset": {
+        "ref": "entity:sql:customers",
+        "kind": "entity",
+        "label": "customers"
+      },
+      "reason": "Needs a runtime proof against the running app, which arrives in Round 2; counted as not yet tested.",
+      "status": "unsupported",
+      "category": "data exposure",
+      "priority": "high",
+      "standards": [
+        "ASVS-5.0:V14 Data Protection",
+        "API3:2023",
+        "CWE-213"
+      ],
+      "findingIds": [],
+      "requirement": "customers holds email (personal): these fields are only returned to callers allowed to see them",
+      "dependencies": [
+        "entity:sql:customers"
+      ],
+      "executionIds": [],
+      "proofStrategy": "runtime_proof",
+      "expectedControl": "Field-level filtering in responses",
+      "applicabilityEvidence": [
+        {
+          "line": 6,
+          "path": "src/database.js"
+        }
+      ]
+    },
+    {
+      "id": "sec:endpoint:GET /api/assistant/history:input-handling",
+      "lane": "injection",
+      "asset": {
+        "ref": "endpoint:GET /api/assistant/history",
+        "kind": "endpoint",
+        "label": "GET /api/assistant/history"
+      },
+      "reason": "Needs a runtime proof against the running app, which arrives in Round 2; counted as not yet tested.",
+      "status": "unsupported",
+      "category": "injection",
+      "priority": "medium",
+      "standards": [
+        "ASVS-5.0:V1 Encoding and Sanitization",
+        "ASVS-5.0:V2 Validation and Business Logic",
+        "CWE-74"
+      ],
+      "findingIds": [],
+      "requirement": "GET /api/assistant/history treats its inputs as data (no injection into queries, commands, paths, URLs or HTML)",
+      "dependencies": [],
+      "executionIds": [],
+      "proofStrategy": "runtime_proof",
+      "expectedControl": "Validation and context-specific encoding",
+      "applicabilityEvidence": [
+        {
+          "line": 159,
+          "path": "src/app.js",
+          "endLine": 159
+        },
+        {
+          "line": 159,
+          "path": "src/app.js",
+          "endLine": 159
+        },
+        {
+          "line": 19,
+          "path": "src/auth.js",
+          "endLine": 24
+        }
+      ]
+    },
+    {
+      "id": "sec:endpoint:GET /api/catalog:input-handling",
+      "lane": "injection",
+      "asset": {
+        "ref": "endpoint:GET /api/catalog",
+        "kind": "endpoint",
+        "label": "GET /api/catalog"
+      },
+      "reason": "Needs a runtime proof against the running app, which arrives in Round 2; counted as not yet tested.",
+      "status": "unsupported",
+      "category": "injection",
+      "priority": "medium",
+      "standards": [
+        "ASVS-5.0:V1 Encoding and Sanitization",
+        "ASVS-5.0:V2 Validation and Business Logic",
+        "CWE-74"
+      ],
+      "findingIds": [],
+      "requirement": "GET /api/catalog treats its inputs as data (no injection into queries, commands, paths, URLs or HTML)",
+      "dependencies": [],
+      "executionIds": [],
+      "proofStrategy": "runtime_proof",
+      "expectedControl": "Validation and context-specific encoding",
+      "applicabilityEvidence": [
+        {
+          "line": 61,
+          "path": "src/app.js",
+          "endLine": 68
+        },
+        {
+          "line": 61,
+          "path": "src/app.js",
+          "endLine": 68
+        }
+      ]
+    },
+    {
+      "id": "sec:endpoint:GET /api/data/customers:input-handling",
+      "lane": "injection",
+      "asset": {
+        "ref": "endpoint:GET /api/data/customers",
+        "kind": "endpoint",
+        "label": "GET /api/data/customers"
+      },
+      "reason": "Needs a runtime proof against the running app, which arrives in Round 2; counted as not yet tested.",
+      "status": "unsupported",
+      "category": "injection",
+      "priority": "medium",
+      "standards": [
+        "ASVS-5.0:V1 Encoding and Sanitization",
+        "ASVS-5.0:V2 Validation and Business Logic",
+        "CWE-74"
+      ],
+      "findingIds": [],
+      "requirement": "GET /api/data/customers treats its inputs as data (no injection into queries, commands, paths, URLs or HTML)",
+      "dependencies": [],
+      "executionIds": [],
+      "proofStrategy": "runtime_proof",
+      "expectedControl": "Validation and context-specific encoding",
+      "applicabilityEvidence": [
+        {
+          "line": 177,
+          "path": "src/app.js",
+          "endLine": 179
+        },
+        {
+          "line": 177,
+          "path": "src/app.js",
+          "endLine": 179
+        },
+        {
+          "line": 19,
+          "path": "src/auth.js",
+          "endLine": 24
+        }
+      ]
+    },
+    {
+      "id": "sec:endpoint:GET /api/diagnostics/error:input-handling",
+      "lane": "injection",
+      "asset": {
+        "ref": "endpoint:GET /api/diagnostics/error",
+        "kind": "endpoint",
+        "label": "GET /api/diagnostics/error"
+      },
+      "reason": "Needs a runtime proof against the running app, which arrives in Round 2; counted as not yet tested.",
+      "status": "unsupported",
+      "category": "injection",
+      "priority": "medium",
+      "standards": [
+        "ASVS-5.0:V1 Encoding and Sanitization",
+        "ASVS-5.0:V2 Validation and Business Logic",
+        "CWE-74"
+      ],
+      "findingIds": [],
+      "requirement": "GET /api/diagnostics/error treats its inputs as data (no injection into queries, commands, paths, URLs or HTML)",
+      "dependencies": [],
+      "executionIds": [],
+      "proofStrategy": "runtime_proof",
+      "expectedControl": "Validation and context-specific encoding",
+      "applicabilityEvidence": [
+        {
+          "line": 173,
+          "path": "src/app.js",
+          "endLine": 175
+        },
+        {
+          "line": 173,
+          "path": "src/app.js",
+          "endLine": 175
+        }
+      ]
+    },
+    {
+      "id": "sec:endpoint:GET /api/files:input-handling",
+      "lane": "injection",
+      "asset": {
+        "ref": "endpoint:GET /api/files",
+        "kind": "endpoint",
+        "label": "GET /api/files"
+      },
+      "reason": "Needs a runtime proof against the running app, which arrives in Round 2; counted as not yet tested.",
+      "status": "unsupported",
+      "category": "injection",
+      "priority": "medium",
+      "standards": [
+        "ASVS-5.0:V1 Encoding and Sanitization",
+        "ASVS-5.0:V2 Validation and Business Logic",
+        "CWE-74"
+      ],
+      "findingIds": [],
+      "requirement": "GET /api/files treats its inputs as data (no injection into queries, commands, paths, URLs or HTML)",
+      "dependencies": [],
+      "executionIds": [],
+      "proofStrategy": "runtime_proof",
+      "expectedControl": "Validation and context-specific encoding",
+      "applicabilityEvidence": [
+        {
+          "line": 131,
+          "path": "src/app.js",
+          "endLine": 140
+        },
+        {
+          "line": 131,
+          "path": "src/app.js",
+          "endLine": 140
+        },
+        {
+          "line": 19,
+          "path": "src/auth.js",
+          "endLine": 24
+        }
+      ]
+    },
+    {
+      "id": "sec:endpoint:GET /api/orders:input-handling",
+      "lane": "injection",
+      "asset": {
+        "ref": "endpoint:GET /api/orders",
+        "kind": "endpoint",
+        "label": "GET /api/orders"
+      },
+      "reason": "Needs a runtime proof against the running app, which arrives in Round 2; counted as not yet tested.",
+      "status": "unsupported",
+      "category": "injection",
+      "priority": "medium",
+      "standards": [
+        "ASVS-5.0:V1 Encoding and Sanitization",
+        "ASVS-5.0:V2 Validation and Business Logic",
+        "CWE-74"
+      ],
+      "findingIds": [],
+      "requirement": "GET /api/orders treats its inputs as data (no injection into queries, commands, paths, URLs or HTML)",
+      "dependencies": [],
+      "executionIds": [],
+      "proofStrategy": "runtime_proof",
+      "expectedControl": "Validation and context-specific encoding",
+      "applicabilityEvidence": [
+        {
+          "line": 93,
+          "path": "src/app.js",
+          "endLine": 98
+        },
+        {
+          "line": 93,
+          "path": "src/app.js",
+          "endLine": 98
+        },
+        {
+          "line": 19,
+          "path": "src/auth.js",
+          "endLine": 24
+        }
+      ]
+    },
+    {
+      "id": "sec:endpoint:GET /api/redirect:input-handling",
+      "lane": "injection",
+      "asset": {
+        "ref": "endpoint:GET /api/redirect",
+        "kind": "endpoint",
+        "label": "GET /api/redirect"
+      },
+      "reason": "Needs a runtime proof against the running app, which arrives in Round 2; counted as not yet tested.",
+      "status": "unsupported",
+      "category": "injection",
+      "priority": "medium",
+      "standards": [
+        "ASVS-5.0:V1 Encoding and Sanitization",
+        "ASVS-5.0:V2 Validation and Business Logic",
+        "CWE-74"
+      ],
+      "findingIds": [],
+      "requirement": "GET /api/redirect treats its inputs as data (no injection into queries, commands, paths, URLs or HTML)",
+      "dependencies": [],
+      "executionIds": [],
+      "proofStrategy": "runtime_proof",
+      "expectedControl": "Validation and context-specific encoding",
+      "applicabilityEvidence": [
+        {
+          "line": 76,
+          "path": "src/app.js",
+          "endLine": 76
+        },
+        {
+          "line": 76,
+          "path": "src/app.js",
+          "endLine": 76
+        }
+      ]
+    },
+    {
+      "id": "sec:endpoint:GET /api/reports/slow:input-handling",
+      "lane": "injection",
+      "asset": {
+        "ref": "endpoint:GET /api/reports/slow",
+        "kind": "endpoint",
+        "label": "GET /api/reports/slow"
+      },
+      "reason": "Needs a runtime proof against the running app, which arrives in Round 2; counted as not yet tested.",
+      "status": "unsupported",
+      "category": "injection",
+      "priority": "medium",
+      "standards": [
+        "ASVS-5.0:V1 Encoding and Sanitization",
+        "ASVS-5.0:V2 Validation and Business Logic",
+        "CWE-74"
+      ],
+      "findingIds": [],
+      "requirement": "GET /api/reports/slow treats its inputs as data (no injection into queries, commands, paths, URLs or HTML)",
+      "dependencies": [],
+      "executionIds": [],
+      "proofStrategy": "runtime_proof",
+      "expectedControl": "Validation and context-specific encoding",
+      "applicabilityEvidence": [
+        {
+          "line": 161,
+          "path": "src/app.js",
+          "endLine": 166
+        },
+        {
+          "line": 161,
+          "path": "src/app.js",
+          "endLine": 166
+        },
+        {
+          "line": 19,
+          "path": "src/auth.js",
+          "endLine": 24
+        }
+      ]
+    },
+    {
+      "id": "sec:endpoint:GET /api/search:input-handling",
+      "lane": "injection",
+      "asset": {
+        "ref": "endpoint:GET /api/search",
+        "kind": "endpoint",
+        "label": "GET /api/search"
+      },
+      "reason": "Needs a runtime proof against the running app, which arrives in Round 2; counted as not yet tested.",
+      "status": "unsupported",
+      "category": "injection",
+      "priority": "medium",
+      "standards": [
+        "ASVS-5.0:V1 Encoding and Sanitization",
+        "ASVS-5.0:V2 Validation and Business Logic",
+        "CWE-74"
+      ],
+      "findingIds": [],
+      "requirement": "GET /api/search treats its inputs as data (no injection into queries, commands, paths, URLs or HTML)",
+      "dependencies": [],
+      "executionIds": [],
+      "proofStrategy": "runtime_proof",
+      "expectedControl": "Validation and context-specific encoding",
+      "applicabilityEvidence": [
+        {
+          "line": 70,
+          "path": "src/app.js",
+          "endLine": 74
+        },
+        {
+          "line": 70,
+          "path": "src/app.js",
+          "endLine": 74
+        }
+      ]
+    },
+    {
+      "id": "sec:endpoint:GET /assistant:input-handling",
+      "lane": "injection",
+      "asset": {
+        "ref": "endpoint:GET /assistant",
+        "kind": "endpoint",
+        "label": "GET /assistant"
+      },
+      "reason": "Needs a runtime proof against the running app, which arrives in Round 2; counted as not yet tested.",
+      "status": "unsupported",
+      "category": "injection",
+      "priority": "medium",
+      "standards": [
+        "ASVS-5.0:V1 Encoding and Sanitization",
+        "ASVS-5.0:V2 Validation and Business Logic",
+        "CWE-74"
+      ],
+      "findingIds": [],
+      "requirement": "GET /assistant treats its inputs as data (no injection into queries, commands, paths, URLs or HTML)",
+      "dependencies": [],
+      "executionIds": [],
+      "proofStrategy": "runtime_proof",
+      "expectedControl": "Validation and context-specific encoding",
+      "applicabilityEvidence": [
+        {
+          "line": 22,
+          "path": "src/app.js",
+          "endLine": 22
+        },
+        {
+          "line": 22,
+          "path": "src/app.js",
+          "endLine": 22
+        }
+      ]
+    },
+    {
+      "id": "sec:endpoint:GET /health:input-handling",
+      "lane": "injection",
+      "asset": {
+        "ref": "endpoint:GET /health",
+        "kind": "endpoint",
+        "label": "GET /health"
+      },
+      "reason": "Needs a runtime proof against the running app, which arrives in Round 2; counted as not yet tested.",
+      "status": "unsupported",
+      "category": "injection",
+      "priority": "medium",
+      "standards": [
+        "ASVS-5.0:V1 Encoding and Sanitization",
+        "ASVS-5.0:V2 Validation and Business Logic",
+        "CWE-74"
+      ],
+      "findingIds": [],
+      "requirement": "GET /health treats its inputs as data (no injection into queries, commands, paths, URLs or HTML)",
+      "dependencies": [],
+      "executionIds": [],
+      "proofStrategy": "runtime_proof",
+      "expectedControl": "Validation and context-specific encoding",
+      "applicabilityEvidence": [
+        {
+          "line": 24,
+          "path": "src/app.js",
+          "endLine": 24
+        },
+        {
+          "line": 24,
+          "path": "src/app.js",
+          "endLine": 24
+        }
+      ]
+    },
+    {
+      "id": "sec:sast:open-redirect",
+      "lane": "injection",
+      "asset": {
+        "ref": ".",
+        "kind": "repository",
+        "label": "7 JavaScript, TypeScript and Python file(s)"
+      },
+      "reason": "1 suspected match(es): they need a runtime proof (Round 2) or a review.",
+      "status": "inconclusive",
+      "category": "open-redirect",
+      "priority": "medium",
+      "standards": [
+        "ASVS-5.0:V2 Validation and Business Logic",
+        "CWE-601"
+      ],
+      "findingIds": [
+        "S6"
+      ],
+      "requirement": "Redirects never go to a location taken from request input",
+      "dependencies": [],
+      "executionIds": [
+        "3d61d3ed-ca8b-44b0-9a79-1ee34c42957b"
+      ],
+      "proofStrategy": "sast_rule",
+      "expectedControl": "Relative paths or an allow-list",
+      "applicabilityEvidence": []
+    },
+    {
+      "id": "sec:sast:credentials-in-logs",
+      "lane": "logging",
+      "asset": {
+        "ref": ".",
+        "kind": "repository",
+        "label": "7 JavaScript, TypeScript and Python file(s)"
+      },
+      "reason": "1 suspected match(es): they need a runtime proof (Round 2) or a review.",
+      "status": "inconclusive",
+      "category": "credentials-in-logs",
+      "priority": "medium",
+      "standards": [
+        "ASVS-5.0:V16 Security Logging and Error Handling",
+        "CWE-532"
+      ],
+      "findingIds": [
+        "S3"
+      ],
+      "requirement": "Passwords, tokens and request bodies with credentials are never logged",
+      "dependencies": [],
+      "executionIds": [
+        "3d61d3ed-ca8b-44b0-9a79-1ee34c42957b"
+      ],
+      "proofStrategy": "sast_rule",
+      "expectedControl": "Redacted or field-limited logging",
+      "applicabilityEvidence": []
+    },
+    {
+      "id": "sec:sast:error-disclosure",
+      "lane": "logging",
+      "asset": {
+        "ref": ".",
+        "kind": "repository",
+        "label": "7 JavaScript, TypeScript and Python file(s)"
+      },
+      "reason": "1 suspected match(es): they need a runtime proof (Round 2) or a review.",
+      "status": "inconclusive",
+      "category": "error-disclosure",
+      "priority": "medium",
+      "standards": [
+        "ASVS-5.0:V16 Security Logging and Error Handling",
+        "CWE-209"
+      ],
+      "findingIds": [
+        "S9"
+      ],
+      "requirement": "Error responses never include stack traces or internal messages",
+      "dependencies": [],
+      "executionIds": [
+        "3d61d3ed-ca8b-44b0-9a79-1ee34c42957b"
+      ],
+      "proofStrategy": "sast_rule",
+      "expectedControl": "A generic error response, details only in server logs",
+      "applicabilityEvidence": []
+    },
+    {
+      "id": "sec:sast:debug-mode",
+      "lane": "configuration",
+      "asset": {
+        "ref": ".",
+        "kind": "repository",
+        "label": "7 JavaScript, TypeScript and Python file(s)"
+      },
+      "reason": "No match in 7 JavaScript, TypeScript and Python file(s) for Cybercheck's rule pack 2194c1374f4ba2e8; static rules cover known patterns only.",
+      "status": "passed",
+      "category": "debug-mode",
+      "priority": "medium",
+      "standards": [
+        "ASVS-5.0:V13 Configuration",
+        "CWE-489"
+      ],
+      "findingIds": [],
+      "requirement": "Debug modes are off in the shipped configuration",
+      "dependencies": [],
+      "executionIds": [
+        "3d61d3ed-ca8b-44b0-9a79-1ee34c42957b"
+      ],
+      "proofStrategy": "sast_rule",
+      "expectedControl": "Debug flags off by default",
+      "applicabilityEvidence": []
+    },
+    {
+      "id": "sec:sast:weak-crypto",
+      "lane": "crypto",
+      "asset": {
+        "ref": ".",
+        "kind": "repository",
+        "label": "7 JavaScript, TypeScript and Python file(s)"
+      },
+      "reason": "No match in 7 JavaScript, TypeScript and Python file(s) for Cybercheck's rule pack 2194c1374f4ba2e8; static rules cover known patterns only.",
+      "status": "passed",
+      "category": "weak-crypto",
+      "priority": "medium",
+      "standards": [
+        "ASVS-5.0:V11 Cryptography",
+        "CWE-327",
+        "CWE-338"
+      ],
+      "findingIds": [],
+      "requirement": "No broken hash or cipher protects secrets or integrity, and security tokens use a secure random source",
+      "dependencies": [],
+      "executionIds": [
+        "3d61d3ed-ca8b-44b0-9a79-1ee34c42957b"
+      ],
+      "proofStrategy": "sast_rule",
+      "expectedControl": "Modern algorithms and crypto-grade randomness",
+      "applicabilityEvidence": []
+    },
+    {
+      "id": "sec:config:cors",
+      "lane": "configuration",
+      "asset": {
+        "ref": "cors",
+        "kind": "config",
+        "label": "CORS"
+      },
+      "reason": "1 confirmed finding(s).",
+      "status": "failed",
+      "category": "configuration",
+      "priority": "medium",
+      "standards": [
+        "ASVS-5.0:V3 Web Frontend Security",
+        "API8:2023",
+        "CWE-942"
+      ],
+      "findingIds": [
+        "S2"
+      ],
+      "requirement": "CORS does not let any origin read authenticated responses",
+      "dependencies": [],
+      "executionIds": [
+        "3d61d3ed-ca8b-44b0-9a79-1ee34c42957b"
+      ],
+      "proofStrategy": "config_rule",
+      "expectedControl": "An allow-list of origins",
+      "applicabilityEvidence": []
+    },
+    {
+      "id": "sec:config:session-cookie",
+      "lane": "configuration",
+      "asset": {
+        "ref": "session",
+        "kind": "config",
+        "label": "session cookie"
+      },
+      "reason": "No cookie-based session library was found in the code.",
+      "status": "not_applicable",
+      "category": "session",
+      "priority": "medium",
+      "standards": [
+        "ASVS-5.0:V7 Session Management",
+        "CWE-1004",
+        "CWE-614"
+      ],
+      "findingIds": [],
+      "requirement": "The session cookie is HttpOnly, Secure and SameSite",
+      "dependencies": [],
+      "executionIds": [],
+      "proofStrategy": "config_rule",
+      "expectedControl": "Cookie flags set where the session is configured",
+      "applicabilityEvidence": []
+    },
+    {
+      "id": "sec:config:security-headers",
+      "lane": "configuration",
+      "asset": {
+        "ref": "headers",
+        "kind": "config",
+        "label": "HTTP security headers"
+      },
+      "reason": "1 suspected match(es): they need a runtime proof (Round 2) or a review.",
+      "status": "inconclusive",
+      "category": "configuration",
+      "priority": "low",
+      "standards": [
+        "ASVS-5.0:V3 Web Frontend Security",
+        "API8:2023",
+        "CWE-693"
+      ],
+      "findingIds": [
+        "S13"
+      ],
+      "requirement": "Responses carry the standard security headers (content type options, frame protection, a content security policy for pages)",
+      "dependencies": [
+        "control:security_headers"
+      ],
+      "executionIds": [],
+      "proofStrategy": "config_rule",
+      "expectedControl": "Header middleware or a reverse-proxy configuration",
+      "applicabilityEvidence": []
+    }
+  ],
+  "executions": [
+    {
+      "id": "075c95ac-cbf4-4e91-b06b-23e5f171f4aa",
+      "kind": "security_tools",
+      "label": "Verify the security tool image",
+      "command": "test -x /opt/cc-sec/bin/gitleaks && test -x /opt/cc-sec/bin/osv-scanner && test -x /opt/cc-sec/bin/trivy && test -x /opt/cc-sec/venv/bin/semgrep && cat /opt/cc-sec/versions.json",
+      "network": false,
+      "outcome": "ok",
+      "retryOf": null,
+      "sandbox": {
+        "imageId": "e6ff6168-a1c1-453e-a408-b825b0986a54",
+        "provider": "nebius-sandboxes",
+        "operationId": "01a13a92-8334-7556-a592-f6930295d0ce"
+      },
+      "envNames": [],
+      "exitCode": 0,
+      "timedOut": false,
+      "artifacts": [
+        {
+          "key": "testing/09ac58b0-6949-4222-aab3-d35e6d65be92/075c95ac-cbf4-4e91-b06b-23e5f171f4aa/output.txt",
+          "name": "output.txt",
+          "bytes": 167,
+          "sha256": "6309306da83ecefd20abed5f97f5ee278f60565240d8511699b9a003743bac72"
+        }
+      ],
+      "resources": {
+        "maxRssKb": 9872,
+        "cpuSeconds": 0.002882
+      },
+      "startedAt": "2026-10-14T13:20:42.959Z",
+      "workspace": null,
+      "durationMs": 2762,
+      "finishedAt": "2026-10-14T13:20:45.734Z",
+      "outputTail": "{\"semgrep\": \"1.95.0\", \"gitleaks\": \"8.21.2\", \"osvScanner\": \"1.9.1\", \"trivy\": \"0.74.0\", \"osvDatabaseAt\": \"2026-10-14T12:04:03Z\", \"trivyChecksAt\": \"2026-10-14T12:04:04Z\"}"
+    },
+    {
+      "id": "3d61d3ed-ca8b-44b0-9a79-1ee34c42957b",
+      "kind": "security_scan",
+      "label": "Scan the snapshot (secrets, dependencies, code rules, configuration)",
+      "command": "bash <<'CC_SCAN'\nset -uo pipefail\nexport PATH=/opt/cc-sec/venv/bin:/opt/cc-sec/bin:$PATH SEMGREP_ENABLE_VERSION_CHECK=0 SEMGREP_SEND_METRICS=off OSV_SCANNER_LOCAL_DB_CACHE_DIRECTORY=/opt/cc-sec/osv-db\nrm -rf /cc-out /work/app && mkdir -p /cc-out /work/app\ntar xzf /in/snapshot.tgz -C /work/app --no-same-owner\ncd /work/app\ntimeout 300 gitleaks detect --no-git --source /work/app --report-format json --report-path /cc-out/gitleaks.json --exit-code 0 > /cc-out/gitleaks.log 2>&1; echo $? > /cc-out/gitleaks.exit\ntimeout 600 semgrep scan --metrics=off --disable-version-check --config /cc-rules/javascript.yml --config /cc-rules/python.yml --json --output /cc-out/semgrep.json --timeout 30 --max-target-bytes 1000000 /work/app > /cc-out/semgrep.log 2>&1; echo $? > /cc-out/semgrep.exit\ntimeout 300 osv-scanner scan --experimental-offline --format json --output /cc-out/osv.json -r /work/app > /cc-out/osv.log 2>&1; echo $? > /cc-out/osv.exit\ntimeout 300 trivy config --quiet --skip-version-check --skip-check-update --cache-dir /opt/cc-sec/trivy-cache -f json -o /cc-out/trivy.json /work/app > /cc-out/trivy.log 2>&1; echo $? > /cc-out/trivy.exit\nfor t in gitleaks semgrep osv trivy; do printf '%s=%s ' \"$t\" \"$(cat /cc-out/$t.exit)\"; done; echo\nCC_SCAN",
+      "network": false,
+      "outcome": "ok",
+      "retryOf": null,
+      "sandbox": {
+        "imageId": "e6ff6168-a1c1-453e-a408-b825b0986a54",
+        "provider": "nebius-sandboxes",
+        "operationId": "01a13a92-9129-7229-8cfe-a167f5a91f5a"
+      },
+      "envNames": [],
+      "exitCode": 0,
+      "timedOut": false,
+      "artifacts": [
+        {
+          "key": "testing/09ac58b0-6949-4222-aab3-d35e6d65be92/3d61d3ed-ca8b-44b0-9a79-1ee34c42957b/output.txt",
+          "name": "output.txt",
+          "bytes": 36,
+          "sha256": "45c84fda9b2da4525684e0eb5177c53a89fe474c0a81306127c20efe8d121fa8"
+        }
+      ],
+      "resources": {
+        "maxRssKb": 3390200,
+        "cpuSeconds": 31.870312000000002
+      },
+      "startedAt": "2026-10-14T13:20:46.529Z",
+      "workspace": null,
+      "durationMs": 18301,
+      "finishedAt": "2026-10-14T13:21:04.841Z",
+      "outputTail": "gitleaks=0 semgrep=0 osv=1 trivy=0 \n"
+    }
+  ],
+  "findings": [
+    {
+      "id": "S1",
+      "cwe": [
+        "CWE-1395"
+      ],
+      "lane": "dependencies",
+      "owasp": [
+        "A06:2021"
+      ],
+      "title": "qs 6.14.2 has 3 known vulnerabilities (CVE-2026-82417, CVE-2026-8723, CVE-2026-82562)",
+      "trust": "tool_observation",
+      "impact": "A published weakness in a library the app ships; impact depends on how the app uses it.",
+      "secret": null,
+      "status": "confirmed",
+      "category": "dependencies",
+      "detector": {
+        "rule": "OSV database 2026-10-14T12:04:03Z",
+        "tool": "osv-scanner",
+        "version": "1.9.1"
+      },
+      "evidence": [
+        {
+          "line": 50,
+          "path": "package-lock.json"
+        }
+      ],
+      "expected": "No dependency has a known vulnerability at its installed version",
+      "location": {
+        "line": 50,
+        "path": "package-lock.json"
+      },
+      "observed": "npm qs@6.14.2 (from package-lock.json) matches CVE-2026-82417, CVE-2026-8723, CVE-2026-82562. qs: Denial of Service via Attacker Controlled isBuffer",
+      "severity": "medium",
+      "rootCause": "dep:npm:qs@6.14.2",
+      "remediation": "Upgrade to a fixed version and refresh the lockfile.",
+      "confirmation": "The installed version is pinned by a lockfile and matches the advisory exactly.",
+      "executionIds": [
+        "3d61d3ed-ca8b-44b0-9a79-1ee34c42957b"
+      ],
+      "obligationIds": [
+        "sec:deps:package.json"
+      ]
+    },
+    {
+      "id": "S2",
+      "cwe": [
+        "CWE-942"
+      ],
+      "lane": "configuration",
+      "owasp": [
+        "A05:2021",
+        "API8:2023"
+      ],
+      "title": "CORS allows every origin (src/app.js:15)",
+      "trust": "tool_observation",
+      "impact": "A weakness in code that handles security-relevant data.",
+      "secret": null,
+      "status": "confirmed",
+      "category": "cors",
+      "detector": {
+        "rule": "cc.js.cors-any-origin (pack 2194c1374f4ba2e8)",
+        "tool": "semgrep",
+        "version": "1.95.0"
+      },
+      "evidence": [
+        {
+          "line": 15,
+          "path": "src/app.js"
+        }
+      ],
+      "expected": "Code does not match cc.js.cors-any-origin",
+      "location": {
+        "line": 15,
+        "path": "src/app.js"
+      },
+      "observed": "CORS allows every origin at src/app.js:15.",
+      "severity": "medium",
+      "rootCause": "sast:cors:src/app.js",
+      "remediation": "Allow only the origins that need access.",
+      "confirmation": "Effective repository configuration: confirmed statically.",
+      "executionIds": [
+        "3d61d3ed-ca8b-44b0-9a79-1ee34c42957b"
+      ],
+      "obligationIds": [
+        "sec:config:cors"
+      ]
+    },
+    {
+      "id": "S3",
+      "cwe": [
+        "CWE-532"
+      ],
+      "lane": "logging",
+      "owasp": [
+        "A09:2021"
+      ],
+      "title": "A request body or a password is written to the logs (POST /api/login)",
+      "trust": "tool_observation",
+      "impact": "A weakness in code that handles security-relevant data.",
+      "secret": null,
+      "status": "suspected",
+      "category": "credentials-in-logs",
+      "detector": {
+        "rule": "cc.js.credentials-in-logs (pack 2194c1374f4ba2e8)",
+        "tool": "semgrep",
+        "version": "1.95.0"
+      },
+      "evidence": [
+        {
+          "line": 27,
+          "path": "src/app.js"
+        }
+      ],
+      "expected": "Code does not match cc.js.credentials-in-logs",
+      "location": {
+        "line": 27,
+        "path": "src/app.js"
+      },
+      "observed": "A request body or a password is written to the logs at src/app.js:27, inside the handler of POST /api/login.",
+      "severity": "medium",
+      "rootCause": "sast:credentials-in-logs:endpoint:POST /api/login",
+      "remediation": "Log only the fields you need, never request bodies or passwords.",
+      "confirmation": "A code pattern match: suspected until a runtime proof or a review confirms it.",
+      "executionIds": [
+        "3d61d3ed-ca8b-44b0-9a79-1ee34c42957b"
+      ],
+      "obligationIds": [
+        "sec:sast:credentials-in-logs"
+      ]
+    },
+    {
+      "id": "S4",
+      "cwe": [
+        "CWE-915"
+      ],
+      "lane": "access_control",
+      "owasp": [
+        "A01:2021",
+        "API3:2023"
+      ],
+      "title": "The request body is copied onto a stored record wholesale, so a caller can set any field (role, owner, price) (PATCH /api/users/:id)",
+      "trust": "tool_observation",
+      "impact": "A weakness in code that handles security-relevant data.",
+      "secret": null,
+      "status": "suspected",
+      "category": "mass-assignment",
+      "detector": {
+        "rule": "cc.js.mass-assignment (pack 2194c1374f4ba2e8)",
+        "tool": "semgrep",
+        "version": "1.95.0"
+      },
+      "evidence": [
+        {
+          "line": 42,
+          "path": "src/app.js"
+        }
+      ],
+      "expected": "Code does not match cc.js.mass-assignment",
+      "location": {
+        "line": 42,
+        "path": "src/app.js"
+      },
+      "observed": "The request body is copied onto a stored record wholesale, so a caller can set any field (role, owner, price) at src/app.js:42, inside the handler of PATCH /api/users/:id.",
+      "severity": "medium",
+      "rootCause": "sast:mass-assignment:endpoint:PATCH /api/users/:id",
+      "remediation": "Copy only an allow-list of fields from the request body.",
+      "confirmation": "A code pattern match: suspected until a runtime proof or a review confirms it.",
+      "executionIds": [
+        "3d61d3ed-ca8b-44b0-9a79-1ee34c42957b"
+      ],
+      "obligationIds": [
+        "sec:sast:mass-assignment"
+      ]
+    },
+    {
+      "id": "S5",
+      "cwe": [
+        "CWE-79"
+      ],
+      "lane": "injection",
+      "owasp": [
+        "A03:2021"
+      ],
+      "title": "Request input is written into an HTML response without escaping (GET /api/search)",
+      "trust": "tool_observation",
+      "impact": "If the input reaches it as the trace suggests, an attacker controls part of the query, command, page, path or URL.",
+      "secret": null,
+      "status": "suspected",
+      "category": "xss",
+      "detector": {
+        "rule": "cc.js.xss (pack 2194c1374f4ba2e8)",
+        "tool": "semgrep",
+        "version": "1.95.0"
+      },
+      "evidence": [
+        {
+          "line": 73,
+          "path": "src/app.js"
+        }
+      ],
+      "expected": "Code does not match cc.js.xss",
+      "location": {
+        "line": 73,
+        "path": "src/app.js"
+      },
+      "observed": "Request input is written into an HTML response without escaping at src/app.js:73, inside the handler of GET /api/search.",
+      "severity": "high",
+      "rootCause": "sast:xss:endpoint:GET /api/search",
+      "remediation": "Escape output for HTML (or render with a template engine that escapes) before sending it.",
+      "confirmation": "Strong trace: request input reaches the sink inside the handler of GET /api/search. Injection is confirmed only by a runtime proof, which arrives in Round 2.",
+      "executionIds": [
+        "3d61d3ed-ca8b-44b0-9a79-1ee34c42957b"
+      ],
+      "obligationIds": [
+        "sec:sast:xss"
+      ]
+    },
+    {
+      "id": "S6",
+      "cwe": [
+        "CWE-601"
+      ],
+      "lane": "injection",
+      "owasp": [
+        "A01:2021"
+      ],
+      "title": "A redirect goes to a location taken from request input (GET /api/redirect)",
+      "trust": "tool_observation",
+      "impact": "If the input reaches it as the trace suggests, an attacker controls part of the query, command, page, path or URL.",
+      "secret": null,
+      "status": "suspected",
+      "category": "open-redirect",
+      "detector": {
+        "rule": "cc.js.open-redirect (pack 2194c1374f4ba2e8)",
+        "tool": "semgrep",
+        "version": "1.95.0"
+      },
+      "evidence": [
+        {
+          "line": 76,
+          "path": "src/app.js"
+        }
+      ],
+      "expected": "Code does not match cc.js.open-redirect",
+      "location": {
+        "line": 76,
+        "path": "src/app.js"
+      },
+      "observed": "A redirect goes to a location taken from request input at src/app.js:76, inside the handler of GET /api/redirect.",
+      "severity": "medium",
+      "rootCause": "sast:open-redirect:endpoint:GET /api/redirect",
+      "remediation": "Redirect only to relative paths or an allow-list of destinations.",
+      "confirmation": "Strong trace: request input reaches the sink inside the handler of GET /api/redirect. Injection is confirmed only by a runtime proof, which arrives in Round 2.",
+      "executionIds": [
+        "3d61d3ed-ca8b-44b0-9a79-1ee34c42957b"
+      ],
+      "obligationIds": [
+        "sec:sast:open-redirect"
+      ]
+    },
+    {
+      "id": "S7",
+      "cwe": [
+        "CWE-22"
+      ],
+      "lane": "injection",
+      "owasp": [
+        "A01:2021"
+      ],
+      "title": "A file path built from request input is read, written or sent without checking it stays in its directory (GET /api/files)",
+      "trust": "tool_observation",
+      "impact": "If the input reaches it as the trace suggests, an attacker controls part of the query, command, page, path or URL.",
+      "secret": null,
+      "status": "suspected",
+      "category": "path-traversal",
+      "detector": {
+        "rule": "cc.js.path-traversal (pack 2194c1374f4ba2e8)",
+        "tool": "semgrep",
+        "version": "1.95.0"
+      },
+      "evidence": [
+        {
+          "line": 136,
+          "path": "src/app.js"
+        }
+      ],
+      "expected": "Code does not match cc.js.path-traversal",
+      "location": {
+        "line": 136,
+        "path": "src/app.js"
+      },
+      "observed": "A file path built from request input is read, written or sent without checking it stays in its directory at src/app.js:136, inside the handler of GET /api/files.",
+      "severity": "high",
+      "rootCause": "sast:path-traversal:endpoint:GET /api/files",
+      "remediation": "Resolve the path and check it stays inside the allowed directory, or allow only known file names.",
+      "confirmation": "Strong trace: request input reaches the sink inside the handler of GET /api/files. Injection is confirmed only by a runtime proof, which arrives in Round 2.",
+      "executionIds": [
+        "3d61d3ed-ca8b-44b0-9a79-1ee34c42957b"
+      ],
+      "obligationIds": [
+        "sec:sast:path-traversal"
+      ]
+    },
+    {
+      "id": "S8",
+      "cwe": [
+        "CWE-918"
+      ],
+      "lane": "injection",
+      "owasp": [
+        "A10:2021",
+        "API7:2023"
+      ],
+      "title": "The server fetches a URL taken from request input (POST /api/integrations/preview)",
+      "trust": "tool_observation",
+      "impact": "If the input reaches it as the trace suggests, an attacker controls part of the query, command, page, path or URL.",
+      "secret": null,
+      "status": "suspected",
+      "category": "ssrf",
+      "detector": {
+        "rule": "cc.js.ssrf (pack 2194c1374f4ba2e8)",
+        "tool": "semgrep",
+        "version": "1.95.0"
+      },
+      "evidence": [
+        {
+          "line": 144,
+          "path": "src/app.js"
+        }
+      ],
+      "expected": "Code does not match cc.js.ssrf",
+      "location": {
+        "line": 144,
+        "path": "src/app.js"
+      },
+      "observed": "The server fetches a URL taken from request input at src/app.js:144, inside the handler of POST /api/integrations/preview.",
+      "severity": "high",
+      "rootCause": "sast:ssrf:endpoint:POST /api/integrations/preview",
+      "remediation": "Only fetch allow-listed hosts and refuse internal or link-local addresses.",
+      "confirmation": "Strong trace: request input reaches the sink inside the handler of POST /api/integrations/preview. Injection is confirmed only by a runtime proof, which arrives in Round 2.",
+      "executionIds": [
+        "3d61d3ed-ca8b-44b0-9a79-1ee34c42957b"
+      ],
+      "obligationIds": [
+        "sec:sast:ssrf"
+      ]
+    },
+    {
+      "id": "S9",
+      "cwe": [
+        "CWE-209"
+      ],
+      "lane": "logging",
+      "owasp": [
+        "A05:2021"
+      ],
+      "title": "An error response includes the stack trace (src/app.js:196)",
+      "trust": "tool_observation",
+      "impact": "A weakness in code that handles security-relevant data.",
+      "secret": null,
+      "status": "suspected",
+      "category": "error-disclosure",
+      "detector": {
+        "rule": "cc.js.error-disclosure (pack 2194c1374f4ba2e8)",
+        "tool": "semgrep",
+        "version": "1.95.0"
+      },
+      "evidence": [
+        {
+          "line": 196,
+          "path": "src/app.js"
+        }
+      ],
+      "expected": "Code does not match cc.js.error-disclosure",
+      "location": {
+        "line": 196,
+        "path": "src/app.js"
+      },
+      "observed": "An error response includes the stack trace at src/app.js:196.",
+      "severity": "medium",
+      "rootCause": "sast:error-disclosure:src/app.js",
+      "remediation": "Return a generic error; keep stack traces in the server logs.",
+      "confirmation": "A code pattern match: suspected until a runtime proof or a review confirms it.",
+      "executionIds": [
+        "3d61d3ed-ca8b-44b0-9a79-1ee34c42957b"
+      ],
+      "obligationIds": [
+        "sec:sast:error-disclosure"
+      ]
+    },
+    {
+      "id": "S10",
+      "cwe": [
+        "CWE-347"
+      ],
+      "lane": "auth",
+      "owasp": [
+        "A07:2021",
+        "API2:2023"
+      ],
+      "title": "A token is plain encoded JSON with no signature, so anyone can forge one (src/auth.js, reached from POST /api/login)",
+      "trust": "tool_observation",
+      "impact": "A weakness in code that handles security-relevant data.",
+      "secret": null,
+      "status": "suspected",
+      "category": "token-integrity",
+      "detector": {
+        "rule": "cc.js.unsigned-token (pack 2194c1374f4ba2e8)",
+        "tool": "semgrep",
+        "version": "1.95.0"
+      },
+      "evidence": [
+        {
+          "line": 5,
+          "path": "src/auth.js"
+        },
+        {
+          "line": 26,
+          "path": "src/app.js",
+          "endLine": 31
+        },
+        {
+          "line": 12,
+          "path": "src/auth.js"
+        }
+      ],
+      "expected": "Code does not match cc.js.unsigned-token",
+      "location": {
+        "line": 5,
+        "path": "src/auth.js"
+      },
+      "observed": "A token is plain encoded JSON with no signature, so anyone can forge one at src/auth.js:5, in a function called by POST /api/login. Also at src/auth.js:12.",
+      "severity": "high",
+      "rootCause": "sast:token-integrity:src/auth.js",
+      "remediation": "Issue and verify tokens with a maintained library that signs them and checks the signature and expiry.",
+      "confirmation": "A code pattern match: suspected until a runtime proof or a review confirms it.",
+      "executionIds": [
+        "3d61d3ed-ca8b-44b0-9a79-1ee34c42957b"
+      ],
+      "obligationIds": [
+        "sec:sast:token-integrity"
+      ]
+    },
+    {
+      "id": "S11",
+      "cwe": [
+        "CWE-89"
+      ],
+      "lane": "injection",
+      "owasp": [
+        "A03:2021"
+      ],
+      "title": "A database query is built as text with an interpolated value; use parameters (src/database.js, reached from GET /api/data/customers)",
+      "trust": "tool_observation",
+      "impact": "If the input reaches it as the trace suggests, an attacker controls part of the query, command, page, path or URL.",
+      "secret": null,
+      "status": "suspected",
+      "category": "sql-injection",
+      "detector": {
+        "rule": "cc.js.sql-string-built (pack 2194c1374f4ba2e8)",
+        "tool": "semgrep",
+        "version": "1.95.0"
+      },
+      "evidence": [
+        {
+          "line": 20,
+          "path": "src/database.js"
+        },
+        {
+          "line": 177,
+          "path": "src/app.js",
+          "endLine": 179
+        }
+      ],
+      "expected": "Code does not match cc.js.sql-string-built",
+      "location": {
+        "line": 20,
+        "path": "src/database.js"
+      },
+      "observed": "A database query is built as text with an interpolated value; use parameters at src/database.js:20, in a function called by GET /api/data/customers.",
+      "severity": "medium",
+      "rootCause": "sast:sql-injection:src/database.js",
+      "remediation": "Pass values as query parameters (placeholders), never inside the SQL text.",
+      "confirmation": "Injection is confirmed only by a runtime proof, which arrives in Round 2.",
+      "executionIds": [
+        "3d61d3ed-ca8b-44b0-9a79-1ee34c42957b"
+      ],
+      "obligationIds": [
+        "sec:sast:sql-injection"
+      ]
+    },
+    {
+      "id": "S12",
+      "cwe": [
+        "CWE-256",
+        "CWE-916"
+      ],
+      "lane": "crypto",
+      "owasp": [
+        "A02:2021",
+        "A07:2021"
+      ],
+      "title": "Passwords are compared as plain text",
+      "trust": "source_evidence",
+      "impact": "A database or log leak exposes every password directly.",
+      "secret": null,
+      "status": "suspected",
+      "category": "password storage",
+      "detector": {
+        "rule": "sec:crypto:password-storage",
+        "tool": "cybercheck",
+        "version": "facts"
+      },
+      "evidence": [
+        {
+          "line": 26,
+          "path": "src/app.js",
+          "endLine": 31
+        }
+      ],
+      "expected": "Passwords are stored hashed (bcrypt, scrypt, Argon2) and compared in constant time",
+      "location": {
+        "line": 26,
+        "path": "src/app.js",
+        "endLine": 31
+      },
+      "observed": "The sign-in handler compares the password with ===, and no password hashing library is used.",
+      "severity": "high",
+      "rootCause": "password-storage",
+      "remediation": "Hash passwords with bcrypt, scrypt or Argon2 and compare with the library's verify function.",
+      "confirmation": "From the code: the comparison is visible; how passwords are stored is inferred.",
+      "executionIds": [],
+      "obligationIds": [
+        "sec:crypto:password-storage"
+      ]
+    },
+    {
+      "id": "S13",
+      "cwe": [
+        "CWE-693"
+      ],
+      "lane": "configuration",
+      "owasp": [
+        "A05:2021"
+      ],
+      "title": "No security headers are set by the app or its proxy configuration",
+      "trust": "source_evidence",
+      "impact": "Pages are easier to frame or to exploit with injected content.",
+      "secret": null,
+      "status": "suspected",
+      "category": "configuration",
+      "detector": {
+        "rule": "sec:config:security-headers",
+        "tool": "cybercheck",
+        "version": "facts"
+      },
+      "evidence": [],
+      "expected": "Responses carry X-Content-Type-Options, frame protection and a content security policy for pages",
+      "location": null,
+      "observed": "No header middleware (helmet or similar) and no header directives in a reverse proxy configuration were found.",
+      "severity": "low",
+      "rootCause": "security-headers",
+      "remediation": "Add helmet (or the framework's equivalent), or set the headers in the reverse proxy.",
+      "confirmation": "Suspected: headers may be added where the app is deployed.",
+      "executionIds": [],
+      "obligationIds": [
+        "sec:config:security-headers"
+      ]
+    }
+  ],
+  "report": {
+    "audit": [
+      {
+        "ok": true,
+        "check": "Every obligation has a final status",
+        "detail": "99 of 99"
+      },
+      {
+        "ok": true,
+        "check": "Every non-passing status has a reason",
+        "detail": "all have reasons"
+      },
+      {
+        "ok": true,
+        "check": "Every scanner verdict is backed by a sandbox execution of this run",
+        "detail": "all cite an execution"
+      },
+      {
+        "ok": true,
+        "check": "Every confirmed finding cites evidence in this snapshot",
+        "detail": "all do"
+      },
+      {
+        "ok": true,
+        "check": "No injection or authorization finding is confirmed without a runtime proof",
+        "detail": "none"
+      },
+      {
+        "ok": true,
+        "check": "No secret value appears in a finding",
+        "detail": "previews show only a known prefix and the length"
+      },
+      {
+        "ok": true,
+        "check": "Coverage states both numbers",
+        "detail": "8 of 95"
+      },
+      {
+        "ok": true,
+        "check": "The headline states the decision and does not overstate",
+        "detail": "not_ready_insufficient_evidence"
+      },
+      {
+        "ok": true,
+        "check": "Vulnerability database freshness is disclosed",
+        "detail": "2026-10-14T12:04:03Z"
+      },
+      {
+        "ok": true,
+        "check": "Findings passed validation",
+        "detail": "no correction needed"
+      }
+    ],
+    "tools": [
+      {
+        "name": "Gitleaks",
+        "image": "e6ff6168-a1c1-453e-a408-b825b0986a54",
+        "command": "gitleaks detect --no-git",
+        "version": "8.21.2",
+        "exitCode": 0,
+        "rulePack": null,
+        "truncated": false,
+        "databaseAt": null,
+        "executionId": "3d61d3ed-ca8b-44b0-9a79-1ee34c42957b"
+      },
+      {
+        "name": "Semgrep",
+        "image": "e6ff6168-a1c1-453e-a408-b825b0986a54",
+        "command": "semgrep scan (Cybercheck rule pack)",
+        "version": "1.95.0",
+        "exitCode": 0,
+        "rulePack": "2194c1374f4ba2e8",
+        "truncated": false,
+        "databaseAt": null,
+        "executionId": "3d61d3ed-ca8b-44b0-9a79-1ee34c42957b"
+      },
+      {
+        "name": "OSV-Scanner",
+        "image": "e6ff6168-a1c1-453e-a408-b825b0986a54",
+        "command": "osv-scanner scan --experimental-offline -r",
+        "version": "1.9.1",
+        "exitCode": 1,
+        "rulePack": null,
+        "truncated": false,
+        "databaseAt": "2026-10-14T12:04:03Z",
+        "executionId": "3d61d3ed-ca8b-44b0-9a79-1ee34c42957b"
+      },
+      {
+        "name": "Trivy",
+        "image": "e6ff6168-a1c1-453e-a408-b825b0986a54",
+        "command": "trivy config --skip-check-update",
+        "version": "0.74.0",
+        "exitCode": 0,
+        "rulePack": null,
+        "truncated": false,
+        "databaseAt": "2026-10-14T12:04:04Z",
+        "executionId": "3d61d3ed-ca8b-44b0-9a79-1ee34c42957b"
+      }
+    ],
+    "engine": "2026-10-14.s1",
+    "totals": {
+      "failed": 2,
+      "passed": 6,
+      "blocked": 0,
+      "planned": 0,
+      "running": 0,
+      "unsupported": 30,
+      "inconclusive": 57,
+      "not_applicable": 4
+    },
+    "skipped": [
+      {
+        "reason": "Built in Round 2; their obligations are counted as not yet tested.",
+        "capability": "Runtime proofs (authorization matrix, injection, CSRF, upload, webhook)"
+      },
+      {
+        "reason": "Round 1 runs without an AI provider; added in Round 2 and never needed to confirm a finding.",
+        "capability": "AI threat modelling, planning, triage and independent critic"
+      },
+      {
+        "reason": "Built in Round 3.",
+        "capability": "Human review, repair and exploit replay"
+      }
+    ],
+    "coverage": {
+      "decisive": 8,
+      "applicable": 95,
+      "criticalDecisive": 3,
+      "criticalApplicable": 31
+    },
+    "decision": "not_ready_insufficient_evidence",
+    "findings": {
+      "confirmed": 2,
+      "suspected": 11,
+      "confirmedCriticalHigh": 0
+    },
+    "headline": "Not ready: not enough evidence. 8 of 95 applicable obligations produced decisive evidence (3 of 31 critical); 2 confirmed finding(s); 11 suspected risk(s) to review.",
+    "readiness": {
+      "level": "PARTIALLY_READY",
+      "issues": [
+        {
+          "rule": "guards-without-mechanism",
+          "blocks": [
+            "auth",
+            "access_control"
+          ],
+          "message": "19 endpoints are protected by requireUser, but no authentication mechanism was identified.",
+          "evidence": [
+            {
+              "line": 53,
+              "path": "src/app.js",
+              "endLine": 53
+            },
+            {
+              "line": 54,
+              "path": "src/app.js",
+              "endLine": 59
+            }
+          ],
+          "severity": "error"
+        },
+        {
+          "rule": "auth-negative-contradiction",
+          "blocks": [
+            "auth",
+            "access_control"
+          ],
+          "message": "The security model says no authentication was found while endpoints are protected.",
+          "evidence": [],
+          "severity": "error"
+        },
+        {
+          "rule": "env-used-not-declared",
+          "blocks": [],
+          "message": "1 variable is read but missing from the example file: NODE_ENV.",
+          "evidence": [],
+          "severity": "warning"
+        },
+        {
+          "rule": "env-declared-not-used",
+          "blocks": [],
+          "message": "1 variable is documented but never read by the code or deployment files: SUPPORT_MODEL.",
+          "evidence": [
+            {
+              "line": 3,
+              "path": ".env.example"
+            }
+          ],
+          "severity": "warning"
+        }
+      ],
+      "runnableLanes": [
+        "injection",
+        "secrets",
+        "dependencies",
+        "sast",
+        "configuration",
+        "infrastructure",
+        "crypto",
+        "privacy",
+        "logging"
+      ]
+    },
+    "limitations": [
+      "Static rules find known patterns only; a clean scan is not proof that the code is secure.",
+      "Code patterns, including traced injection paths, stay suspected until a runtime proof (Round 2) or a review confirms them.",
+      "The project analysis contradicts itself; checks that rely on it are inconclusive (lanes: auth, access_control).",
+      "Vulnerability data from the OSV database downloaded 2026-10-14T12:04:03Z; advisories published later are not included.",
+      "Configuration that depends on where the app is deployed (headers added by a proxy, cookie defaults) is reported as suspected."
+    ],
+    "schemaVersion": 1
+  },
+  "usage": {
+    "models": {},
+    "aiCalls": 0,
+    "costUsd": 0,
+    "inputTokens": 0,
+    "outputTokens": 0,
+    "sandboxCpuSeconds": 32,
+    "sandboxOperations": 2
+  }
+}

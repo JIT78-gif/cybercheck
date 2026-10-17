@@ -16,7 +16,7 @@ import { CodeParser, langFor } from "./parse.ts";
 import { SKIP, isGenerated, loadSnapshotSource, type SnapshotSource } from "./source.ts";
 
 /** Bump when analysis changes so cached dossiers are rebuilt. */
-export const ANALYZER_VERSION = "2026-10-10.v2.2";
+export const ANALYZER_VERSION = "2026-10-16.v2.5";
 
 const FRAMEWORKS: Array<[string, string]> = [
   ["next", "Next.js"], ["react", "React"], ["vue", "Vue"], ["nuxt", "Nuxt"], ["svelte", "Svelte"], ["@sveltejs/kit", "SvelteKit"], ["@angular/core", "Angular"],

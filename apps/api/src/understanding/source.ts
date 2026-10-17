@@ -158,6 +158,28 @@ export function redactSecrets(text: string): { text: string; count: number } {
   return { text: out, count };
 }
 
+/**
+ * Redact every string inside a value before it is serialized. Redacting serialized JSON can swallow an
+ * escaped quote and leave invalid JSON, so structured data is redacted field by field instead.
+ */
+export function redactDeep<T>(value: T): T {
+  if (typeof value === "string") return redactSecrets(value).text as T;
+  if (Array.isArray(value)) return value.map((v) => redactDeep(v)) as T;
+  if (value && typeof value === "object" && !(value instanceof Date)) {
+    return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([k, v]) => [k, redactDeep(v)])) as T;
+  }
+  return value;
+}
+
+/** Redact text that may be JSON: field by field when it parses, as plain text when it does not. */
+export function redactJsonText(text: string): string {
+  try {
+    return JSON.stringify(redactDeep(JSON.parse(text)), null, 2);
+  } catch {
+    return redactSecrets(text).text;
+  }
+}
+
 /** For .env.example-style files: keep variable names, drop values. */
 export function envExampleNames(text: string): Array<{ name: string; line: number }> {
   const out: Array<{ name: string; line: number }> = [];

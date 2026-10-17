@@ -250,3 +250,6 @@ export function exclusionFor(path: string): string | null {
 }
 export * from "./dossier.ts";
 export * from "./testing.ts";
+export * from "./testing-scenarios.ts";
+export * from "./security.ts";
+export * from "./ai-evaluator.ts";

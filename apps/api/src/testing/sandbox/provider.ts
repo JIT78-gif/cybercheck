@@ -39,8 +39,21 @@ export type SandboxRunResult = {
   error: string | null;
 };
 
+/** Why a provider can or cannot run right now, classified so the UI and the selector can act on it. */
+export type ProviderStatus =
+  | "available"
+  | "billing_unavailable" // HTTP 402: out of credit / billing not set up
+  | "access_denied" // HTTP 401/403: bad key or project
+  | "rate_limited" // HTTP 429
+  | "temporarily_unavailable" // network error or 5xx
+  | "not_configured" // required settings are absent
+  | "local_unavailable"; // the local Docker daemon is not reachable
+export type ProviderHealth = { ok: boolean; status: ProviderStatus; detail: string };
+
 export interface SandboxProvider {
   readonly name: string;
+  /** A cheap, side-effect-free check of whether this provider can run now, with the reason when it cannot. */
+  preflight(): Promise<ProviderHealth>;
   /** Image id for an OCI reference such as docker.io/library/node:22-bookworm (imported once). */
   image(ref: string): Promise<string>;
   upload(bytes: Buffer): Promise<string>;

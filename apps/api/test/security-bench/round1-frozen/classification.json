@@ -1,0 +1,119 @@
+{
+  "frozenFrom": "Security Round 1, evaluation run 1b, engine 2026-10-14.s1",
+  "projects": {
+    "cybercheck-gauntlet": {
+      "decision": "not_ready_insufficient_evidence",
+      "coverage": {
+        "decisive": 8,
+        "applicable": 95,
+        "criticalDecisive": 3,
+        "criticalApplicable": 31
+      },
+      "readiness": "PARTIALLY_READY",
+      "findings": [
+        {
+          "category": "dependencies",
+          "status": "confirmed",
+          "severity": "medium",
+          "location": "package-lock.json:50",
+          "rootCause": "dep:npm:qs@6.14.2"
+        },
+        {
+          "category": "cors",
+          "status": "confirmed",
+          "severity": "medium",
+          "location": "src/app.js:15",
+          "rootCause": "sast:cors:src/app.js"
+        },
+        {
+          "category": "credentials-in-logs",
+          "status": "suspected",
+          "severity": "medium",
+          "location": "src/app.js:27",
+          "rootCause": "sast:credentials-in-logs:endpoint:POST /api/login"
+        },
+        {
+          "category": "mass-assignment",
+          "status": "suspected",
+          "severity": "medium",
+          "location": "src/app.js:42",
+          "rootCause": "sast:mass-assignment:endpoint:PATCH /api/users/:id"
+        },
+        {
+          "category": "xss",
+          "status": "suspected",
+          "severity": "high",
+          "location": "src/app.js:73",
+          "rootCause": "sast:xss:endpoint:GET /api/search"
+        },
+        {
+          "category": "open-redirect",
+          "status": "suspected",
+          "severity": "medium",
+          "location": "src/app.js:76",
+          "rootCause": "sast:open-redirect:endpoint:GET /api/redirect"
+        },
+        {
+          "category": "path-traversal",
+          "status": "suspected",
+          "severity": "high",
+          "location": "src/app.js:136",
+          "rootCause": "sast:path-traversal:endpoint:GET /api/files"
+        },
+        {
+          "category": "ssrf",
+          "status": "suspected",
+          "severity": "high",
+          "location": "src/app.js:144",
+          "rootCause": "sast:ssrf:endpoint:POST /api/integrations/preview"
+        },
+        {
+          "category": "error-disclosure",
+          "status": "suspected",
+          "severity": "medium",
+          "location": "src/app.js:196",
+          "rootCause": "sast:error-disclosure:src/app.js"
+        },
+        {
+          "category": "token-integrity",
+          "status": "suspected",
+          "severity": "high",
+          "location": "src/auth.js:5",
+          "rootCause": "sast:token-integrity:src/auth.js"
+        },
+        {
+          "category": "sql-injection",
+          "status": "suspected",
+          "severity": "medium",
+          "location": "src/database.js:20",
+          "rootCause": "sast:sql-injection:src/database.js"
+        },
+        {
+          "category": "password storage",
+          "status": "suspected",
+          "severity": "high",
+          "location": "src/app.js:26",
+          "rootCause": "password-storage"
+        },
+        {
+          "category": "configuration",
+          "status": "suspected",
+          "severity": "low",
+          "location": null,
+          "rootCause": "security-headers"
+        }
+      ]
+    },
+    "clean-node-control": {
+      "decision": "not_ready_insufficient_evidence",
+      "coverage": {
+        "decisive": 19,
+        "applicable": 46,
+        "criticalDecisive": 6,
+        "criticalApplicable": 17
+      },
+      "readiness": "PARTIALLY_READY",
+      "findings": []
+    }
+  }
+}

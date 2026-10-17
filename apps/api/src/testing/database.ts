@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { sqliteForeignKeys } from "./db-strategy.ts";
 import type { Entity } from "@cybercheck/contracts";
 import { OUT, wsPath } from "./adapters.ts";
 import type { BootApp } from "./agents.ts";
@@ -26,9 +27,9 @@ type TableOut = {
 };
 type DbOut = { boot: { ok: boolean; reason: string | null } | null; engine: "sqlite" | "postgres" | null; databases: Array<{ database: string; tables: TableOut[]; error: string | null }>; error: string | null };
 
-/** Does the app turn SQLite foreign keys on for its connections (they are off by default, per connection)? */
+/** Does the app turn SQLite foreign keys on for its connections? Off by default; an explicit OFF keeps them off. */
 export function enablesSqliteForeignKeys(ctx: Ctx) {
-  return [...ctx.src.files.values()].some((f) => !/(\.|\/)(test|spec)\.|(^|\/)tests?\//.test(f.path) && /foreign_keys\s*=\s*(ON|1|true)|PRAGMA\s+foreign_keys|foreign_keys:\s*true|"foreign_keys"\s*:\s*(1|true)/i.test(f.text));
+  return sqliteForeignKeys(ctx.src).state === "on";
 }
 
 const tableOf = (e: Entity) => (e.table ?? e.name).toLowerCase();

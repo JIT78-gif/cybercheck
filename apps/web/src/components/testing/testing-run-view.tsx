@@ -12,6 +12,7 @@ import { Alert, Spinner } from "@/components/ui/form";
 import { cn } from "@/lib/cn";
 import { timeAgo } from "@/lib/format";
 import { BreakpointCard, LayerBars, LoadCharts, LoadTimeline, ProblemBars, ResultsDonut } from "./charts";
+import { EvidencePanel, RequirementsList } from "./evidence-panel";
 import { LiveView } from "./live/live-view";
 import { ProblemsTab, problemGroups } from "./problems-tab";
 import { CapabilityMatrix, LAYER_NAME, LayerMatrix, ProvenPanel, ReleaseDecisionCard } from "./release-panels";
@@ -173,6 +174,7 @@ export function TestingRunView({ projectId, runId }: { projectId: string; runId:
                     </Card>
                     {reviewed && reviewed.findings.length > 0 && <AssessmentCompare reviewed={reviewed} />}
                     <ProvenPanel report={r} />
+                    <EvidencePanel report={r} />
                   </>
                 ) : (
                   <LegacySummary report={r} />
@@ -312,12 +314,14 @@ function ChecksTab({ run, sub, go }: { run: TestingRunDetail; sub: string | null
   const r = run.report;
   const layers = LAYER_ORDER.filter((l) => run.obligations.some((o) => o.layer === l));
   const failedIn = (l: string) => run.obligations.filter((o) => o.layer === l && o.status === "failed").length;
+  const requirements = r?.requirements?.length ?? 0;
   const items: TabItem<string>[] = [
     { id: "all", label: "All layers" },
+    ...(requirements ? [{ id: "requirements", label: "Requirements", count: requirements, tone: "muted" as const }] : []),
     ...layers.map((l) => ({ id: l, label: LAYER_NAME[l] ?? l, count: failedIn(l) || run.obligations.filter((o) => o.layer === l).length, tone: failedIn(l) ? ("bad" as const) : ("muted" as const) })),
   ];
   const current = items.find((t) => t.id === sub)?.id ?? "all";
-  const obs = current === "all" ? run.obligations : run.obligations.filter((o) => o.layer === current);
+  const obs = current === "all" || current === "requirements" ? run.obligations : run.obligations.filter((o) => o.layer === current);
   const counts = [...new Set(obs.map((o) => o.status))].map((s) => [s, obs.filter((o) => o.status === s).length] as const);
   return (
     <div className="space-y-4">
@@ -355,6 +359,16 @@ function ChecksTab({ run, sub, go }: { run: TestingRunDetail; sub: string | null
           )}
         </>
       )}
+      {current === "requirements" && (
+        <Card className="space-y-4">
+          <div>
+            <CardTitle>Documented requirements</CardTitle>
+            <p className="mt-1 text-sm text-fg-muted">What the project says it must do, where it says so, and what the checks found. Only documentation, its own tests, protocols or you may define correct behaviour.</p>
+          </div>
+          <RequirementsList run={run} />
+        </Card>
+      )}
+      {current !== "requirements" && (
       <Card className="space-y-4">
         <div className="flex flex-wrap items-center gap-2" aria-label="Results in this layer">
           {counts.map(([s, n]) => {
@@ -369,6 +383,7 @@ function ChecksTab({ run, sub, go }: { run: TestingRunDetail; sub: string | null
         </div>
         <Ledger obligations={obs} />
       </Card>
+      )}
     </div>
   );
 }

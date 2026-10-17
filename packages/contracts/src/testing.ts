@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { AssertionProof, BrowserScreen, BrowserTarget, DatabaseStrategy, InventoryAsset, TestRequirement } from "./testing-scenarios.ts";
 import { Evidence } from "./dossier.ts";
 
 // The Testing check. A run is bound to one immutable snapshot and the ready dossier for it.
@@ -45,6 +46,8 @@ export const OracleSource = z.enum([
   "state_machine", // transitions defined in code
   "policy", // a cybercheck policy, e.g. a suite must run at least one test
   "user_requirement",
+  "documentation", // the project's README or docs state the behaviour (a quoted line)
+  "protocol", // a published standard defines it (HTTP, SQL, OAuth)
 ]);
 export type OracleSource = z.infer<typeof OracleSource>;
 
@@ -109,12 +112,21 @@ export const Obligation = z.object({
   blockedBy: BlockedBy.nullable().optional(),
   /** Set when a targeted rerun carried this result over from an earlier run. */
   carriedFrom: z.string().nullable().optional(),
+  // Behaviour-first fields (absent on older runs).
+  /** The requirements this check tests. */
+  requirementIds: z.array(z.string()).optional(),
+  /** The compiled scenario that ran it. */
+  scenarioId: z.string().optional(),
+  /** availability: only a status was checked · response: the response carried the behaviour · state: a later read showed the change. */
+  proofLevel: z.enum(["availability", "response", "state"]).optional(),
+  /** What each assertion expected and observed. */
+  proofs: z.array(AssertionProof).max(40).optional(),
 });
 export type Obligation = z.infer<typeof Obligation>;
 
 // ---------------------------------------------------------------- Executions (supervisor evidence)
 
-export const ExecutionKind = z.enum(["prepare", "command", "suite", "suite_rerun", "probe", "generated_tests", "fixture", "browser", "database", "load"]);
+export const ExecutionKind = z.enum(["prepare", "command", "suite", "suite_rerun", "probe", "generated_tests", "fixture", "browser", "database", "load", "security_tools", "security_scan", "security_app", "security_api_proof", "security_browser_proof", "security_canary", "ai_eval_app", "ai_eval_cases", "ai_eval_gateway"]);
 
 export const TestExecution = z.object({
   id: z.string(),
@@ -265,7 +277,12 @@ export const RerunTestingInput = z.object({ scope: z.union([z.literal("missing")
 export type RerunTestingInput = z.infer<typeof RerunTestingInput>;
 
 /** Is the project ready to release? Separate from the workflow status (the run finished) and from product health. */
-export const ReleaseDecision = z.enum(["ready", "ready_with_accepted_risk", "not_ready_product_failures", "not_ready_insufficient_evidence", "not_ready_environment_blocked"]);
+/**
+ * ready: every release gate holds, including the fixed release bar for evidence · ready_with_accepted_risk: ready once
+ * a reviewer accepted a known high-severity problem · selected_checks_passed: everything this run checked passed and
+ * its own target was met, but there is not enough evidence to call the product release-ready · not_ready_*: why not.
+ */
+export const ReleaseDecision = z.enum(["ready", "ready_with_accepted_risk", "selected_checks_passed", "not_ready_product_failures", "not_ready_insufficient_evidence", "not_ready_environment_blocked"]);
 export type ReleaseDecision = z.infer<typeof ReleaseDecision>;
 
 export const AssessmentVerdict = z.enum(["ready_with_evidence", "defects_found", "testing_system_problem", "insufficient_evidence", "could_not_test"]);
@@ -324,6 +341,8 @@ export const TestingReport = z.object({
   /** Who can close each gap: cybercheck (its own setup or tests), you (configuration, environment, approval), or nobody yet (not supported). */
   untested: z.array(z.object({ reason: z.string(), obligations: z.array(z.string()), count: z.number(), owner: z.enum(["cybercheck", "you", "not_supported"]).optional() })),
   environment: z.object({
+    /** The Testing engine version that produced the report (plans are cached per version). */
+    engine: z.string().optional(),
     provider: z.string(),
     image: z.string(),
     runtime: z.string().nullable(),
@@ -406,9 +425,30 @@ export const TestingReport = z.object({
       }),
     )
     .optional(),
-  fixtures: z.object({ digest: z.string(), nodes: z.array(z.object({ id: z.string(), label: z.string(), ok: z.boolean().nullable(), detail: z.string() })) }).nullable().optional(),
+  fixtures: z
+    .object({
+      digest: z.string(),
+      /** Every planned setup step: the ones that ran (ok true or false), and invalid ones that were never used (invalid true). */
+      nodes: z.array(z.object({ id: z.string(), label: z.string(), ok: z.boolean().nullable(), detail: z.string(), invalid: z.boolean().optional() })),
+      /** Checks not sent because a setup step they needed failed or was invalid. */
+      blockedChecks: z.number().int().nonnegative().optional(),
+    })
+    .nullable()
+    .optional(),
   /** Devast load results. Without user thresholds these are measurements, not pass or fail. */
   load: z.object({ note: z.string(), stages: z.array(LoadStage), thresholds: LoadThresholds.nullable(), executionId: z.string().nullable().optional() }).nullable().optional(),
+  // Behaviour-first report sections (absent on older reports).
+  /** What the product must do, and where each expectation comes from. */
+  requirements: z.array(TestRequirement).optional(),
+  /** Everything discovered (modules, endpoints, screens, entities, jobs), and whether each was executed. */
+  inventory: z.array(InventoryAsset).optional(),
+  /** Where the browser opened the screens, and the screens it found. */
+  browserTarget: BrowserTarget.nullable().optional(),
+  screens: z.array(BrowserScreen).optional(),
+  /** How database integrity was checked. */
+  databaseStrategy: DatabaseStrategy.optional(),
+  /** Business checks with a verdict, by the proof behind it: state read back, the response checked, a status code only, or from before proof levels existed. */
+  proofSummary: z.object({ business: z.number(), state: z.number(), response: z.number(), statusOnly: z.number(), legacy: z.number() }).optional(),
 });
 export type TestingReport = z.infer<typeof TestingReport>;
 

@@ -47,6 +47,8 @@ export type FixtureNode = {
   /** request nodes that create a record: its route, and which capture fills which path parameter. */
   resource?: string;
   captureFor?: Record<string, string>;
+  /** identity nodes (Security proofs): also register a tampered-token variant "<id>#forged" with this claim changed. */
+  forge?: { role: string };
   origin: "plan" | "author" | "repair";
 };
 /** A check on one field of a JSON response: equals a value, exists or not, or is at least a number. */
@@ -55,6 +57,20 @@ export type JsonCheck = { path: string; equals?: unknown; exists?: boolean; min?
 export const UNKNOWN_UUID = "7f0c2b1e-4a5d-4c3e-9b8a-000000000999";
 
 const PROTECTED = new Set(["session_required", "role_required", "service_token", "handler_check"]);
+
+/** Path segments that only say "this is the API" or a version, never what the route is about. */
+const GENERIC_SEGMENT = /^(api|apis|rest|rpc|graphql|v\d+(\.\d+)?|public|internal-api)$/i;
+
+/** The area a route belongs to: its first meaningful segment (/api/v1/orders/:id is "orders", /api/admin/users is "admin"). */
+export function routeArea(path: string) {
+  return (
+    path
+      .split("/")
+      .filter(Boolean)
+      .find((s) => !GENERIC_SEGMENT.test(s) && !/^[:{<[]/.test(s))
+      ?.toLowerCase() ?? ""
+  );
+}
 
 export function obligation(o: Omit<Obligation, "status" | "reason" | "executionIds" | "findingIds" | "origin"> & Partial<Pick<Obligation, "status" | "reason" | "origin">>): Obligation {
   return { status: "planned", reason: null, origin: "dossier", executionIds: [], findingIds: [], ...o };
@@ -152,8 +168,10 @@ export function buildObligations(d: ProjectDossier, workspaces: WorkspacePlan[],
     const authEntry = isAuthEntry(e);
     // The analysis can miss a guard (an import alias, a router-level dependency): a route under /admin or /staff, or
     // whose sibling routes are protected, is expected to refuse anonymous requests too.
-    const prefix = e.path.split("/").filter(Boolean)[0]?.toLowerCase() ?? "";
-    const siblingsProtected = Boolean(prefix) && d.entryPoints.some((x) => x !== e && PROTECTED.has(x.control.kind) && x.path.split("/").filter(Boolean)[0]?.toLowerCase() === prefix);
+    // Siblings share the first meaningful segment: /api/search and /api/orders are not siblings just because every
+    // route of the app sits under /api (a public search next to protected orders is a normal design).
+    const prefix = routeArea(e.path);
+    const siblingsProtected = Boolean(prefix) && d.entryPoints.some((x) => x !== e && PROTECTED.has(x.control.kind) && routeArea(x.path) === prefix);
     const likelyProtected = !protectedRoute && ["none_found", "unknown", "handler_check"].includes(e.control.kind) && (siblingsProtected || /^(admin|staff|manage|management|dashboard|internal|backoffice)$/.test(prefix));
     if ((protectedRoute || likelyProtected || e.control.kind === "webhook_signature") && !authEntry) {
       out.push(obligation({

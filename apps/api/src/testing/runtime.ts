@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { Readable } from "node:stream";
-import type { LoadThresholds, Obligation, ProjectDossier, TestExecution, TestFinding, TestingPolicyInput, TestingProfile } from "@cybercheck/contracts";
+import type { BrowserScreen, DatabaseStrategy, TestRequirement, LoadThresholds, Obligation, ProjectDossier, TestExecution, TestFinding, TestingPolicyInput, TestingProfile } from "@cybercheck/contracts";
 import { LiveAction, PROFILE_TARGET } from "@cybercheck/contracts";
 import type { ObjectStore } from "../storage/object-store.ts";
 import type { AiSession } from "../understanding/ai/gateway.ts";
@@ -17,7 +17,9 @@ import type { RunStore } from "./store.ts";
  */
 
 /** Bump whenever prompts, planning rules or verdict logic change: it keys the plan and image caches. */
-export const ENGINE_VERSION = "2026-10-12.v2u";
+/** The previous engine, kept behind TESTING_LEGACY_ENGINE=1 while the behaviour-first engine proves itself. */
+export const LEGACY_ENGINE = process.env.TESTING_LEGACY_ENGINE === "1";
+export const ENGINE_VERSION = LEGACY_ENGINE ? "2026-10-12.v2u" : "2026-10-14.v3h";
 export const TSX = "/opt/cc-tools/node_modules/tsx/dist/loader.mjs";
 /** Browser tooling installed into the prepared image when the project has screens (pinned versions). */
 export const BROWSER_DIR = "/opt/cc-browser";
@@ -36,7 +38,8 @@ export const POLICY = {
   confirmRuns: 2,
   bootTimeoutSec: 90,
   maxParallel: 8,
-  maxTriage: 16,
+  // The behaviour-first engine is limited by its triage budget share instead of a count.
+  maxTriage: LEGACY_ENGINE ? 16 : 40,
 };
 
 export type LoadStageName = "smoke" | "average" | "stress" | "spike" | "breakpoint";
@@ -95,6 +98,14 @@ export type Deps = {
 };
 
 export type Ctx = Deps & {
+  /** What the project says it must do, with the source of each statement. */
+  requirements?: TestRequirement[];
+  /** How the database lane checks integrity (direct, or through the app for an in-memory database). */
+  databaseStrategy?: DatabaseStrategy;
+  /** Screens found outside a frontend router (pages the backend serves), for the report. */
+  screensFound?: BrowserScreen[];
+  /** Authoring steps that were skipped or cut short for lack of AI budget, for the report's limitations. */
+  authoringGaps?: string[];
   /** After this time (ms epoch) no new check starts: the user's sandbox time limit. */
   deadline?: number | null;
   /** A repair's patched files, mounted over the project in this run's sandboxes (never in cached images). */

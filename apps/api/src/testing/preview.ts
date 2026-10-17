@@ -8,6 +8,8 @@ import { planWorkspaces } from "./adapters.ts";
 import { capabilities, planCacheKey } from "./orchestrator.ts";
 import { buildObligations } from "./plan.ts";
 import { ENGINE_VERSION, LOAD_SECONDS, PROFILES, effectivePolicy } from "./runtime.ts";
+import { databaseStrategy } from "./db-strategy.ts";
+import { servedScreens } from "./served-pages.ts";
 import { detectServices } from "./services.ts";
 
 /**
@@ -18,6 +20,11 @@ import { detectServices } from "./services.ts";
 export async function previewOf(input: { snapshotId: string; projectId: string; archiveKey: string; digest: string; d: ProjectDossier; objects: ObjectStore; profile: TestingProfile; options?: RunOptions; identical: { id: string; finishedAt: Date | null } | null }): Promise<TestingPreview> {
   const { d, profile } = input;
   const src = await getSnapshotSource(input.objects, input.archiveKey);
+  // Pages the backend serves itself count as screens when no frontend router was found (as in the run).
+  if (!d.screens.length) {
+    const served = servedScreens(src, d).screens;
+    if (served.length) d.screens = served;
+  }
   const workspaces = planWorkspaces(d, src);
   const services = detectServices(d, src);
   const caps = capabilities(d, workspaces, services);
@@ -26,7 +33,7 @@ export async function previewOf(input: { snapshotId: string; projectId: string; 
   const browser = ep.browser && prof.browser && caps.frontendWs && d.screens.length > 0;
   const http = d.entryPoints.some((e) => e.kind === "http");
   const loadStages = http ? ep.loadStages : [];
-  const obs = buildObligations(d, workspaces, { browser, database: prof.database && caps.database, load: loadStages, viewports: prof.viewports });
+  const obs = buildObligations(d, workspaces, { browser, database: prof.database && (caps.database || databaseStrategy(d, src, services) !== "none"), load: loadStages, viewports: prof.viewports });
   // Load stages run one after another for a known time: added on top of the estimate either way.
   const loadMin = Math.ceil(loadStages.reduce((n, s) => n + LOAD_SECONDS[s] + 2, 0) / 60);
   const layers = [...new Set(obs.map((o) => o.layer))] as TestLayer[];
@@ -37,7 +44,7 @@ export async function previewOf(input: { snapshotId: string; projectId: string; 
 
   // Estimate from this project's earlier runs with the same profile, else from any runs of this engine, else a rule of thumb.
   const finished = async (projectId: string | null) =>
-    (await db.select().from(testingRun).where(and(inArray(testingRun.status, ["completed", "partial"]), ...(projectId ? [eq(testingRun.projectId, projectId)] : []))).orderBy(desc(testingRun.createdAt)).limit(30)).filter((r) => {
+    (await db.select().from(testingRun).where(and(eq(testingRun.check, "testing"), inArray(testingRun.status, ["completed", "partial"]), ...(projectId ? [eq(testingRun.projectId, projectId)] : []))).orderBy(desc(testingRun.createdAt)).limit(30)).filter((r) => {
       const p = r.policy as { engine?: string; profile?: string };
       return (p.profile ?? "standard") === profile && r.startedAt && r.finishedAt && (!projectId ? p.engine === ENGINE_VERSION : true);
     });

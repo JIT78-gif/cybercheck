@@ -1,7 +1,7 @@
-import type { Evidence, TestFinding } from "@cybercheck/contracts";
+import type { Evidence, Obligation, TestFinding } from "@cybercheck/contracts";
 import type { SnapshotSource } from "../understanding/source.ts";
 import { critic, findContradictions, triage, validEvidence, type TriageOut } from "./agents.ts";
-import { CI_ENV, POLICY, TSX, addFinding, execute, setOb, sha, shq, tail, toProjectPaths, type Ctx } from "./runtime.ts";
+import { CI_ENV, LEGACY_ENGINE, POLICY, TSX, addFinding, execute, setOb, sha, shq, tail, toProjectPaths, type Ctx } from "./runtime.ts";
 
 /**
  * Failure candidates from every worker go through one path: triage (what kind of failure), an
@@ -47,17 +47,58 @@ export function stackLocations(src: SnapshotSource, workspace: string, text: str
 }
 
 
+/** Probe kinds that test generic input handling: one parser or validation layer usually answers them all. */
+const GENERIC_INPUT = /^(malformed-body|empty-body|invalid-id|missing-fields?|wrong-types?|oversized-body)$/;
+
+/**
+ * The root-cause signature of a failure, before any AI looks at it: the failure category, the status, and the
+ * response body with numbers and stack traces removed. Every malformed-JSON 500 from one body parser shares one.
+ */
+export function rootSignature(c: Candidate, kindOf: (obligationId: string) => string): string | null {
+  if (c.source !== "probe" || c.forced) return null;
+  const kind = kindOf(c.obligationIds[0] ?? "");
+  if (!GENERIC_INPUT.test(kind)) return null;
+  const body = (c.context.match(/Response body \(start\): ([^\n]{0,400})/)?.[1] ?? "")
+    .replace(/"stack"\s*:[\s\S]*$/, "")
+    .replace(/\bat position \d+|\d+/g, "#")
+    .replace(/\s+/g, " ")
+    .slice(0, 160);
+  return `input|${c.probe?.status ?? "none"}|${body}`;
+}
+
+/**
+ * Triage order (the 9+/10 plan, section 5): critical business and state failures, then browser journeys and
+ * database integrity, the project's own tests, authorization, generic validation and transport, and last tool and
+ * environment problems. Lower comes first.
+ */
+export function triageRank(c: Candidate, ob: (id: string) => Obligation | undefined, kindOf: (id: string) => string) {
+  if (c.forced) return 0;
+  const obs = c.obligationIds.map(ob).filter((o): o is Obligation => Boolean(o));
+  if (c.source === "boot") return 1;
+  if (obs.some((o) => o.requirementIds?.length || ((o.proofClass === "business_behavior" || o.proofClass === "state_change") && (o.priority === "critical" || o.priority === "high")))) return 1;
+  if (c.source === "browser" || obs.some((o) => o.layer === "data")) return 2;
+  if (c.source === "suite") return c.label.startsWith("Generated test") ? 4 : 3;
+  if ([401, 403].includes(c.probe?.status ?? 0) || obs.some((o) => /:(unauthenticated|wrong-role)$/.test(o.id))) return 4;
+  if (GENERIC_INPUT.test(kindOf(c.obligationIds[0] ?? ""))) return 5;
+  return 4;
+}
+
+/** A typed scenario's failure against a documented requirement, reproduced: expected and observed are the evidence. */
+const SOURCED = new Set(["documentation", "existing_assertion", "user_requirement", "protocol"]);
+export const deterministicScenario = (c: Candidate, ob: (id: string) => Obligation | undefined) =>
+  c.reproduced >= 2 && c.obligationIds.length > 0 && c.obligationIds.every((id) => { const o = ob(id); return Boolean(o?.scenarioId && o.oracle && SOURCED.has(o.oracle.source)); });
+
 export async function settle(ctx: Ctx, unsorted: Candidate[]) {
   const session = ctx.session;
-  // Triage budget goes first to the project's own failing tests, then start-up, then rule-based probes, then AI-written checks.
-  const rank = (c: Candidate) => (c.forced ? 0 : c.source === "suite" && !c.label.startsWith("Generated test") ? 1 : c.source === "boot" ? 2 : c.obligationIds.some((id) => ctx.obligations.get(id)?.origin === "dossier") ? 3 : 4);
-  // Several checks refused with 401/403 on one endpoint share one cause (that endpoint's role check): one analysis
-  // for all of them, so the triage budget goes to distinct failures.
+  const kindOf = (id: string) => id.split(":").at(-1) ?? "";
+  const rank = (c: Candidate) => triageRank(c, (id) => ctx.obligations.get(id), kindOf);
+  // Failures that share one root cause are analysed once: refusals on one endpoint's guard, and generic input
+  // failures with the same status and the same response (one body parser answering every malformed body).
   const grouped: Candidate[] = [];
   const byGuard = new Map<string, Candidate>();
   for (const c of unsorted) {
     const ref = ctx.obligations.get(c.obligationIds[0] ?? "")?.asset.ref;
-    const key = c.source === "probe" && ref && c.probe && [401, 403].includes(c.probe.status ?? 0) ? `${ref}|${c.probe.status}` : null;
+    const key = c.source === "probe" && ref && c.probe && [401, 403].includes(c.probe.status ?? 0) ? `${ref}|${c.probe.status}` : LEGACY_ENGINE ? null : rootSignature(c, kindOf);
     const head = key ? byGuard.get(key) : undefined;
     if (head) {
       head.obligationIds = [...new Set([...head.obligationIds, ...c.obligationIds])];
@@ -114,7 +155,12 @@ export async function settle(ctx: Ctx, unsorted: Candidate[]) {
     }
     const location = t.location ? (validEvidence(ctx.src, [t.location])[0] ?? c.locations[0] ?? null) : (c.locations[0] ?? null);
     const reproduction = c.reproduction ?? c.probe?.request ?? (c.testNames?.length ? `Run the test${c.testNames.length > 1 ? "s" : ""}: ${c.testNames.slice(0, 5).join("; ")}` : c.label);
-    const base = { title: t.title, expected: t.expected, actual: t.actual, reproduction, rootCause: t.rootCause, location, obligationIds: c.obligationIds, executionIds: c.executionIds };
+    // One root cause seen on several endpoints is one finding that names all of them.
+    const seenOn = [...new Set(c.obligationIds.map((id) => ctx.obligations.get(id)?.asset.label).filter((x): x is string => Boolean(x)))];
+    const floor = c.obligationIds.map((id) => ctx.obligations.get(id)).filter((o) => o?.requirementIds?.length).map((o) => o!.priority).find((p) => p === "critical" || p === "high");
+    const SEV = ["info", "low", "medium", "high", "critical"] as const;
+    if (floor && SEV.indexOf(t.severity) < SEV.indexOf(floor)) t = { ...t, severity: floor };
+    const base = { title: t.title, expected: t.expected, actual: seenOn.length > 1 ? `${t.actual}\nSeen on ${seenOn.length} endpoints: ${seenOn.slice(0, 20).join(", ")}.` : t.actual, reproduction, rootCause: t.rootCause, location, obligationIds: c.obligationIds, executionIds: c.executionIds, ...(seenOn.length > 1 ? { groupedFrom: seenOn.slice(0, 20) } : {}) };
     if (t.kind === "environment") {
       const f = await addFinding(ctx, { ...base, kind: "environment_failure", status: "confirmed", severity: "info", confidence: t.confidence, validation: "Triage attributed it to the sandbox environment.", limitation: "Run with the real service or credentials to test this part." });
       for (const id of c.obligationIds) await setOb(ctx, id, { status: "blocked", blockedBy: "environment", reason: `Environment: ${t.rootCause}`, findingIds: [f.id] });
@@ -143,13 +189,16 @@ export async function settle(ctx: Ctx, unsorted: Candidate[]) {
       for (const id of c.obligationIds) await setOb(ctx, id, { findingIds: [f.id] });
       return;
     }
-    // product_defect: must be reproduced and independently confirmed by a model from another family.
+    // product_defect: must be reproduced and independently confirmed. A typed scenario's reproduced failure against a
+    // documented requirement carries its own evidence (expected and observed values); another model adds nothing to it.
     let verdict: { verdict: string; reason: string } = { verdict: "uncertain", reason: "not reviewed" };
-    try {
-      verdict = await critic(session, c.context, t);
-    } catch (err) {
-      verdict = { verdict: "uncertain", reason: `Review failed: ${(err as Error).message.slice(0, 120)}` };
-    }
+    if (deterministicScenario(c, (id) => ctx.obligations.get(id))) verdict = { verdict: "confirm", reason: "not needed: a documented requirement's assertion failed with recorded expected and observed values, in two clean sandboxes" };
+    else
+      try {
+        verdict = await critic(session, c.context, t);
+      } catch (err) {
+        verdict = { verdict: "uncertain", reason: `Review failed: ${(err as Error).message.slice(0, 120)}` };
+      }
     const reproducedOk = c.reproduced >= 2 || (c.source === "suite" && c.reproduced === c.of && c.of >= 2);
     const status: TestFinding["status"] = verdict.verdict === "confirm" && reproducedOk ? "confirmed" : verdict.verdict === "reject" ? "rejected" : "suspected";
     const f = await addFinding(ctx, {
@@ -265,7 +314,9 @@ export async function mergeDuplicates(ctx: Ctx) {
     // A process crash suspected from the load test is the same weakness as a crash a single request confirmed.
     const crashConfirmed = a.status === "confirmed" && /crash|stops the|process (exits|stops)|unhandled/i.test(`${a.title} ${a.rootCause ?? ""}`);
     const loadCrash = (b: TestFinding) => crashConfirmed && b.layer === "reliability" && b.status === "suspected" && /stops (the whole server|under concurrent load)/i.test(b.title);
-    const sameTitle = (b: TestFinding) => Boolean(b.location && b.location.path === a.location!.path && b.title.trim().toLowerCase() === a.title.trim().toLowerCase());
+    // The same words from two sources (a probe and a scenario) are one problem, also when one of them has no location.
+    const said = (f: TestFinding) => f.title.toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\b(a|an|the)\b/g, "").replace(/\s+/g, " ").trim();
+    const sameTitle = (b: TestFinding) => (!b.location || b.location.path === a.location!.path) && said(b) === said(a);
     // Nearby lines alone do not make one defect: a handler can hold two (a missing range check one line above an
     // unguarded parse). Close findings merge only when they also describe the same thing.
     const near = (b: TestFinding) => Boolean(b.location && b.location.path === a.location!.path && Math.abs(b.location.line - a.location!.line) <= 3) && sameSubject(a, b);

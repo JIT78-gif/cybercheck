@@ -6,6 +6,8 @@ import { testingRepair, testingRun } from "../db/schema.ts";
 import { env, providers } from "../env.ts";
 import { objectStore } from "../storage/object-store.ts";
 import { AiSession } from "../understanding/ai/gateway.ts";
+import { runSecurity } from "../security/orchestrator.ts";
+import { runAiEvaluation } from "../ai-evaluator/orchestrator.ts";
 import { runTesting } from "./orchestrator.ts";
 import { processRepair } from "./repair.ts";
 import { NebiusSandboxProvider } from "./sandbox/nebius.ts";
@@ -13,9 +15,9 @@ import type { SandboxProvider } from "./sandbox/provider.ts";
 import { FencedError, RunStore } from "./store.ts";
 
 /**
- * The Testing worker: a separate process from the API (npm run worker). It claims queued runs,
- * keeps a heartbeat, and runs them. A run whose worker stops heartbeating is reclaimed by another
- * worker with a higher generation; the old worker's late writes are rejected (see RunStore).
+ * The check worker: a separate process from the API (npm run worker). It claims queued runs of every check (Testing,
+ * Security), keeps a heartbeat, and hands each run to its engine. A run whose worker stops heartbeating is reclaimed
+ * by another worker with a higher generation; the old worker's late writes are rejected (see RunStore).
  */
 
 const WORKER_ID = `${hostname()}-${process.pid}-${randomBytes(3).toString("hex")}`;
@@ -66,11 +68,23 @@ export async function processRun(claim: { id: string; generation: number }, deps
     }
   }, 5000);
   try {
-    if (!deps.provider) {
-      await store.finish("failed", { error: "Testing needs Nebius Sandboxes. Set NEBIUS_API_KEY and NEBIUS_PROJECT_ID in .env." });
+    // The run's own check decides the engine; claiming, heartbeat, fencing and cancellation are shared.
+    const [row] = await db.select({ check: testingRun.check }).from(testingRun).where(eq(testingRun.id, claim.id));
+    const check = row?.check ?? "testing";
+    // The AI Evaluator chooses its own runtime (Nebius, local Docker or none): a project with no AI component is
+    // finished without any sandbox, and a missing Nebius falls back to Docker.
+    if (check === "ai-evaluator") {
+      await runAiEvaluation(store, { provider: deps.provider, session: deps.session, objects: objectStore, signal: controller.signal }, deps.onProgress ?? (() => {}));
       return;
     }
-    await runTesting(store, { provider: deps.provider, session: deps.session, objects: objectStore, signal: controller.signal }, deps.onProgress ?? (() => {}));
+    if (!deps.provider) {
+      await store.finish("failed", { error: `${check === "security" ? "Security" : "Testing"} needs Nebius Sandboxes. Set NEBIUS_API_KEY and NEBIUS_PROJECT_ID in .env.` });
+      return;
+    }
+    const engineDeps = { provider: deps.provider, session: deps.session, objects: objectStore, signal: controller.signal };
+    if (check === "security") await runSecurity(store, engineDeps, deps.onProgress ?? (() => {}));
+    else if (check === "testing") await runTesting(store, engineDeps, deps.onProgress ?? (() => {}));
+    else await store.finish("failed", { error: `No engine exists for the "${check}" check.` });
   } catch (err) {
     if (err instanceof FencedError) return;
     const cancelled = controller.signal.aborted;
@@ -126,7 +140,7 @@ export function sessionFor(): AiSession | null {
       [models.triage]: { inputUsdPerMillion: 1.5, outputUsdPerMillion: 7.5 },
       [models.critic]: { inputUsdPerMillion: 2.5, outputUsdPerMillion: 15 },
     };
-    return new AiSession({ apiKey: env.GEMINI_API_KEY!, baseUrl: env.GEMINI_BASE_URL, models, modelPrices, budgetUsd: env.TESTING_RUN_BUDGET_USD, timeoutMs: 300_000 });
+    return new AiSession({ apiKey: env.GEMINI_API_KEY!, baseUrl: env.GEMINI_BASE_URL, models, modelPrices, budgetUsd: env.TESTING_RUN_BUDGET_USD, timeoutMs: 300_000, extraBody: { reasoning_effort: env.GEMINI_REASONING_EFFORT } });
   }
   return new AiSession({ apiKey: env.NEBIUS_API_KEY!, baseUrl: env.NEBIUS_BASE_URL, models, budgetUsd: env.TESTING_RUN_BUDGET_USD, timeoutMs: 300_000 });
 }

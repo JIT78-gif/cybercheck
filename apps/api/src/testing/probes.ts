@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import type { TestExecution } from "@cybercheck/contracts";
+import type { CompiledScenario, TestExecution, TestRequirement } from "@cybercheck/contracts";
 import { redactSecrets } from "../understanding/source.ts";
 import { OUT, wsPath } from "./adapters.ts";
 import { OFFLINE, codeUnderTest, excerpt, repairGraph, syntheticValue, type BootApp } from "./agents.ts";
@@ -8,7 +8,12 @@ import { isAuthEntry, type FixtureNode, type Probe } from "./plan.ts";
 import type { FixtureSummary } from "./report.ts";
 import { serviceEnv, startServices } from "./services.ts";
 import { stackLocations, type Candidate } from "./triage.ts";
-import { CI_ENV, POLICY, addFinding, execute, setOb, sha, tail, toProjectPaths, type Ctx } from "./runtime.ts";
+import { CI_ENV, LEGACY_ENGINE, POLICY, addFinding, execute, setOb, sha, tail, toProjectPaths, type Ctx } from "./runtime.ts";
+import { obligationFromScenario, routeKey, type ScenarioRun } from "./scenarios.ts";
+
+/** A compiled scenario to send, with the obligation that records each requirement it checks. */
+export type ScenarioJob = { scenario: CompiledScenario; obligations: Record<string, string>; requirements: TestRequirement[] };
+type ScenarioOut = ScenarioRun & { blockedBy?: "fixture" | "prerequisite"; logFrom?: number; logTo?: number; appExited?: boolean };
 
 // The running app over HTTP: boot, the fixture graph (seed, data, sign-in) and probes in one sandbox;
 // a failed setup gets one bounded repair; failures are repeated in a fresh sandbox before triage.
@@ -16,7 +21,7 @@ import { CI_ENV, POLICY, addFinding, execute, setOb, sha, tail, toProjectPaths, 
 export const HARNESS_LIB = readFileSync(new URL("./harness/lib.mjs", import.meta.url));
 const HARNESS = readFileSync(new URL("./harness/harness.mjs", import.meta.url));
 
-type StepOut = { method: string; path: string; setup?: boolean; status: number | null; ms: number; ok: boolean; why: string | null; body?: string; error?: string | null; logFrom?: number; logTo?: number; appExited?: boolean; skipped?: boolean };
+type StepOut = { method: string; path: string; setup?: boolean; status: number | null; ms: number; ok: boolean; why: string | null; body?: string; contentType?: string | null; location?: string | null; headers?: Record<string, string>; error?: string | null; logFrom?: number; logTo?: number; appExited?: boolean; skipped?: boolean };
 export type FixtureResult = { id: string; kind: string; ok: boolean; skipped?: boolean; note: string; output?: string; steps?: Array<{ method: string; path: string; status: number | null; ok: boolean; why: string | null; body?: string; corrected?: Record<string, unknown> }> };
 export type HarnessOut = {
   prepare: Array<{ command: string; exitCode: number | null; ms: number; tail: string }>;
@@ -26,6 +31,21 @@ export type HarnessOut = {
   probes: Array<{ id: string; ok: boolean; blocked?: { node: string; note: string }; steps: StepOut[] }>;
   latencies: number[];
   shutdown?: { graceful: boolean };
+  scenarios?: ScenarioOut[];
+  /** SSRF canary tokens the app was made to fetch (Security proofs). */
+  canaryHits?: string[];
+  /** AI Evaluator cases: each turn's response and the replay-model calls it caused. */
+  aiCases?: HarnessAiCase[];
+  replayError?: string;
+};
+
+export type HarnessAiTurn = { status: number | null; ms: number; body: string; contentType: string | null; error: string | null; model: Array<{ path: string; body: string; served: string }>; logFrom?: number; logTo?: number };
+export type HarnessAiCase = { id: string; blocked?: { node: string; note: string }; turns: HarnessAiTurn[]; alive: boolean | null; appExited: boolean };
+/** What an AI Evaluator run adds to the harness spec. */
+export type HarnessAiSpec = {
+  aiCases: Array<{ id: string; needs: string[]; alivePath: string; turns: Array<{ method: string; path: string; json: Record<string, unknown>; as: string | null; replay: unknown[] | null; timeoutMs: number; capture?: { name: string; path: string } }> }>;
+  replay: { port: number } | null;
+  timeoutSec: number;
 };
 
 /** Settings for an app: synthetic values for everything without a default, plus every ${ENV:X} the fixture graph uses. */
@@ -63,18 +83,18 @@ export function missingVars(ctx: Ctx, log: string, already: Record<string, strin
 }
 
 /** The graph a probe run sends: only what the harness needs (no evidence, no labels). */
-const graphSpec = (graph: FixtureNode[]) => graph.map((n) => ({ id: n.id, kind: n.kind, dependsOn: n.dependsOn, command: n.command, exports: n.exports, identity: n.identity ?? null, steps: n.steps, auth: n.auth, verify: n.verify ?? null }));
+const graphSpec = (graph: FixtureNode[]) => graph.map((n) => ({ id: n.id, kind: n.kind, dependsOn: n.dependsOn, command: n.command, exports: n.exports, identity: n.identity ?? null, steps: n.steps, auth: n.auth, verify: n.verify ?? null, forge: n.forge ?? null }));
 
-export async function runHarness(ctx: Ctx, image: string, app: BootApp, graph: FixtureNode[], probes: Probe[], label: string, retryOf: string | null, extra: Record<string, string> = {}) {
+export async function runHarness(ctx: Ctx, image: string, app: BootApp, graph: FixtureNode[], probes: Probe[], label: string, retryOf: string | null, extra: Record<string, string> = {}, scenarios: ScenarioJob[] = [], canaryPort?: number, ai?: HarnessAiSpec) {
   const env = appEnv(ctx, app, extra, graph);
-  const spec = { cwd: wsPath(app.workspace), prepare: app.prepare, start: app.start, port: app.port, readyPath: app.readyPath, bootTimeoutSec: POLICY.bootTimeoutSec, env, graph: graphSpec(graph), probes: probes.map((p) => ({ id: p.id, identity: p.identity, needs: p.needs ?? [], steps: p.steps })) };
+  const spec = { cwd: wsPath(app.workspace), prepare: app.prepare, start: app.start, port: app.port, readyPath: app.readyPath, bootTimeoutSec: POLICY.bootTimeoutSec, env, graph: graphSpec(graph), probes: probes.map((p) => ({ id: p.id, identity: p.identity, needs: p.needs ?? [], steps: p.steps })), scenarios: scenarios.map((j) => ({ scenario: j.scenario })), canaryPort, ...(ai ? { aiCases: ai.aiCases, replay: ai.replay } : {}) };
   const [libId, harnessId, specId] = await Promise.all([ctx.provider.upload(HARNESS_LIB), ctx.provider.upload(HARNESS), ctx.provider.upload(Buffer.from(JSON.stringify(spec)))]);
   const r = await execute(ctx, { kind: "probe", label, workspace: app.workspace, retryOf, fetch: [`${OUT}/harness.json`, `${OUT}/server.log`] }, {
     image,
     command: `${startServices(ctx.services)}mkdir -p ${OUT} && node /cc/harness.mjs /cc/spec.json ${OUT}`,
     network: false,
     keep: true,
-    timeoutSec: POLICY.commandTimeoutSec + POLICY.bootTimeoutSec,
+    timeoutSec: (ai?.timeoutSec ?? POLICY.commandTimeoutSec) + POLICY.bootTimeoutSec,
     env: { ...CI_ENV, ...env },
     files: [
       { path: "/cc/lib.mjs", fileId: libId },
@@ -190,22 +210,22 @@ export function summarise(graph: FixtureNode[], results: FixtureResult[]): Fixtu
   return { digest: sha(JSON.stringify(graphSpec(graph))).slice(0, 16), nodes };
 }
 
-export async function judgeProbes(ctx: Ctx, image: string, app: BootApp, initialGraph: FixtureNode[], probes: Probe[], candidates: Candidate[], authoredEvidence: Map<string, string>) {
+export async function judgeProbes(ctx: Ctx, image: string, app: BootApp, initialGraph: FixtureNode[], probes: Probe[], candidates: Candidate[], authoredEvidence: Map<string, string>, scenarios: ScenarioJob[] = []) {
   const appLabel = app.workspace === "." ? "the app" : `the ${app.workspace} app`;
   const bootOb = `env:boot:${app.workspace}`;
   let graph = initialGraph;
   let extra: Record<string, string> = {};
-  let first = await runHarness(ctx, image, app, graph, probes, `Start ${appLabel}, set up test data and probe ${probes.length} request(s)`, null);
+  let first = await runHarness(ctx, image, app, graph, probes, `Start ${appLabel}, set up test data and probe ${probes.length} request(s)${scenarios.length ? ` and ${scenarios.length} scenario(s)` : ""}`, null, {}, scenarios);
   // Start-up repair: if the app names settings it is missing, give them synthetic values and try again (twice at most).
   for (let attempt = 0; attempt < 2 && first.out && !first.out.boot.ok && !first.out.prepare.some((p) => p.exitCode !== 0); attempt++) {
     const missing = missingVars(ctx, first.log, first.env);
     if (!missing.length) break;
     extra = { ...extra, ...Object.fromEntries(missing.map((n) => [n, syntheticValue(n, ctx.runId)])) };
     await ctx.store.event("executing", `${appLabel} stopped because it needs ${missing.join(", ")}; starting it again with synthetic values`);
-    first = await runHarness(ctx, image, app, graph, probes, `Start ${appLabel} again with ${missing.join(", ")} set`, first.exec.id, extra);
+    first = await runHarness(ctx, image, app, graph, probes, `Start ${appLabel} again with ${missing.join(", ")} set`, first.exec.id, extra, scenarios);
   }
   const out = first.out;
-  const probeObs = probes.map((p) => p.obligationId);
+  const probeObs = [...probes.map((p) => p.obligationId), ...scenarios.flatMap((j) => Object.values(j.obligations))];
   const empty = { latencies: [] as number[], fixtures: summarise(graph, []), graceful: null as boolean | null, graph };
 
   if (!out || !out.boot.ok) {
@@ -378,6 +398,12 @@ export async function judgeProbes(ctx: Ctx, image: string, app: BootApp, initial
     // A role check expected only from the route's prefix (/admin/...), on a route whose code asks for any signed-in
     // user: being let in is a policy question for the owner, not a proven defect.
     const ob = ctx.obligations.get(id);
+    // The same for anonymous access: the code shows no guard, only its neighbours have one. An open answer may be
+    // the intended design (a public search), so it is a question for the owner, not a proven defect.
+    if (kind === "unauthenticated" && ob?.oracle.source === "policy" && step.status != null && step.status < 300) {
+      await setOb(ctx, id, { status: "inconclusive", blockedBy: "approval", reachedTarget: true, reason: `Answered ${step.status} without credentials. Other routes in this area require sign-in, but this one's code has no guard (${endpoint?.control.reason ?? "none found"}); confirm whether it is meant to be public.`, executionIds: [exec.id], fixtureRefs });
+      continue;
+    }
     if (kind === "wrong-role" && ob?.oracle.source === "policy" && step.status != null && step.status < 300) {
       await setOb(ctx, id, { status: "inconclusive", blockedBy: "approval", reachedTarget: true, reason: `Answered ${step.status} to "${p.identity}" (a lower role). The route sits under an admin-style prefix, but its code only requires a signed-in user (${endpoint?.control.reason ?? "no role check found"}); confirm whether "${p.identity}" is meant to have this access.`, executionIds: [exec.id], fixtureRefs });
       continue;
@@ -415,7 +441,11 @@ export async function judgeProbes(ctx: Ctx, image: string, app: BootApp, initial
       const writes = firstWrite >= 0;
       const contentChecked = p.steps.some((s) => (s.expect.json?.length ?? 0) > 0);
       const strong = rejection ? Boolean(last.status?.length) : writes ? stateVerified : contentChecked;
-      const patch = ctx.obligations.get(id)?.origin === "authored" ? { proofClass: guard ? ("guard" as const) : rejection ? ("validation" as const) : stateVerified ? ("state_change" as const) : ("business_behavior" as const), oracleStrength: strong ? ("strong" as const) : ("moderate" as const), stateVerified: !rejection && stateVerified } : {};
+      // A probe the AI wrote from reading the code checks what the code does, not what it should do: in the
+      // behaviour-first engine its pass shows availability (or a guard, or validation), never business behaviour.
+      // Documented requirements are proven by the typed scenarios instead.
+      const fromCode = !LEGACY_ENGINE && !rejection;
+      const patch = ctx.obligations.get(id)?.origin === "authored" ? { proofClass: guard ? ("guard" as const) : rejection ? ("validation" as const) : fromCode ? ("availability" as const) : stateVerified ? ("state_change" as const) : ("business_behavior" as const), oracleStrength: fromCode ? ("moderate" as const) : strong ? ("strong" as const) : ("moderate" as const), stateVerified: !rejection && stateVerified } : {};
       await setOb(ctx, id, { status: "passed", reachedTarget: true, ...patch, reason: `${res.steps.map((s) => `${s.method} ${s.path} answered ${s.status}`).join("; ")}.${ignoredBody ? " The endpoint accepted it, so it does not read this body; no crash." : ""}`, executionIds: [exec.id], fixtureRefs });
     } else if (step.skipped) {
       await setOb(ctx, id, { status: "blocked", blockedBy: "prerequisite", reason: "The app had stopped before this check ran.", executionIds: [exec.id], fixtureRefs });
@@ -492,6 +522,8 @@ export async function judgeProbes(ctx: Ctx, image: string, app: BootApp, initial
     await setOb(ctx, id, { status: "failed", reachedTarget: true, reason: `${step.why} (${request}).`, executionIds: execIds, fixtureRefs: refsOf(probe) });
   }
 
+  await judgeScenarios(ctx, image, app, graph, scenarios, out.scenarios ?? [], first, extra, candidates, shared);
+
   if (shared.length) {
     await addFinding(ctx, { kind: "test_defect", status: "confirmed", severity: "low", confidence: "high", title: `${shared.length} check(s) cybercheck wrote shared records with other checks`, expected: "Each check works on records of its own", actual: shared.slice(0, 8).map((s) => `${s.id}: failed in the shared run (${s.why}), passed when repeated in a fresh sandbox`).join("\n"), reproduction: "Internal to cybercheck: compare the first run with the fresh-sandbox repeat in the run's executions.", rootCause: "The checks ran in one app instance and changed the same records (or used up a rate limit) before each other.", location: null, obligationIds: shared.map((s) => s.id), executionIds: [first.exec.id], validation: "Each one passed when repeated in a fresh sandbox; that repeat is its verdict.", limitation: null, layer: "api", nextAction: "Nothing for you: cybercheck gives each check its own records in a later version; the verdicts above already come from the clean repeat." });
   }
@@ -525,4 +557,94 @@ export async function judgeProbes(ctx: Ctx, image: string, app: BootApp, initial
     }
   }
   return { latencies: [...out.latencies], fixtures: summarise(graph, fixtureResults), graceful, graph };
+}
+
+/** A failed scenario in words: every request in order, then each assertion that did not hold. */
+export function scenarioReproduction(s: CompiledScenario, run: ScenarioRun) {
+  const lines = s.requests.map((r, i) => {
+    const params = Object.keys(r.pathParams).length ? ` with ${Object.entries(r.pathParams).map(([k, v]) => `{${k}} = ${JSON.stringify(v)}`).join(", ")}` : "";
+    const query = r.query.length ? ` and query ${r.query.map((q) => `${q.name}=${JSON.stringify(q.value)}`).join("&")}` : "";
+    const body = r.body ? ` with body ${JSON.stringify(r.body.kind === "json" ? r.body.value : r.body.kind === "form" ? r.body.fields : r.body.text).slice(0, 300)}` : "";
+    return `${i + 1}. ${r.method} ${r.path}${params}${query}${body}${r.as ? ` (signed in as ${r.as})` : " (no credentials)"}`;
+  });
+  const failed = run.proofs
+    .filter((p) => !p.passed)
+    .map((p) => {
+      const a = s.assertions.find((x) => x.id === p.assertionId);
+      return `Expected: ${a?.says ?? p.assertionId} (${JSON.stringify(p.expected)}). Observed: ${JSON.stringify(p.observed)}.`;
+    });
+  return [...lines, ...failed].join("\n");
+}
+
+/**
+ * Compiled scenarios after the probe run: each requirement's obligation gets its verdict through the proof gate.
+ * A failure is repeated once in a fresh sandbox before it is reported; passing there means the first run shared
+ * records with other checks.
+ */
+async function judgeScenarios(ctx: Ctx, image: string, app: BootApp, graph: FixtureNode[], jobs: ScenarioJob[], results: ScenarioOut[], first: Awaited<ReturnType<typeof runHarness>>, extra: Record<string, string>, candidates: Candidate[], shared: Array<{ id: string; why: string }>) {
+  if (!jobs.length) return;
+  const byId = new Map(results.map((r) => [r.scenarioId, r]));
+  const record = async (job: ScenarioJob, run: ScenarioOut, execIds: string[]) => {
+    for (const [req, obId] of Object.entries(job.obligations)) {
+      const patch = obligationFromScenario(job.scenario, run, req, execIds[0]!);
+      await setOb(ctx, obId, { ...patch, ...(run.blockedBy ? { status: "blocked" as const, blockedBy: run.blockedBy } : {}), executionIds: execIds });
+    }
+  };
+  const failed: ScenarioJob[] = [];
+  for (const job of jobs) {
+    const run = byId.get(job.scenario.id);
+    if (!run) {
+      for (const obId of Object.values(job.obligations)) await setOb(ctx, obId, { status: "blocked", blockedBy: "prerequisite", reason: "Not reached: the probe run stopped before this scenario.", executionIds: [first.exec.id] });
+    } else if (run.status === "failed") failed.push(job);
+    else await record(job, run, [first.exec.id]);
+  }
+  if (!failed.length) return;
+  await ctx.store.event("executing", `Reproducing ${failed.length} failed scenario(s) in a fresh sandbox`);
+  const second = await runHarness(ctx, image, app, graph, [], `Reproduce ${failed.length} failed scenario(s) on ${app.workspace === "." ? "the app" : app.workspace}`, first.exec.id, extra, failed);
+  const again = new Map((second.out?.scenarios ?? []).map((r) => [r.scenarioId, r]));
+  for (const job of failed) {
+    const run = byId.get(job.scenario.id)!;
+    const rerun = again.get(job.scenario.id);
+    const execIds = [first.exec.id, second.exec.id];
+    if (rerun?.status === "passed") {
+      for (const obId of Object.values(job.obligations)) shared.push({ id: obId, why: run.reason });
+      await record(job, rerun, [second.exec.id, first.exec.id]);
+      continue;
+    }
+    await record(job, run, execIds);
+    const action = job.scenario.requests.find((r) => r.role === "action")!;
+    const e = ctx.d.entryPoints.find((x) => routeKey(x.method, x.path) === routeKey(action.method, action.path));
+    const logText = first.slice(run.logFrom, run.logTo);
+    const locs = [...stackLocations(ctx.src, app.workspace, logText), ...(e ? [e.handler] : [])].slice(0, 3);
+    const crashed = !run.proofs.some((p) => !p.passed);
+    for (const [reqId, obId] of Object.entries(job.obligations)) {
+      const mine = run.proofs.filter((p) => p.requirementId === reqId);
+      if (!crashed && mine.every((p) => p.passed)) continue;
+      const ob = ctx.obligations.get(obId);
+      const req = job.requirements.find((r) => r.id === reqId);
+      const source = req ? `${req.source.kind}${req.source.path ? `, ${req.source.path}${req.source.line ? `:${req.source.line}` : ""}` : ""}` : "?";
+      candidates.push({
+        source: "probe",
+        label: `${ob?.asset.label ?? `${action.method} ${action.path}`}: ${ob?.objective ?? req?.expectedBehavior ?? reqId}`,
+        obligationIds: [obId],
+        executionIds: execIds,
+        reproduced: rerun ? (rerun.status === "failed" ? 2 : 1) : 1,
+        of: rerun ? 2 : 1,
+        reproduction: scenarioReproduction(job.scenario, run),
+        probe: { request: `${action.method} ${action.path}${action.as ? ` (signed in as ${action.as})` : " (no credentials)"}`, status: null },
+        context: [
+          `Typed scenario against the running app (sandbox, no internet, synthetic configuration). Requirement (${source}): ${req?.expectedBehavior ?? reqId}`,
+          `Steps and the assertions that did not hold:\n${scenarioReproduction(job.scenario, run)}`,
+          ...mine.filter((p) => !p.passed && p.excerpt).map((p) => `Response read by ${p.assertionId}: ${p.excerpt}`),
+          `Reproduced in a second fresh sandbox: ${rerun ? (rerun.status === "failed" ? "yes" : "no") : "not attempted"}.`,
+          logText ? `Server log written during this scenario:\n${tail(logText, 2500)}` : "No server log lines were written during this scenario.",
+          ...locs.map((l) => excerpt(ctx.src, l.path, l.line, 8, 30)).filter(Boolean),
+          ...(e ? ["Code the handler calls:", ...codeUnderTest(ctx.src, e.handler.path, 10_000)] : []),
+        ].join("\n\n"),
+        locations: locs,
+        workspace: app.workspace,
+        forced: OFFLINE.test(logText) ? "environment_failure" : undefined,
+      });
+    }
+  }
 }

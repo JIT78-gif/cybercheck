@@ -49,8 +49,9 @@ async function main() {
   const apiEnv = { ...process.env, ...spec.apps[0].env };
   const graph = await runGraph(spec.graph ?? [], { request: client(api.base, null), env: apiEnv, cwd: spec.apps[0].cwd, base: api.base });
   result.fixtures = graph.results;
-  const front = await startApp(spec.frontend, { ...process.env, ...spec.frontend.env }, `${outDir}/frontend.log`, spec.bootTimeoutSec ?? 90);
-  handles.push(front);
+  // Pages the backend serves itself open on that app: nothing more to start.
+  const front = spec.frontend.served ? api : await startApp(spec.frontend, { ...process.env, ...spec.frontend.env }, `${outDir}/frontend.log`, spec.bootTimeoutSec ?? 90);
+  if (!spec.frontend.served) handles.push(front);
   result.apps.push({ name: "frontend", ok: front.boot.ok, reason: front.boot.reason, ms: front.boot.ms });
   save();
   if (!front.boot.ok) return;

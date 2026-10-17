@@ -15,8 +15,9 @@ const fence = (s: string) => `\`\`\`\n${s.replace(/```/g, "'''")}\n\`\`\``;
 const DECISION: Record<string, string> = {
   ready: "Ready to release",
   ready_with_accepted_risk: "Ready with accepted risk",
+  selected_checks_passed: "Selected checks passed (not enough evidence for a release decision)",
   not_ready_product_failures: "Not ready: confirmed product defects",
-  not_ready_insufficient_evidence: "Not ready: insufficient evidence",
+  not_ready_insufficient_evidence: "Not ready: cybercheck could not test enough",
   not_ready_environment_blocked: "Not ready: the environment blocked testing",
 };
 const VERDICT: Record<string, string> = {
@@ -127,7 +128,29 @@ export function testingRunToMarkdown(run: TestingRunDetail, projectName: string)
     const bp = r.load.stages.find((st) => st.name === "breakpoint");
     if (bp) out.push(`**Breakpoint:** ${breakpointText(bp)}`, "");
   }
-  if (r.fixtures?.nodes.length) out.push("## Test data and sign-in setup", "", table(["Step", "Result", "Detail"], r.fixtures.nodes.map((n) => [n.label, n.ok === true ? "worked" : n.ok === false ? "failed" : "not run", n.detail])));
+  if (r.requirements?.length) {
+    out.push("## Requirements", "", "What the project says it must do, and where it says so. Only documentation, its own tests, protocols or you may define correct behaviour; the code alone may only suggest what to test.", "");
+    const verdictOf = (id: string) => {
+      const mine = run.obligations.filter((o) => o.requirementIds?.includes(id));
+      return mine.length ? [...new Set(mine.map((o) => STATUS[o.status]))].join(", ") : "not checked";
+    };
+    out.push(table(["Requirement", "Source", "Proof needed", "Result"], r.requirements.map((q) => [q.expectedBehavior, `${q.source.kind}${q.source.path ? ` ${q.source.path}:${q.source.line ?? ""}` : ""}${q.source.quote ? ` "${q.source.quote}"` : ""}`, q.requiredProof, verdictOf(q.id)])));
+  }
+  if (r.inventory?.length) {
+    const kinds = [...new Set(r.inventory.map((a) => a.kind))];
+    out.push("## What was discovered and what was tested", "", table(["Kind", "Discovered", "Tested with a verdict"], kinds.map((k) => [k, r.inventory!.filter((a) => a.kind === k).length, r.inventory!.filter((a) => a.kind === k && a.executed).length])));
+  }
+  if (r.proofSummary?.business) {
+    const p = r.proofSummary;
+    out.push(`**Proof of business behaviour:** ${p.business} check(s) with a verdict: ${p.state} with the stored state read back, ${p.response} with the response checked, ${p.statusOnly} with only a status code (counted as availability, not behaviour)${p.legacy ? `, ${p.legacy} from earlier check types` : ""}.`, "");
+  }
+  if (r.databaseStrategy) out.push(`**Database checked:** ${{ direct_sqlite_file: "directly, in the SQLite file the app writes", direct_postgres: "directly, in the sandbox's Postgres", api_level: "through the app: the database is in memory inside the app process, so it was judged from its schema, SQLite's rules and the app's own endpoints", none: "not at all (no supported database found)" }[r.databaseStrategy]}.`, "");
+  if (r.screens?.length) out.push(`**Screens served by the backend itself:** ${r.screens.map((s) => s.path).join(", ")} (opened on the app, no frontend build).`, "");
+  if (r.fixtures?.nodes.length) {
+    const invalid = r.fixtures.nodes.filter((n) => n.invalid).length;
+    const note = [invalid ? `${invalid} planned step(s) were invalid and never used.` : "", r.fixtures.blockedChecks ? `${r.fixtures.blockedChecks} check(s) could not run because of the setup.` : ""].filter(Boolean).join(" ");
+    out.push("## Test data and sign-in setup", "", ...(note ? [note, ""] : []), table(["Step", "Result", "Detail"], r.fixtures.nodes.map((n) => [n.label, n.invalid ? "invalid, not used" : n.ok === true ? "worked" : n.ok === false ? "failed" : "not run", n.detail])));
+  }
   out.push("## Expert evidence", "", "### Every planned check", "");
   out.push(table(["Check", "Asset", "Layer", "Expected", "Result", "Reason"], run.obligations.map((o) => [`${o.objective}${o.origin === "authored" ? " (AI-written)" : ""}`, o.asset.label, o.layer.replace("_", " "), o.oracle.expected, STATUS[o.status], o.reason ?? ""])));
 

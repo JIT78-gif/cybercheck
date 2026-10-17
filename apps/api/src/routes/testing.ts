@@ -14,10 +14,12 @@ import { previewOf } from "../testing/preview.ts";
 import { loadEvents } from "../testing/store.ts";
 import { TESTING_MODELS } from "../testing/worker.ts";
 import { analysisOf, ensureUnderstanding } from "../understanding/run.ts";
-import { redactSecrets } from "../understanding/source.ts";
+import { redactDeep, redactJsonText, redactSecrets } from "../understanding/source.ts";
 
 type RunRow = typeof testingRun.$inferSelect;
 export const ACTIVE = ["queued", "running"] as const;
+/** The run table holds every check's runs: Testing routes only ever see Testing runs. */
+export const TESTING = eq(testingRun.check, "testing");
 const emptyUsage: TestingUsage = { aiCalls: 0, inputTokens: 0, outputTokens: 0, costUsd: 0, sandboxOperations: 0, sandboxCpuSeconds: 0, models: {} };
 
 export async function summaries(rows: RunRow[]): Promise<TestingRunSummary[]> {
@@ -95,13 +97,13 @@ const policyOf = (r: RunRow) => {
 
 /** All Testing AI spend for a project so far. */
 async function projectSpend(projectId: string) {
-  const [row] = await db.select({ usd: sql<number>`coalesce(sum((${testingRun.usage}->>'costUsd')::numeric), 0)::float` }).from(testingRun).where(eq(testingRun.projectId, projectId));
+  const [row] = await db.select({ usd: sql<number>`coalesce(sum((${testingRun.usage}->>'costUsd')::numeric), 0)::float` }).from(testingRun).where(and(TESTING, eq(testingRun.projectId, projectId)));
   return Math.round((row?.usd ?? 0) * 10000) / 10000;
 }
 
 /** A finished run of the same snapshot with the same engine and policy: a rerun would add no new evidence. */
 async function identicalRun(snapshotId: string, profile: string, thresholds: unknown, options: Record<string, unknown> = {}) {
-  const rows = await db.select().from(testingRun).where(and(eq(testingRun.snapshotId, snapshotId), inArray(testingRun.status, ["completed", "partial"]))).orderBy(desc(testingRun.createdAt)).limit(10);
+  const rows = await db.select().from(testingRun).where(and(TESTING, eq(testingRun.snapshotId, snapshotId), inArray(testingRun.status, ["completed", "partial"]))).orderBy(desc(testingRun.createdAt)).limit(10);
   return rows.find((r) => {
     const p = r.policy as { engine?: string; profile?: string; thresholds?: unknown; rerun?: unknown; options?: unknown };
     return p.engine === ENGINE_VERSION && (p.profile ?? "standard") === profile && JSON.stringify(p.thresholds ?? null) === JSON.stringify(thresholds ?? null) && JSON.stringify(p.options ?? {}) === JSON.stringify(options) && !p.rerun;
@@ -119,7 +121,7 @@ export async function createRerun(userId: string, key: string, parent: RunRow, i
   return db.transaction(async (tx) => {
     const [existing] = await tx.select().from(idempotencyKey).where(and(eq(idempotencyKey.userId, userId), eq(idempotencyKey.route, route), eq(idempotencyKey.key, key))).for("update");
     if (existing) return existing.requestHash === requestHash ? ({ kind: "replay", runId: (existing.response as { runId: string }).runId } as const) : ({ kind: "conflict" } as const);
-    const [active] = await tx.select().from(testingRun).where(and(eq(testingRun.snapshotId, parent.snapshotId), inArray(testingRun.status, [...ACTIVE]))).limit(1);
+    const [active] = await tx.select().from(testingRun).where(and(TESTING, eq(testingRun.snapshotId, parent.snapshotId), inArray(testingRun.status, [...ACTIVE]))).limit(1);
     const runId = active?.id ?? randomUUID();
     if (!active) {
       await tx.insert(testingRun).values({
@@ -137,7 +139,7 @@ export async function createRerun(userId: string, key: string, parent: RunRow, i
 }
 
 export async function runForUser(userId: string, runId: string) {
-  const [r] = await db.select().from(testingRun).where(eq(testingRun.id, runId));
+  const [r] = await db.select().from(testingRun).where(and(TESTING, eq(testingRun.id, runId)));
   if (!r) return null;
   return (await snapshotForUser(userId, r.snapshotId)) ? r : null;
 }
@@ -181,7 +183,7 @@ export async function testingRoutes(app: FastifyInstance) {
       const [existing] = await tx.select().from(idempotencyKey).where(and(eq(idempotencyKey.userId, session.user.id), eq(idempotencyKey.route, route), eq(idempotencyKey.key, key))).for("update");
       if (existing) return existing.requestHash === requestHash ? ({ kind: "replay", runId: (existing.response as { runId: string }).runId } as const) : ({ kind: "conflict" } as const);
       // One active run per snapshot: a second click joins the running one.
-      const [active] = await tx.select().from(testingRun).where(and(eq(testingRun.snapshotId, s.id), inArray(testingRun.status, [...ACTIVE]))).limit(1);
+      const [active] = await tx.select().from(testingRun).where(and(TESTING, eq(testingRun.snapshotId, s.id), inArray(testingRun.status, [...ACTIVE]))).limit(1);
       const runId = active?.id ?? randomUUID();
       if (!active) {
         await tx.insert(testingRun).values({
@@ -252,7 +254,7 @@ export async function testingRoutes(app: FastifyInstance) {
     if (!(await isMember(session.user.id, request.params.wid))) return sendError(reply, 404, notFound("workspace"));
     const projects = await db.select({ id: project.id }).from(project).where(eq(project.workspaceId, request.params.wid));
     if (!projects.length) return { projects: [] as TestingProjectStatus[] };
-    const rows = await db.select().from(testingRun).where(inArray(testingRun.projectId, projects.map((p) => p.id))).orderBy(desc(testingRun.createdAt)).limit(400);
+    const rows = await db.select().from(testingRun).where(and(TESTING, inArray(testingRun.projectId, projects.map((p) => p.id)))).orderBy(desc(testingRun.createdAt)).limit(400);
     const isCheck = (x: RunRow) => !(x.policy as { rerun?: unknown; repair?: unknown } | null)?.rerun && !(x.policy as { repair?: unknown } | null)?.repair;
     const recent = new Map<string, RunRow[]>();
     for (const x of rows.filter(isCheck)) {
@@ -282,7 +284,7 @@ export async function testingRoutes(app: FastifyInstance) {
     if (!session) return;
     const p = await projectForUser(session.user.id, request.params.id);
     if (!p) return sendError(reply, 404, notFound("project"));
-    const rows = await db.select().from(testingRun).where(eq(testingRun.projectId, p.id)).orderBy(desc(testingRun.createdAt)).limit(20);
+    const rows = await db.select().from(testingRun).where(and(TESTING, eq(testingRun.projectId, p.id))).orderBy(desc(testingRun.createdAt)).limit(20);
     return { runs: await summaries(rows) };
   });
 
@@ -310,7 +312,7 @@ export async function testingRoutes(app: FastifyInstance) {
       reply.header("content-type", "application/json; charset=utf-8");
       reply.header("content-disposition", `attachment; filename="${base}.json"`);
       // Secrets never reach the ledger (only setting names), but outputs are redacted once more on the way out.
-      return redactSecrets(JSON.stringify(run, null, 2)).text;
+      return JSON.stringify(redactDeep(run), null, 2);
     }
     reply.header("content-type", "text/markdown; charset=utf-8");
     reply.header("content-disposition", `attachment; filename="${base}.md"`);
@@ -363,6 +365,7 @@ export async function testingRoutes(app: FastifyInstance) {
       return redactSecrets(body.toString("utf8")).text;
     }
     reply.header("content-type", "text/plain; charset=utf-8");
-    return /\.(txt|log|xml|json)$/.test(art.name) ? redactSecrets(body.toString("utf8")).text : body.toString("utf8");
+    if (ext === "json") return redactJsonText(body.toString("utf8"));
+    return /\.(txt|log|xml)$/.test(art.name) ? redactSecrets(body.toString("utf8")).text : body.toString("utf8");
   });
 }

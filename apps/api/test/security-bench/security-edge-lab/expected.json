@@ -1,0 +1,212 @@
+{
+  "project": "security-edge-lab",
+  "summary": "Small deliberately vulnerable session API covering proof-catalog gaps beyond the original gauntlet.",
+  "safeUse": "Upload only the project directory. Run on loopback or in an isolated sandbox. Never deploy.",
+  "commands": { "requiredEnv": [] },
+  "expectedOutcomes": { "install": "passed", "testSuite": "passed", "appBoots": true },
+  "defects": [
+    {
+      "id": "shell-command-injection",
+      "track": "security",
+      "category": "OWASP-A03-injection",
+      "summary": "A query-string label is concatenated into a shell command.",
+      "path": "src/app.js",
+      "line": 95,
+      "detectableBy": "static",
+      "endpoint": "GET /api/tools/format",
+      "title": "command|shell|injection",
+      "mustFind": true
+    },
+    {
+      "id": "dynamic-code-injection",
+      "track": "security",
+      "category": "OWASP-A03-injection",
+      "summary": "A request expression is executed with eval.",
+      "path": "src/app.js",
+      "line": 103,
+      "detectableBy": "static",
+      "endpoint": "POST /api/rules/evaluate",
+      "title": "code|eval|injection",
+      "mustFind": true
+    },
+    {
+      "id": "weak-md5-password-hash",
+      "track": "security",
+      "category": "OWASP-A02-crypto",
+      "summary": "A password is hashed with fast, broken MD5.",
+      "path": "src/app.js",
+      "line": 89,
+      "detectableBy": "static",
+      "endpoint": "GET /api/password-digest",
+      "title": "MD5|weak|hash",
+      "mustFind": true
+    },
+    {
+      "id": "plain-text-password-storage",
+      "track": "security",
+      "category": "OWASP-A02-crypto",
+      "summary": "Seeded user passwords are stored and compared as plain text.",
+      "path": "src/app.js",
+      "line": 64,
+      "detectableBy": "static",
+      "endpoint": "POST /api/login",
+      "title": "password|plain text|storage",
+      "mustFind": true
+    },
+    {
+      "id": "synthetic-committed-service-token",
+      "track": "security",
+      "category": "OWASP-A07-authentication",
+      "summary": "A GitHub-shaped synthetic service token is committed and exposed by an API.",
+      "path": "src/app.js",
+      "line": 14,
+      "detectableBy": "secret_scan",
+      "endpoint": "GET /api/internal/config",
+      "title": "secret|token|credential",
+      "mustFind": true
+    },
+    {
+      "id": "cookie-session-misconfiguration",
+      "track": "security",
+      "category": "OWASP-A05-misconfiguration",
+      "summary": "The session cookie explicitly disables HttpOnly and Secure and uses SameSite=None.",
+      "path": "src/app.js",
+      "line": 50,
+      "detectableBy": "static",
+      "endpoint": "POST /api/login",
+      "title": "cookie|HttpOnly|Secure|SameSite",
+      "mustFind": true
+    },
+    {
+      "id": "cookie-csrf",
+      "track": "security",
+      "category": "OWASP-A01-access-control",
+      "summary": "A cookie-authenticated email change has no CSRF token or Origin validation.",
+      "path": "src/app.js",
+      "line": 81,
+      "detectableBy": "security_probe",
+      "endpoint": "POST /api/profile/email",
+      "title": "CSRF|cross-site|origin",
+      "mustFind": true
+    },
+    {
+      "id": "session-fixation-and-replay",
+      "track": "security",
+      "category": "OWASP-A07-authentication",
+      "summary": "Login accepts a caller-selected session id and logout does not invalidate it.",
+      "path": "src/app.js",
+      "line": 73,
+      "detectableBy": "security_probe",
+      "endpoint": "POST /api/logout",
+      "title": "session|fixation|replay|logout",
+      "mustFind": true
+    },
+    {
+      "id": "login-account-enumeration",
+      "track": "security",
+      "category": "OWASP-A07-authentication",
+      "summary": "Unknown accounts and wrong passwords receive distinguishable responses.",
+      "path": "src/app.js",
+      "line": 63,
+      "detectableBy": "security_probe",
+      "endpoint": "POST /api/login",
+      "title": "enumeration|account|login",
+      "mustFind": false
+    },
+    {
+      "id": "no-login-throttling",
+      "track": "security",
+      "category": "OWASP-A07-authentication",
+      "summary": "Repeated failed login attempts are never throttled or locked out.",
+      "path": "src/app.js",
+      "line": 61,
+      "detectableBy": "security_probe",
+      "endpoint": "POST /api/login",
+      "title": "rate|throttl|login|brute",
+      "mustFind": false
+    },
+    {
+      "id": "unsigned-replayable-webhook",
+      "track": "security",
+      "category": "OWASP-A08-integrity",
+      "summary": "The billing webhook accepts invalid or missing signatures and duplicate events.",
+      "path": "src/app.js",
+      "line": 107,
+      "detectableBy": "security_probe",
+      "endpoint": "POST /api/webhooks/billing",
+      "title": "webhook|signature|replay",
+      "mustFind": true
+    },
+    {
+      "id": "active-content-upload",
+      "track": "security",
+      "category": "OWASP-A05-misconfiguration",
+      "summary": "Uploader-controlled HTML or SVG is served inline with its supplied content type.",
+      "path": "src/app.js",
+      "line": 113,
+      "detectableBy": "security_probe",
+      "endpoint": "POST /api/uploads",
+      "title": "upload|HTML|SVG|content type",
+      "mustFind": true
+    },
+    {
+      "id": "credentialed-origin-reflection",
+      "track": "security",
+      "category": "OWASP-A05-misconfiguration",
+      "summary": "The server reflects an arbitrary Origin while allowing credentials.",
+      "path": "src/app.js",
+      "line": 53,
+      "detectableBy": "header_probe",
+      "endpoint": null,
+      "title": "CORS|origin|credentials",
+      "mustFind": true
+    },
+    {
+      "id": "member-can-read-internal-config",
+      "track": "security",
+      "category": "OWASP-A01-access-control",
+      "summary": "A normal member can read an internal configuration endpoint that exposes a service token.",
+      "path": "src/app.js",
+      "line": 128,
+      "detectableBy": "security_probe",
+      "endpoint": "GET /api/internal/config",
+      "title": "internal|config|authoriz|role",
+      "mustFind": true
+    },
+    {
+      "id": "missing-security-headers",
+      "track": "security",
+      "category": "OWASP-A05-misconfiguration",
+      "summary": "Responses omit standard browser security headers.",
+      "path": "src/app.js",
+      "line": 50,
+      "detectableBy": "header_probe",
+      "endpoint": null,
+      "title": "header|CSP|X-Frame|nosniff",
+      "mustFind": false
+    },
+    {
+      "id": "vulnerable-transitive-qs",
+      "track": "security",
+      "category": "OWASP-A06-components",
+      "summary": "The Express lock graph includes a qs version with a known advisory.",
+      "path": "package-lock.json",
+      "line": 1,
+      "detectableBy": "dependency_scan",
+      "endpoint": null,
+      "title": "qs|dependency|advisory|CVE",
+      "mustFind": false
+    }
+  ],
+  "notDefects": [
+    "All users and credentials are synthetic benchmark fixtures.",
+    "Loopback binding is intentional and correct.",
+    "The command and eval endpoints must never be exposed outside an isolated sandbox."
+  ],
+  "mustNotReport": [
+    "A real credential incident involving the synthetic ghp_000 token",
+    "A missing database",
+    "An external AI provider failure"
+  ],
+  "release": "not_ready_security_findings"
+}

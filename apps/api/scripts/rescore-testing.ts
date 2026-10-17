@@ -15,6 +15,9 @@ for (const f of readdirSync(dir).filter((x) => x.endsWith(".run.json"))) {
   const exp = JSON.parse(readFileSync(key, "utf8")) as Expected;
   const legacy = scoreRun(run, exp);
   const s = scoreStrict(run, exp);
-  console.log(`${name.padEnd(24)} strict ${s.score.toFixed(1)} (composite ${s.composite.toFixed(1)}, ${s.failedGates} gate(s) failed, ${s.counts.mandatoryFound}/${s.counts.mandatory} mandatory, ${s.counts.found}/${s.counts.testingDefects} Testing defects)  legacy ${legacy.score.toFixed(1)}`);
-  for (const n of s.notes.filter((x) => verbose || /GATE FAILED|MISSED|FALSE POSITIVE|WRONG|DUPLICATE/.test(x))) console.log(`    ${n}`);
+  const head = s.control ? `control ${s.control.ok ? "passed" : "FAILED"} (${s.control.detail})` : `strict ${s.score!.toFixed(1)} (composite ${s.composite.toFixed(1)}, ${s.failedGates} gate(s) failed, ${s.counts.mandatoryFound}/${s.counts.mandatory} mandatory found, ${s.counts.found}/${s.counts.testingDefects} Testing defects)`;
+  console.log(`${name.padEnd(24)} ${head}  legacy ${legacy.score.toFixed(1)}`);
+  const m = s.meta;
+  console.log(`    engine ${m.engine ?? "not recorded"}; plan ${m.planSource ?? "?"}${m.planSourceRunId ? ` from ${m.planSourceRunId}` : ""}; setup: ${m.invalidFixtureNodes} invalid step(s), ${m.fixtureBlocked} check(s) blocked; ${m.requirementChecks} req:* check(s), ${m.compileFailures} compile failure(s), ${m.templatesNotBuilt} template(s) not built; ${m.journeys} journey(s); abstention ${Math.round(s.abstention * 100)}%`);
+  for (const n of s.notes.filter((x) => verbose || /GATE FAILED|MISSED|FALSE POSITIVE|WRONG|DUPLICATE|NEEDS REVIEW|CONTROL/.test(x))) console.log(`    ${n}`);
 }

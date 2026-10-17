@@ -64,6 +64,17 @@ describe("strict Testing scorer", () => {
     expect(s.notes.some((x) => x.startsWith("DUPLICATE root cause reported 2 times"))).toBe(true);
   });
 
+  it("credits a business defect whose title calls the app's data malformed, and keeps it apart from bad-input crashes", () => {
+    // Round 49: F14 explained the coupon text comparison but was merged with the malformed-JSON 500 and got no credit.
+    const coupon = finding({ title: "Coupon expiration date string is malformed causing invalid lexicographical comparison", reproduction: "POST /api/coupons/validate with JSON body", actual: "'2026-12-31' <= '2026-2-01' is true as text" });
+    const json = finding({ title: "Unhandled SyntaxError on malformed JSON body returns 500 instead of 400", reproduction: "POST /api/orders with raw body {" });
+    const id = finding({ title: "DELETE /api/data/customers/:id accepts malformed non-numeric ID without validation", reproduction: "DELETE /api/data/customers/abc" });
+    const key: StrictExpected = { ...KEY, defects: [{ id: "coupon", track: "testing", summary: "", path: "src/app.js", line: 125, detectableBy: "api_probe", endpoint: "POST /api/coupons/validate", title: "coupon|expir", mustFind: true }] };
+    const s = scoreStrict(run([coupon, json, id]), key);
+    expect(s.notes).toContain(`defect coupon (must find, api_probe): confirmed as ${coupon.id} "${coupon.title}"`);
+    expect(s.counts.duplicates).toBe(0);
+  });
+
   it("calls only documented non-defects false positives; other tracks' real defects count as true", () => {
     const db = finding({ title: "Database connection failure on start", actual: "the database connection failed" });
     const sqli = finding({ title: "Search is open to SQL injection", reproduction: "GET /api/search?q='", actual: "sql error" });
@@ -81,6 +92,60 @@ describe("strict Testing scorer", () => {
     expect(s.counts.statusOnly).toBe(1);
     expect(s.notes.some((x) => x.startsWith("WRONG ORACLE api:POST /api/orders:total"))).toBe(true);
     expect(s.parts.oracle).toBe(0);
+  });
+
+  it("passes no gate on a suspected finding, though it earns half recall credit", () => {
+    const fs = [
+      finding({ title: "Order total ignores quantity", reproduction: "POST /api/orders", status: "suspected" }),
+      finding({ title: "Stock decremented once regardless of quantity", reproduction: "POST /api/orders" }),
+      finding({ title: "Inputs without a label", layer: "accessibility", actual: "label missing" }),
+    ];
+    const s = scoreStrict(run(fs), { ...KEY, mustNotReport: [] });
+    expect(s.parts.mandatoryRecall).toBeCloseTo(2.5 / 3);
+    expect(s.gates.find((g) => g.name.startsWith("all 3 mandatory"))).toMatchObject({ ok: false, detail: "2 of 3 confirmed (1 only suspected)" });
+  });
+
+  it("blocks the precision gate until every confirmed finding outside the key is reviewed, and scores the lower bound", () => {
+    const fs = [finding({ title: "Order total ignores quantity", reproduction: "POST /api/orders" }), finding({ title: "Profile page shows wrong currency" })];
+    const s = scoreStrict(run(fs), { ...KEY, mustNotReport: [] });
+    expect(s.counts.needsReview).toBe(1);
+    expect(s.notes).toContain("NEEDS REVIEW confirmed F" + fs[1]!.id.slice(1) + ": Profile page shows wrong currency (not in the answer key: a real defect or a false positive?)");
+    expect(s.gates.find((g) => g.name.startsWith("confirmed-finding precision"))).toMatchObject({ ok: false, detail: expect.stringMatching(/^1 confirmed finding\(s\) need review/) });
+    expect(s.parts.precision).toBe(0.5);
+  });
+
+  it("counts invalid setup steps and fails the gate when a critical check was blocked by setup", () => {
+    // Round 45: "1 of 1" in the list, 4 invalid steps only in cybercheck's own finding, and blocked critical checks.
+    const invalid = finding({ kind: "test_defect", title: "4 planned setup step(s) were invalid and not used (61 check(s) could not run)" });
+    const blocked = ob({ id: "api:GET /api/orders:own", status: "blocked", blockedBy: "fixture", priority: "critical" });
+    const s = scoreStrict(run([invalid], [blocked]), KEY);
+    expect(s.meta).toMatchObject({ invalidFixtureNodes: 4, fixtureBlocked: 1 });
+    expect(s.gates.find((g) => g.name.startsWith("fixture success"))).toMatchObject({ ok: false, detail: "1 of 5 planned step(s) worked (4 invalid, never used); 1 check(s) blocked by setup (1 critical)" });
+  });
+
+  it("scores a project without Testing defects as a control, never 0 to 10", () => {
+    const control: StrictExpected = { project: "todo", commands: {}, expectedOutcomes: {}, defects: [] };
+    const clean = scoreStrict(run([]), control);
+    expect(clean.score).toBeNull();
+    expect(clean.control).toEqual({ ok: true, detail: "no confirmed finding to question" });
+    const noisy = scoreStrict(run([finding({ title: "Todo list shows wrong count" })]), control);
+    expect(noisy.control).toEqual({ ok: false, detail: "0 known false positive(s), 1 confirmed finding(s) to review" });
+  });
+
+  it("checks the expected suite outcome, also a flaky one", () => {
+    const flakyKey: StrictExpected = { ...KEY, expectedOutcomes: { testSuite: "flaky", flakyTests: ["retries the payment"] } };
+    const passedSuite = ob({ id: "suite:passes:.", layer: "existing_suite", status: "passed" });
+    const wrong = scoreStrict(run([], [passedSuite]), flakyKey);
+    expect(wrong.notes).toContain("WRONG own suite flaky: expected flaky; obligations runs= passes=passed; report=");
+    expect(wrong.notes).toContain("WRONG flaky test flagged: retries the payment: not flagged");
+    const right = scoreStrict(run([finding({ kind: "flaky", title: "retries the payment passed 2 of 3 runs" })], [{ ...passedSuite, status: "flaky" }]), flakyKey);
+    expect(right.notes.filter((x) => x.startsWith("WRONG"))).toEqual([]);
+  });
+
+  it("says what the run was: engine, plan source and the review's success criteria", () => {
+    const r = run([finding({ kind: "test_defect", title: "2 behaviour scenario(s) cybercheck wrote did not compile and were not sent" })], [ob({ id: "req:req-total:tpl:req-total" }), ob({ id: "req:req-pages:template", status: "inconclusive" }), ob({ id: "ui:journey:1", layer: "ui" })], { usage: { costUsd: 0.4, planSource: "cache", planSourceRunId: "run-7" } as never });
+    (r.report as unknown as { environment: unknown }).environment = { engine: "2026-10-14.v3e" };
+    expect(scoreStrict(r, KEY).meta).toEqual({ engine: "2026-10-14.v3e", planSource: "cache", planSourceRunId: "run-7", invalidFixtureNodes: 0, fixtureBlocked: 0, requirementChecks: 2, compileFailures: 2, templatesNotBuilt: 1, journeys: 1 });
   });
 
   it("scores a run that finds every defect with evidence above 9", () => {

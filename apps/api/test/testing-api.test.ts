@@ -76,6 +76,9 @@ class FakeSandbox implements SandboxProvider {
   crashed: string | null = null;
   private files = new Map<string, Map<string, Buffer>>();
 
+  async preflight() {
+    return { ok: true, status: "available" as const, detail: "fake" };
+  }
   async image() {
     return "base";
   }

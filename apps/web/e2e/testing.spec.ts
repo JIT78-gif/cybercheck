@@ -41,6 +41,7 @@ function run(status: TestingRunDetail["status"]): TestingRunDetail {
       ob("api:POST /transfers:empty-body", done ? "failed" : "running", "Handles an empty JSON object body without a server error", done ? "server error 500 (POST /transfers)." : null),
       ob("api:GET /health:public", "passed", "Answers without credentials and without a server error"),
       ob("suite:passes:.", done ? "passed" : "planned", "Every existing test passes, consistently across repeated clean runs", done ? "22 test(s) passed in each of 3 clean runs." : null, "existing_suite"),
+      { ...ob("req:req-transfer-amount:transfers:missing", done ? "failed" : "planned", "A transfer without an amount is refused", done ? "the amount is required: expected 400, observed 500" : null), requirementIds: ["req-transfer-amount"], scenarioId: "transfers:missing", proofLevel: "response" as const, proofs: done ? [{ requirementId: "req-transfer-amount", assertionId: "refused", scenarioId: "transfers:missing", executionId: "e1", passed: false, expected: 400, observed: 500, targetReached: true, stateVerified: false, excerpt: "500 TypeError" }] : [] },
       ob("integration:Stripe:live", "blocked", "Calls to Stripe work against the real service", "The sandbox has no internet access and no credentials for third-party services.", "integration"),
     ],
     executions: [
@@ -48,7 +49,7 @@ function run(status: TestingRunDetail["status"]): TestingRunDetail {
     ],
     findings: done
       ? [
-          { id: "F1", kind: "product_defect", status: "confirmed", severity: "high", confidence: "high", title: "POST /transfers crashes on a body without an amount", expected: "A 400 response for an invalid body", actual: "HTTP 500 with a TypeError", reproduction: "POST /transfers with body {} (signed in as admin)", rootCause: "The handler reads body.amount without validation.", location: { path: "src/routes/transfers.ts", line: 18 }, obligationIds: ["api:POST /transfers:empty-body"], executionIds: ["e1"], validation: "Failed in 2 of 2 clean run(s). Independent review: confirm.", limitation: null },
+          { id: "F1", kind: "product_defect", status: "confirmed", severity: "high", confidence: "high", title: "POST /transfers crashes on a body without an amount", expected: "A 400 response for an invalid body", actual: "HTTP 500 with a TypeError", reproduction: "POST /transfers with body {} (signed in as admin)", rootCause: "The handler reads body.amount without validation.", location: { path: "src/routes/transfers.ts", line: 18 }, obligationIds: ["api:POST /transfers:empty-body", "req:req-transfer-amount:transfers:missing"], executionIds: ["e1"], validation: "Failed in 2 of 2 clean run(s). Independent review: confirm.", limitation: null },
           { id: "F2", kind: "environment_failure", status: "confirmed", severity: "info", confidence: "high", title: "Stripe contract test needs the internet", expected: "-", actual: "ENOTFOUND api.stripe.com", reproduction: "npm test", rootCause: null, location: null, obligationIds: [], executionIds: ["e1"], validation: "Offline sandbox.", limitation: null },
         ]
       : [],
@@ -88,6 +89,16 @@ function run(status: TestingRunDetail["status"]): TestingRunDetail {
             { layer: "api", planned: 2, decisive: 2, passed: 1, failed: 1, flaky: 0, inconclusive: 0, blocked: 0, unsupported: 0, completeness: 52, confidence: "partial", gap: null, nextAction: null },
           ],
           capabilities: [{ name: "Transfers", obligations: 1, decisive: 1, passed: 0, failed: 1, proofClasses: [], existingTests: 3, missing: "No business behaviour was proven" }],
+          requirements: [{ id: "req-transfer-amount", capability: "Transfers", source: { kind: "documentation", path: "README.md", line: 12, quote: "A transfer needs a positive amount" }, expectedBehavior: "A transfer without an amount is refused with a 4xx", affectedAssets: ["POST /transfers"], requiredProof: "response", priority: "critical" }],
+          inventory: [
+            { id: "endpoint:POST /transfers", kind: "endpoint", label: "POST /transfers", location: null, discoveredBy: "express route", executed: true },
+            { id: "endpoint:GET /health", kind: "endpoint", label: "GET /health", location: null, discoveredBy: "express route", executed: true },
+            { id: "endpoint:DELETE /accounts/:id", kind: "endpoint", label: "DELETE /accounts/:id", location: null, discoveredBy: "express route", executed: false },
+            { id: "screen:/", kind: "screen", label: "/", location: null, discoveredBy: "served by the backend (static html)", executed: true },
+          ],
+          proofSummary: { business: 3, state: 1, response: 1, statusOnly: 1, legacy: 0 },
+          databaseStrategy: "api_level",
+          screens: [{ path: "/", source: "static_html", location: null, target: "backend_served" }],
           fixtures: { digest: "abc", nodes: [{ id: "admin", label: "Sign in as admin", ok: true, detail: "sign-in answered 200; token captured" }] },
           load: {
             note: "Measured with k6 inside one sandbox.",
@@ -121,6 +132,10 @@ test("a finished run shows defects with evidence, untested scope and the full le
   await expect(page.getByText("Install passed (project root)")).toBeVisible();
   await expect(page.getByText("External integrations: not tested (blocked)")).toBeVisible();
   await expect(page.getByRole("region", { name: "What to do next" })).toBeVisible();
+  const evidence = page.getByRole("region", { name: "Evidence behind this result" });
+  await expect(evidence.getByText("2 of 3 tested")).toBeVisible();
+  await expect(evidence.getByText(/1 saw only a status code/)).toBeVisible();
+  await expect(evidence.getByText(/in memory inside the app process/)).toBeVisible();
   // At a glance: every check by result and by layer, with the numbers next to each chart.
   const glance = page.getByRole("region", { name: "At a glance" });
   await expect(glance.getByText("All checks")).toBeVisible();
@@ -134,6 +149,9 @@ test("a finished run shows defects with evidence, untested scope and the full le
   await expect(page.getByText("POST /transfers with body {} (signed in as admin)")).toBeVisible();
   await expect(page.getByText(/Independent review: confirm/)).toBeVisible();
   await expect(page.getByRole("button", { name: /src\/routes\/transfers\.ts:18/ })).toBeVisible();
+  // A failed assertion shows what it expected and what it saw.
+  await expect(page.getByText("What the checks expected and saw")).toBeVisible();
+  await expect(page.getByText("refused", { exact: true })).toBeVisible();
   // Environment blockers are a separate group, never mixed with product defects.
   await page.getByRole("tablist", { name: "Problem groups" }).getByRole("tab", { name: /Environment/ }).click();
   await expect(page.getByText("Stripe contract test needs the internet").first()).toBeVisible();
@@ -145,6 +163,10 @@ test("a finished run shows defects with evidence, untested scope and the full le
   await page.getByRole("group", { name: "Filters" }).getByRole("button", { name: /^Failed/ }).click();
   await expect(page.getByRole("row").filter({ hasText: "server error" })).toHaveCount(1);
   await expect(page.getByRole("row").filter({ hasText: "Dependencies install" })).toHaveCount(0);
+  // Requirements: what the docs say, where, and what the check found.
+  await page.getByRole("tablist", { name: "Layers" }).getByRole("tab", { name: /Requirements/ }).click();
+  await expect(page.getByText("A transfer without an amount is refused with a 4xx")).toBeVisible();
+  await expect(page.getByText(/“A transfer needs a positive amount”/)).toBeVisible();
   await page.getByRole("tablist", { name: "Layers" }).getByRole("tab", { name: /Install, build and start/ }).click();
   await expect(page.getByRole("row").filter({ hasText: "Dependencies install" })).toHaveCount(1);
 

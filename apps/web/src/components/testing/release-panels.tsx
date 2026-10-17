@@ -17,8 +17,9 @@ type Release = NonNullable<TestingReport["release"]>;
 export const DECISION: Record<Release["decision"], { label: string; tone: "good" | "bad" | "warn"; icon: typeof ShieldCheck }> = {
   ready: { label: "Ready to release", tone: "good", icon: ShieldCheck },
   ready_with_accepted_risk: { label: "Ready with accepted risk", tone: "warn", icon: ShieldAlert },
+  selected_checks_passed: { label: "Selected checks passed", tone: "warn", icon: ShieldAlert },
   not_ready_product_failures: { label: "Not ready: confirmed product defects", tone: "bad", icon: ShieldX },
-  not_ready_insufficient_evidence: { label: "Not ready: insufficient evidence", tone: "warn", icon: ShieldAlert },
+  not_ready_insufficient_evidence: { label: "Not ready: cybercheck could not test enough", tone: "warn", icon: ShieldAlert },
   not_ready_environment_blocked: { label: "Not ready: the environment blocked testing", tone: "warn", icon: ShieldAlert },
 };
 

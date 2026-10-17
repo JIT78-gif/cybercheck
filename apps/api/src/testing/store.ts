@@ -1,7 +1,7 @@
 import { and, asc, eq, sql } from "drizzle-orm";
-import type { LiveAction, Obligation, TestExecution, TestFinding, TestingPhase } from "@cybercheck/contracts";
+import type { AiEvaluationCase, AiEvaluationFinding, AiEvaluationPhase, LiveAction, Obligation, SecurityFinding, SecurityObligation, SecurityPhase, SecurityProof, TestExecution, TestFinding, TestingPhase } from "@cybercheck/contracts";
 import { db } from "../db/client.ts";
-import { testExecution, testFinding, testingRun, testObligation, testRunEvent } from "../db/schema.ts";
+import { aiEvaluationCase, securityProof, testExecution, testFinding, testingRun, testObligation, testRunEvent } from "../db/schema.ts";
 
 export class FencedError extends Error {
   constructor() {
@@ -10,7 +10,7 @@ export class FencedError extends Error {
 }
 
 /**
- * All writes for one claimed run. Every write first checks that the run still has the generation
+ * All writes for one claimed run, of any check (Testing or Security share the run tables). Every write first checks that the run still has the generation
  * this worker claimed, so a stalled worker that wakes up later cannot overwrite a newer attempt.
  */
 export class RunStore {
@@ -49,7 +49,7 @@ export class RunStore {
     await db.update(testingRun).set({ usage }).where(and(eq(testingRun.id, this.runId), eq(testingRun.generation, this.generation), eq(testingRun.status, "running")));
   }
 
-  async phase(phase: TestingPhase, message: string) {
+  async phase(phase: TestingPhase | SecurityPhase | AiEvaluationPhase, message: string) {
     await this.fenced();
     await db.update(testingRun).set({ phase }).where(and(eq(testingRun.id, this.runId), eq(testingRun.generation, this.generation)));
     await db.insert(testRunEvent).values({ runId: this.runId, seq: ++this.seq, type: `phase:${phase}`, message });
@@ -60,7 +60,7 @@ export class RunStore {
     await db.update(testingRun).set({ plan }).where(and(eq(testingRun.id, this.runId), eq(testingRun.generation, this.generation)));
   }
 
-  async putObligations(list: Obligation[], startSeq = 0) {
+  async putObligations(list: Array<Obligation | SecurityObligation>, startSeq = 0) {
     await this.fenced();
     if (!list.length) return;
     for (let i = 0; i < list.length; i += 200) {
@@ -77,9 +77,21 @@ export class RunStore {
     await db.insert(testExecution).values({ id: e.id, runId: this.runId, data: e }).onConflictDoUpdate({ target: testExecution.id, set: { data: e } });
   }
 
-  async putFinding(f: TestFinding) {
+  async putFinding(f: TestFinding | SecurityFinding | AiEvaluationFinding) {
     await this.fenced();
     await db.insert(testFinding).values({ id: f.id, runId: this.runId, data: f }).onConflictDoUpdate({ target: [testFinding.runId, testFinding.id], set: { data: f } });
+  }
+
+  /** A Security runtime proof; seq keeps the order the proofs ran in. Rewriting the same proof id replaces it. */
+  async putProof(p: SecurityProof, seq: number) {
+    await this.fenced();
+    await db.insert(securityProof).values({ id: p.id, runId: this.runId, seq, data: p }).onConflictDoUpdate({ target: [securityProof.runId, securityProof.id], set: { data: p } });
+  }
+
+  /** An AI Evaluator case; rewriting the same case id replaces it (seq keeps the planned order). */
+  async putAiCase(c: AiEvaluationCase) {
+    await this.fenced();
+    await db.insert(aiEvaluationCase).values({ runId: this.runId, id: c.id, seq: c.seq, category: c.category, verdict: c.verdict, data: c }).onConflictDoUpdate({ target: [aiEvaluationCase.runId, aiEvaluationCase.id], set: { verdict: c.verdict, data: c } });
   }
 
   /** A finding merged into another one (same root cause) is removed; its evidence moves to the survivor. */
@@ -101,6 +113,7 @@ export class RunStore {
     await db.delete(testObligation).where(eq(testObligation.runId, this.runId));
     await db.delete(testExecution).where(eq(testExecution.runId, this.runId));
     await db.delete(testFinding).where(eq(testFinding.runId, this.runId));
+    await db.delete(aiEvaluationCase).where(eq(aiEvaluationCase.runId, this.runId));
   }
 
   async cancelRequested() {

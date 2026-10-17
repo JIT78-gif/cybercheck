@@ -1,0 +1,1856 @@
+{
+  "id": "f76f2d57-b194-4cec-9d58-d345391ae68f",
+  "snapshotId": "bc079d56-0320-48cc-8149-697533fe7856",
+  "projectId": "ce998138-2c65-4bb0-8623-490ae9ffb5fb",
+  "status": "completed",
+  "phase": "done",
+  "step": null,
+  "progress": null,
+  "headline": "All 8 decided case(s) met their thresholds, with no confirmed high or critical finding.",
+  "decision": "ready_with_evidence",
+  "mode": "replay",
+  "profile": "standard",
+  "counts": {
+    "cases": 8,
+    "decisive": 8,
+    "passed": 8,
+    "failed": 0,
+    "confirmed": 0,
+    "suspected": 0
+  },
+  "parentRunId": null,
+  "error": null,
+  "createdAt": "2026-10-17T09:09:28.443Z",
+  "startedAt": "2026-10-17T09:09:28.305Z",
+  "finishedAt": "2026-10-17T09:10:22.173Z",
+  "policy": {
+    "engine": "2026-10-17.e2",
+    "profile": "standard",
+    "judge": "off",
+    "modelMode": "auto",
+    "runtime": "local",
+    "datasetIds": []
+  },
+  "cases": [
+    {
+      "id": "builtin.functional.answer-reaches-user",
+      "seq": 1,
+      "mode": "replay",
+      "tags": [],
+      "judge": [],
+      "reset": "fresh_conversation",
+      "title": "The model's answer reaches the user",
+      "oracle": {
+        "type": "reply_present, reply_passthrough, model_received_message",
+        "expected": "The reply carries the model's answer, and the model was given the user's question."
+      },
+      "reason": "A 61-character reply came back (200). The model's scripted answer reached the user. The user's message reached the model (1 call).",
+      "source": {
+        "kind": "builtin",
+        "digest": "381c35370704e3ae1f3aebc6e22e504f686e15aea20dde8f121117e5b09581b5",
+        "version": "2026-10-17.c2",
+        "datasetId": null
+      },
+      "target": {
+        "endpoint": "POST /api/assistant",
+        "componentId": "ai:1"
+      },
+      "graders": [
+        {
+          "hard": true,
+          "pass": true,
+          "detail": "A 61-character reply came back (200).",
+          "grader": "reply_present",
+          "version": "2026-10-17.g2"
+        },
+        {
+          "hard": true,
+          "pass": true,
+          "detail": "The model's scripted answer reached the user.",
+          "grader": "reply_passthrough",
+          "version": "2026-10-17.g2"
+        },
+        {
+          "hard": true,
+          "pass": true,
+          "detail": "The user's message reached the model (1 call).",
+          "grader": "model_received_message",
+          "version": "2026-10-17.g2"
+        },
+        {
+          "hard": true,
+          "pass": true,
+          "detail": "No credential-like text in the reply.",
+          "grader": "no_credential",
+          "version": "2026-10-17.g2"
+        },
+        {
+          "hard": true,
+          "pass": true,
+          "detail": "The reply does not repeat the system prompt.",
+          "grader": "no_prompt_echo",
+          "version": "2026-10-17.g2"
+        },
+        {
+          "hard": true,
+          "pass": true,
+          "detail": "No cybercheck marker in the reply.",
+          "grader": "no_canary",
+          "version": "2026-10-17.g2"
+        },
+        {
+          "hard": true,
+          "pass": true,
+          "detail": "No identity or card numbers in the reply.",
+          "grader": "no_pii",
+          "version": "2026-10-17.g2"
+        }
+      ],
+      "profile": "standard",
+      "samples": [
+        {
+          "mode": "replay",
+          "turns": [
+            {
+              "as": "customer",
+              "ms": 52,
+              "error": null,
+              "reply": "Our support team is available from 9:00 to 17:00 on weekdays.",
+              "status": 200,
+              "request": "POST /api/assistant (ordinary support question)"
+            }
+          ],
+          "sample": 1,
+          "tokens": {
+            "input": 342,
+            "output": 16
+          },
+          "costUsd": 0,
+          "citations": [],
+          "toolCalls": [],
+          "modelRequests": 1
+        }
+      ],
+      "verdict": "passed",
+      "category": "functional",
+      "priority": "high",
+      "redacted": true,
+      "evaluator": "deterministic",
+      "findingIds": [],
+      "inputClass": "ordinary support question",
+      "limitations": [
+        "Replay mode: the model's answer was scripted, so this checks the application's handling, not the real model's quality, latency or cost."
+      ],
+      "executionIds": [
+        "98df78af-febf-47ee-afc2-de1de9a4496a"
+      ],
+      "measurements": {
+        "maxMs": 52,
+        "costUsd": 0,
+        "medianMs": 52,
+        "tokensIn": 342,
+        "tokensOut": 16,
+        "modelRequests": 1
+      },
+      "preconditions": [
+        {
+          "met": true,
+          "what": "Signed in as customer"
+        },
+        {
+          "met": true,
+          "what": "The replay model was listening"
+        }
+      ],
+      "samplesPlanned": 1,
+      "sourceEvidence": [
+        {
+          "line": 17,
+          "path": "src/model.js"
+        },
+        {
+          "line": 18,
+          "path": "src/assistant.js"
+        },
+        {
+          "line": 19,
+          "path": "src/assistant.js"
+        }
+      ],
+      "conversationSetup": "A fresh conversation, one turn"
+    },
+    {
+      "id": "builtin.grounding.unknown-citation-dropped",
+      "seq": 2,
+      "mode": "replay",
+      "tags": [],
+      "judge": [],
+      "reset": "fresh_conversation",
+      "title": "Citations are limited to material the model was given",
+      "oracle": {
+        "type": "reply_present, citation_known",
+        "expected": "The response's citations only name documents that were part of the model's input; the invented one is dropped."
+      },
+      "reason": "A 44-character reply came back (200). No citations were returned (nothing invented).",
+      "source": {
+        "kind": "builtin",
+        "digest": "381c35370704e3ae1f3aebc6e22e504f686e15aea20dde8f121117e5b09581b5",
+        "version": "2026-10-17.c2",
+        "datasetId": null
+      },
+      "target": {
+        "endpoint": "POST /api/assistant",
+        "componentId": "ai:1"
+      },
+      "graders": [
+        {
+          "hard": true,
+          "pass": true,
+          "detail": "A 44-character reply came back (200).",
+          "grader": "reply_present",
+          "version": "2026-10-17.g2"
+        },
+        {
+          "hard": true,
+          "pass": true,
+          "detail": "No citations were returned (nothing invented).",
+          "grader": "citation_known",
+          "version": "2026-10-17.g2"
+        },
+        {
+          "hard": false,
+          "pass": true,
+          "detail": "The user's message reached the model (1 call).",
+          "grader": "model_received_message",
+          "version": "2026-10-17.g2"
+        },
+        {
+          "hard": true,
+          "pass": true,
+          "detail": "No credential-like text in the reply.",
+          "grader": "no_credential",
+          "version": "2026-10-17.g2"
+        },
+        {
+          "hard": true,
+          "pass": true,
+          "detail": "The reply does not repeat the system prompt.",
+          "grader": "no_prompt_echo",
+          "version": "2026-10-17.g2"
+        },
+        {
+          "hard": true,
+          "pass": true,
+          "detail": "No cybercheck marker in the reply.",
+          "grader": "no_canary",
+          "version": "2026-10-17.g2"
+        },
+        {
+          "hard": true,
+          "pass": true,
+          "detail": "No identity or card numbers in the reply.",
+          "grader": "no_pii",
+          "version": "2026-10-17.g2"
+        }
+      ],
+      "profile": "standard",
+      "samples": [
+        {
+          "mode": "replay",
+          "turns": [
+            {
+              "as": "customer",
+              "ms": 6,
+              "error": null,
+              "reply": "Shipping usually takes 3 to 5 business days.",
+              "status": 200,
+              "request": "POST /api/assistant (question answered with a citation to a document that was never retrieved)"
+            }
+          ],
+          "sample": 1,
+          "tokens": {
+            "input": 389,
+            "output": 11
+          },
+          "costUsd": 0,
+          "citations": [],
+          "toolCalls": [],
+          "modelRequests": 1
+        }
+      ],
+      "verdict": "passed",
+      "category": "grounding",
+      "priority": "high",
+      "redacted": true,
+      "evaluator": "deterministic",
+      "findingIds": [],
+      "inputClass": "question answered with a citation to a document that was never retrieved",
+      "limitations": [
+        "Replay mode: the model's answer was scripted, so this checks the application's handling, not the real model's quality, latency or cost."
+      ],
+      "executionIds": [
+        "98df78af-febf-47ee-afc2-de1de9a4496a"
+      ],
+      "measurements": {
+        "maxMs": 6,
+        "costUsd": 0,
+        "medianMs": 6,
+        "tokensIn": 389,
+        "tokensOut": 11,
+        "modelRequests": 1
+      },
+      "preconditions": [
+        {
+          "met": true,
+          "what": "Signed in as customer"
+        },
+        {
+          "met": true,
+          "what": "The replay model was listening"
+        }
+      ],
+      "samplesPlanned": 1,
+      "sourceEvidence": [
+        {
+          "line": 17,
+          "path": "src/model.js"
+        },
+        {
+          "line": 18,
+          "path": "src/assistant.js"
+        },
+        {
+          "line": 19,
+          "path": "src/assistant.js"
+        }
+      ],
+      "conversationSetup": "A fresh conversation, one turn"
+    },
+    {
+      "id": "builtin.reliability.transient-error",
+      "seq": 3,
+      "mode": "replay",
+      "tags": [],
+      "judge": [],
+      "reset": "fresh_conversation",
+      "title": "A transient provider error is handled",
+      "oracle": {
+        "type": "handled_failure, retry_bound, app_alive",
+        "expected": "Either the request is retried and the answer arrives, or a clean error is returned; at most 4 model calls; the app keeps serving."
+      },
+      "reason": "Answered 200 with a reply. 2 model calls for one request (limit 4). The app still answered afterwards.",
+      "source": {
+        "kind": "builtin",
+        "digest": "381c35370704e3ae1f3aebc6e22e504f686e15aea20dde8f121117e5b09581b5",
+        "version": "2026-10-17.c2",
+        "datasetId": null
+      },
+      "target": {
+        "endpoint": "POST /api/assistant",
+        "componentId": "ai:1"
+      },
+      "graders": [
+        {
+          "hard": true,
+          "pass": true,
+          "detail": "Answered 200 with a reply.",
+          "grader": "handled_failure",
+          "version": "2026-10-17.g2"
+        },
+        {
+          "hard": true,
+          "pass": true,
+          "detail": "2 model calls for one request (limit 4).",
+          "grader": "retry_bound",
+          "version": "2026-10-17.g2"
+        },
+        {
+          "hard": true,
+          "pass": true,
+          "detail": "The app still answered afterwards.",
+          "grader": "app_alive",
+          "version": "2026-10-17.g2"
+        },
+        {
+          "hard": false,
+          "pass": true,
+          "detail": "The model's scripted answer reached the user.",
+          "grader": "reply_passthrough",
+          "version": "2026-10-17.g2"
+        },
+        {
+          "hard": false,
+          "pass": true,
+          "detail": "The user's message reached the model (2 calls).",
+          "grader": "model_received_message",
+          "version": "2026-10-17.g2"
+        },
+        {
+          "hard": true,
+          "pass": true,
+          "detail": "No credential-like text in the reply.",
+          "grader": "no_credential",
+          "version": "2026-10-17.g2"
+        },
+        {
+          "hard": true,
+          "pass": true,
+          "detail": "The reply does not repeat the system prompt.",
+          "grader": "no_prompt_echo",
+          "version": "2026-10-17.g2"
+        },
+        {
+          "hard": true,
+          "pass": true,
+          "detail": "No cybercheck marker in the reply.",
+          "grader": "no_canary",
+          "version": "2026-10-17.g2"
+        },
+        {
+          "hard": true,
+          "pass": true,
+          "detail": "No identity or card numbers in the reply.",
+          "grader": "no_pii",
+          "version": "2026-10-17.g2"
+        }
+      ],
+      "profile": "standard",
+      "samples": [
+        {
+          "mode": "replay",
+          "turns": [
+            {
+              "as": "customer",
+              "ms": 8,
+              "error": null,
+              "reply": "Yes, you can change the delivery address until the order ships.",
+              "status": 200,
+              "request": "POST /api/assistant (ordinary question while the provider fails once with HTTP 500)"
+            }
+          ],
+          "sample": 1,
+          "tokens": {
+            "input": 582,
+            "output": 16
+          },
+          "costUsd": 0,
+          "citations": [],
+          "toolCalls": [],
+          "modelRequests": 2
+        }
+      ],
+      "verdict": "passed",
+      "category": "reliability",
+      "priority": "high",
+      "redacted": true,
+      "evaluator": "deterministic",
+      "findingIds": [],
+      "inputClass": "ordinary question while the provider fails once with HTTP 500",
+      "limitations": [
+        "Replay mode: the model's answer was scripted, so this checks the application's handling, not the real model's quality, latency or cost."
+      ],
+      "executionIds": [
+        "98df78af-febf-47ee-afc2-de1de9a4496a"
+      ],
+      "measurements": {
+        "maxMs": 8,
+        "costUsd": 0,
+        "medianMs": 8,
+        "tokensIn": 582,
+        "tokensOut": 16,
+        "modelRequests": 2
+      },
+      "preconditions": [
+        {
+          "met": true,
+          "what": "Signed in as customer"
+        },
+        {
+          "met": true,
+          "what": "The replay model was listening"
+        }
+      ],
+      "samplesPlanned": 1,
+      "sourceEvidence": [
+        {
+          "line": 17,
+          "path": "src/model.js"
+        },
+        {
+          "line": 18,
+          "path": "src/assistant.js"
+        },
+        {
+          "line": 19,
+          "path": "src/assistant.js"
+        }
+      ],
+      "conversationSetup": "A fresh conversation, one turn"
+    },
+    {
+      "id": "builtin.reliability.provider-down",
+      "seq": 4,
+      "mode": "replay",
+      "tags": [],
+      "judge": [],
+      "reset": "fresh_conversation",
+      "title": "A provider outage is answered cleanly",
+      "oracle": {
+        "type": "handled_failure, retry_bound, app_alive",
+        "expected": "A clean error response (no stack trace, no empty success), at most 4 model calls, and the app keeps serving."
+      },
+      "reason": "Answered 502 with a clean error. 2 model calls for one request (limit 4). The app still answered afterwards.",
+      "source": {
+        "kind": "builtin",
+        "digest": "381c35370704e3ae1f3aebc6e22e504f686e15aea20dde8f121117e5b09581b5",
+        "version": "2026-10-17.c2",
+        "datasetId": null
+      },
+      "target": {
+        "endpoint": "POST /api/assistant",
+        "componentId": "ai:1"
+      },
+      "graders": [
+        {
+          "hard": true,
+          "pass": true,
+          "detail": "Answered 502 with a clean error.",
+          "grader": "handled_failure",
+          "version": "2026-10-17.g2"
+        },
+        {
+          "hard": true,
+          "pass": true,
+          "detail": "2 model calls for one request (limit 4).",
+          "grader": "retry_bound",
+          "version": "2026-10-17.g2"
+        },
+        {
+          "hard": true,
+          "pass": true,
+          "detail": "The app still answered afterwards.",
+          "grader": "app_alive",
+          "version": "2026-10-17.g2"
+        },
+        {
+          "hard": false,
+          "pass": true,
+          "detail": "The user's message reached the model (2 calls).",
+          "grader": "model_received_message",
+          "version": "2026-10-17.g2"
+        },
+        {
+          "hard": true,
+          "pass": true,
+          "detail": "No credential-like text in the reply.",
+          "grader": "no_credential",
+          "version": "2026-10-17.g2"
+        },
+        {
+          "hard": true,
+          "pass": true,
+          "detail": "The reply does not repeat the system prompt.",
+          "grader": "no_prompt_echo",
+          "version": "2026-10-17.g2"
+        },
+        {
+          "hard": true,
+          "pass": true,
+          "detail": "No cybercheck marker in the reply.",
+          "grader": "no_canary",
+          "version": "2026-10-17.g2"
+        },
+        {
+          "hard": true,
+          "pass": true,
+          "detail": "No identity or card numbers in the reply.",
+          "grader": "no_pii",
+          "version": "2026-10-17.g2"
+        }
+      ],
+      "profile": "standard",
+      "samples": [
+        {
+          "mode": "replay",
+          "turns": [
+            {
+              "as": "customer",
+              "ms": 19,
+              "error": null,
+              "reply": null,
+              "status": 502,
+              "request": "POST /api/assistant (ordinary question while the provider answers HTTP 503 every time)"
+            }
+          ],
+          "sample": 1,
+          "tokens": {
+            "input": 752,
+            "output": 0
+          },
+          "costUsd": 0,
+          "citations": [],
+          "toolCalls": [],
+          "modelRequests": 2
+        }
+      ],
+      "verdict": "passed",
+      "category": "reliability",
+      "priority": "high",
+      "redacted": true,
+      "evaluator": "deterministic",
+      "findingIds": [],
+      "inputClass": "ordinary question while the provider answers HTTP 503 every time",
+      "limitations": [
+        "Replay mode: the model's answer was scripted, so this checks the application's handling, not the real model's quality, latency or cost."
+      ],
+      "executionIds": [
+        "98df78af-febf-47ee-afc2-de1de9a4496a"
+      ],
+      "measurements": {
+        "maxMs": 19,
+        "costUsd": 0,
+        "medianMs": 19,
+        "tokensIn": 752,
+        "tokensOut": 0,
+        "modelRequests": 2
+      },
+      "preconditions": [
+        {
+          "met": true,
+          "what": "Signed in as customer"
+        },
+        {
+          "met": true,
+          "what": "The replay model was listening"
+        }
+      ],
+      "samplesPlanned": 1,
+      "sourceEvidence": [
+        {
+          "line": 17,
+          "path": "src/model.js"
+        },
+        {
+          "line": 18,
+          "path": "src/assistant.js"
+        },
+        {
+          "line": 19,
+          "path": "src/assistant.js"
+        }
+      ],
+      "conversationSetup": "A fresh conversation, one turn"
+    },
+    {
+      "id": "builtin.reliability.malformed-response",
+      "seq": 5,
+      "mode": "replay",
+      "tags": [],
+      "judge": [],
+      "reset": "fresh_conversation",
+      "title": "A malformed provider response is handled",
+      "oracle": {
+        "type": "handled_failure, retry_bound, app_alive",
+        "expected": "A clean error or a sensible reply; never a crash, a stack trace, or a reply like 'undefined'."
+      },
+      "reason": "Answered 502 with a clean error. 1 model call for one request (limit 4). The app still answered afterwards.",
+      "source": {
+        "kind": "builtin",
+        "digest": "381c35370704e3ae1f3aebc6e22e504f686e15aea20dde8f121117e5b09581b5",
+        "version": "2026-10-17.c2",
+        "datasetId": null
+      },
+      "target": {
+        "endpoint": "POST /api/assistant",
+        "componentId": "ai:1"
+      },
+      "graders": [
+        {
+          "hard": true,
+          "pass": true,
+          "detail": "Answered 502 with a clean error.",
+          "grader": "handled_failure",
+          "version": "2026-10-17.g2"
+        },
+        {
+          "hard": true,
+          "pass": true,
+          "detail": "1 model call for one request (limit 4).",
+          "grader": "retry_bound",
+          "version": "2026-10-17.g2"
+        },
+        {
+          "hard": true,
+          "pass": true,
+          "detail": "The app still answered afterwards.",
+          "grader": "app_alive",
+          "version": "2026-10-17.g2"
+        },
+        {
+          "hard": false,
+          "pass": true,
+          "detail": "The user's message reached the model (1 call).",
+          "grader": "model_received_message",
+          "version": "2026-10-17.g2"
+        },
+        {
+          "hard": true,
+          "pass": true,
+          "detail": "No credential-like text in the reply.",
+          "grader": "no_credential",
+          "version": "2026-10-17.g2"
+        },
+        {
+          "hard": true,
+          "pass": true,
+          "detail": "The reply does not repeat the system prompt.",
+          "grader": "no_prompt_echo",
+          "version": "2026-10-17.g2"
+        },
+        {
+          "hard": true,
+          "pass": true,
+          "detail": "No cybercheck marker in the reply.",
+          "grader": "no_canary",
+          "version": "2026-10-17.g2"
+        },
+        {
+          "hard": true,
+          "pass": true,
+          "detail": "No identity or card numbers in the reply.",
+          "grader": "no_pii",
+          "version": "2026-10-17.g2"
+        }
+      ],
+      "profile": "standard",
+      "samples": [
+        {
+          "mode": "replay",
+          "turns": [
+            {
+              "as": "customer",
+              "ms": 4,
+              "error": null,
+              "reply": null,
+              "status": 502,
+              "request": "POST /api/assistant (ordinary question while the provider returns a body that is not a completion)"
+            }
+          ],
+          "sample": 1,
+          "tokens": {
+            "input": 290,
+            "output": 0
+          },
+          "costUsd": 0,
+          "citations": [],
+          "toolCalls": [],
+          "modelRequests": 1
+        }
+      ],
+      "verdict": "passed",
+      "category": "reliability",
+      "priority": "high",
+      "redacted": true,
+      "evaluator": "deterministic",
+      "findingIds": [],
+      "inputClass": "ordinary question while the provider returns a body that is not a completion",
+      "limitations": [
+        "Replay mode: the model's answer was scripted, so this checks the application's handling, not the real model's quality, latency or cost."
+      ],
+      "executionIds": [
+        "98df78af-febf-47ee-afc2-de1de9a4496a"
+      ],
+      "measurements": {
+        "maxMs": 4,
+        "costUsd": 0,
+        "medianMs": 4,
+        "tokensIn": 290,
+        "tokensOut": 0,
+        "modelRequests": 1
+      },
+      "preconditions": [
+        {
+          "met": true,
+          "what": "Signed in as customer"
+        },
+        {
+          "met": true,
+          "what": "The replay model was listening"
+        }
+      ],
+      "samplesPlanned": 1,
+      "sourceEvidence": [
+        {
+          "line": 17,
+          "path": "src/model.js"
+        },
+        {
+          "line": 18,
+          "path": "src/assistant.js"
+        },
+        {
+          "line": 19,
+          "path": "src/assistant.js"
+        }
+      ],
+      "conversationSetup": "A fresh conversation, one turn"
+    },
+    {
+      "id": "builtin.reliability.provider-timeout",
+      "seq": 6,
+      "mode": "replay",
+      "tags": [],
+      "judge": [],
+      "reset": "fresh_conversation",
+      "title": "A provider that never answers is timed out",
+      "oracle": {
+        "type": "handled_failure, app_alive",
+        "expected": "The app gives up on the provider by itself and answers within 60 seconds with a clean error."
+      },
+      "reason": "Answered 502 with a clean error. The app still answered afterwards.",
+      "source": {
+        "kind": "builtin",
+        "digest": "381c35370704e3ae1f3aebc6e22e504f686e15aea20dde8f121117e5b09581b5",
+        "version": "2026-10-17.c2",
+        "datasetId": null
+      },
+      "target": {
+        "endpoint": "POST /api/assistant",
+        "componentId": "ai:1"
+      },
+      "graders": [
+        {
+          "hard": true,
+          "pass": true,
+          "detail": "Answered 502 with a clean error.",
+          "grader": "handled_failure",
+          "version": "2026-10-17.g2"
+        },
+        {
+          "hard": true,
+          "pass": true,
+          "detail": "The app still answered afterwards.",
+          "grader": "app_alive",
+          "version": "2026-10-17.g2"
+        },
+        {
+          "hard": false,
+          "pass": true,
+          "detail": "The user's message reached the model (2 calls).",
+          "grader": "model_received_message",
+          "version": "2026-10-17.g2"
+        },
+        {
+          "hard": true,
+          "pass": true,
+          "detail": "No credential-like text in the reply.",
+          "grader": "no_credential",
+          "version": "2026-10-17.g2"
+        },
+        {
+          "hard": true,
+          "pass": true,
+          "detail": "The reply does not repeat the system prompt.",
+          "grader": "no_prompt_echo",
+          "version": "2026-10-17.g2"
+        },
+        {
+          "hard": true,
+          "pass": true,
+          "detail": "No cybercheck marker in the reply.",
+          "grader": "no_canary",
+          "version": "2026-10-17.g2"
+        },
+        {
+          "hard": true,
+          "pass": true,
+          "detail": "No identity or card numbers in the reply.",
+          "grader": "no_pii",
+          "version": "2026-10-17.g2"
+        }
+      ],
+      "profile": "standard",
+      "samples": [
+        {
+          "mode": "replay",
+          "turns": [
+            {
+              "as": "customer",
+              "ms": 29193,
+              "error": null,
+              "reply": null,
+              "status": 502,
+              "request": "POST /api/assistant (ordinary question while the provider never answers)"
+            }
+          ],
+          "sample": 1,
+          "tokens": {
+            "input": 656,
+            "output": 0
+          },
+          "costUsd": 0,
+          "citations": [],
+          "toolCalls": [],
+          "modelRequests": 2
+        }
+      ],
+      "verdict": "passed",
+      "category": "reliability",
+      "priority": "medium",
+      "redacted": true,
+      "evaluator": "deterministic",
+      "findingIds": [],
+      "inputClass": "ordinary question while the provider never answers",
+      "limitations": [
+        "Replay mode: the model's answer was scripted, so this checks the application's handling, not the real model's quality, latency or cost."
+      ],
+      "executionIds": [
+        "98df78af-febf-47ee-afc2-de1de9a4496a"
+      ],
+      "measurements": {
+        "maxMs": 29193,
+        "costUsd": 0,
+        "medianMs": 29193,
+        "tokensIn": 656,
+        "tokensOut": 0,
+        "modelRequests": 2
+      },
+      "preconditions": [
+        {
+          "met": true,
+          "what": "Signed in as customer"
+        },
+        {
+          "met": true,
+          "what": "The replay model was listening"
+        }
+      ],
+      "samplesPlanned": 1,
+      "sourceEvidence": [
+        {
+          "line": 17,
+          "path": "src/model.js"
+        },
+        {
+          "line": 18,
+          "path": "src/assistant.js"
+        },
+        {
+          "line": 19,
+          "path": "src/assistant.js"
+        }
+      ],
+      "conversationSetup": "A fresh conversation, one turn"
+    },
+    {
+      "id": "builtin.reliability.blank-input",
+      "seq": 7,
+      "mode": "replay",
+      "tags": [],
+      "judge": [],
+      "reset": "fresh_conversation",
+      "title": "A blank message is handled",
+      "oracle": {
+        "type": "handled_failure, app_alive",
+        "expected": "A validation error (4xx) or a sensible reply; never a server error."
+      },
+      "reason": "Answered 400 with a clean error. The app still answered afterwards.",
+      "source": {
+        "kind": "builtin",
+        "digest": "381c35370704e3ae1f3aebc6e22e504f686e15aea20dde8f121117e5b09581b5",
+        "version": "2026-10-17.c2",
+        "datasetId": null
+      },
+      "target": {
+        "endpoint": "POST /api/assistant",
+        "componentId": "ai:1"
+      },
+      "graders": [
+        {
+          "hard": true,
+          "pass": true,
+          "detail": "Answered 400 with a clean error.",
+          "grader": "handled_failure",
+          "version": "2026-10-17.g2"
+        },
+        {
+          "hard": true,
+          "pass": true,
+          "detail": "The app still answered afterwards.",
+          "grader": "app_alive",
+          "version": "2026-10-17.g2"
+        },
+        {
+          "hard": false,
+          "pass": false,
+          "detail": "The app answered without calling the model.",
+          "grader": "model_received_message",
+          "version": "2026-10-17.g2"
+        },
+        {
+          "hard": true,
+          "pass": true,
+          "detail": "No credential-like text in the reply.",
+          "grader": "no_credential",
+          "version": "2026-10-17.g2"
+        },
+        {
+          "hard": true,
+          "pass": true,
+          "detail": "The reply does not repeat the system prompt.",
+          "grader": "no_prompt_echo",
+          "version": "2026-10-17.g2"
+        },
+        {
+          "hard": true,
+          "pass": true,
+          "detail": "No cybercheck marker in the reply.",
+          "grader": "no_canary",
+          "version": "2026-10-17.g2"
+        },
+        {
+          "hard": true,
+          "pass": true,
+          "detail": "No identity or card numbers in the reply.",
+          "grader": "no_pii",
+          "version": "2026-10-17.g2"
+        }
+      ],
+      "profile": "standard",
+      "samples": [
+        {
+          "mode": "replay",
+          "turns": [
+            {
+              "as": "customer",
+              "ms": 9,
+              "error": null,
+              "reply": null,
+              "status": 400,
+              "request": "POST /api/assistant (a message containing only a space)"
+            }
+          ],
+          "sample": 1,
+          "tokens": {
+            "input": 0,
+            "output": 0
+          },
+          "costUsd": 0,
+          "citations": [],
+          "toolCalls": [],
+          "modelRequests": 0
+        }
+      ],
+      "verdict": "passed",
+      "category": "reliability",
+      "priority": "medium",
+      "redacted": true,
+      "evaluator": "deterministic",
+      "findingIds": [],
+      "inputClass": "a message containing only a space",
+      "limitations": [
+        "Replay mode: the model's answer was scripted, so this checks the application's handling, not the real model's quality, latency or cost."
+      ],
+      "executionIds": [
+        "98df78af-febf-47ee-afc2-de1de9a4496a"
+      ],
+      "measurements": {
+        "maxMs": 9,
+        "costUsd": 0,
+        "medianMs": 9,
+        "tokensIn": 0,
+        "tokensOut": 0,
+        "modelRequests": 0
+      },
+      "preconditions": [
+        {
+          "met": true,
+          "what": "Signed in as customer"
+        },
+        {
+          "met": true,
+          "what": "The replay model was listening"
+        }
+      ],
+      "samplesPlanned": 1,
+      "sourceEvidence": [
+        {
+          "line": 17,
+          "path": "src/model.js"
+        },
+        {
+          "line": 18,
+          "path": "src/assistant.js"
+        },
+        {
+          "line": 19,
+          "path": "src/assistant.js"
+        }
+      ],
+      "conversationSetup": "A fresh conversation, one turn"
+    },
+    {
+      "id": "builtin.reliability.long-input",
+      "seq": 8,
+      "mode": "replay",
+      "tags": [],
+      "judge": [],
+      "reset": "fresh_conversation",
+      "title": "A very long message is handled",
+      "oracle": {
+        "type": "handled_failure, app_alive",
+        "expected": "A validation error (4xx) or a sensible reply; never a server error."
+      },
+      "reason": "Answered 400 with a clean error. The app still answered afterwards.",
+      "source": {
+        "kind": "builtin",
+        "digest": "381c35370704e3ae1f3aebc6e22e504f686e15aea20dde8f121117e5b09581b5",
+        "version": "2026-10-17.c2",
+        "datasetId": null
+      },
+      "target": {
+        "endpoint": "POST /api/assistant",
+        "componentId": "ai:1"
+      },
+      "graders": [
+        {
+          "hard": true,
+          "pass": true,
+          "detail": "Answered 400 with a clean error.",
+          "grader": "handled_failure",
+          "version": "2026-10-17.g2"
+        },
+        {
+          "hard": true,
+          "pass": true,
+          "detail": "The app still answered afterwards.",
+          "grader": "app_alive",
+          "version": "2026-10-17.g2"
+        },
+        {
+          "hard": false,
+          "pass": false,
+          "detail": "The app answered without calling the model.",
+          "grader": "model_received_message",
+          "version": "2026-10-17.g2"
+        },
+        {
+          "hard": true,
+          "pass": true,
+          "detail": "No credential-like text in the reply.",
+          "grader": "no_credential",
+          "version": "2026-10-17.g2"
+        },
+        {
+          "hard": true,
+          "pass": true,
+          "detail": "The reply does not repeat the system prompt.",
+          "grader": "no_prompt_echo",
+          "version": "2026-10-17.g2"
+        },
+        {
+          "hard": true,
+          "pass": true,
+          "detail": "No cybercheck marker in the reply.",
+          "grader": "no_canary",
+          "version": "2026-10-17.g2"
+        },
+        {
+          "hard": true,
+          "pass": true,
+          "detail": "No identity or card numbers in the reply.",
+          "grader": "no_pii",
+          "version": "2026-10-17.g2"
+        }
+      ],
+      "profile": "standard",
+      "samples": [
+        {
+          "mode": "replay",
+          "turns": [
+            {
+              "as": "customer",
+              "ms": 4,
+              "error": null,
+              "reply": null,
+              "status": 400,
+              "request": "POST /api/assistant (an ordinary request repeated to about 8000 characters)"
+            }
+          ],
+          "sample": 1,
+          "tokens": {
+            "input": 0,
+            "output": 0
+          },
+          "costUsd": 0,
+          "citations": [],
+          "toolCalls": [],
+          "modelRequests": 0
+        }
+      ],
+      "verdict": "passed",
+      "category": "reliability",
+      "priority": "medium",
+      "redacted": true,
+      "evaluator": "deterministic",
+      "findingIds": [],
+      "inputClass": "an ordinary request repeated to about 8000 characters",
+      "limitations": [
+        "Replay mode: the model's answer was scripted, so this checks the application's handling, not the real model's quality, latency or cost."
+      ],
+      "executionIds": [
+        "98df78af-febf-47ee-afc2-de1de9a4496a"
+      ],
+      "measurements": {
+        "maxMs": 4,
+        "costUsd": 0,
+        "medianMs": 4,
+        "tokensIn": 0,
+        "tokensOut": 0,
+        "modelRequests": 0
+      },
+      "preconditions": [
+        {
+          "met": true,
+          "what": "Signed in as customer"
+        },
+        {
+          "met": true,
+          "what": "The replay model was listening"
+        }
+      ],
+      "samplesPlanned": 1,
+      "sourceEvidence": [
+        {
+          "line": 17,
+          "path": "src/model.js"
+        },
+        {
+          "line": 18,
+          "path": "src/assistant.js"
+        },
+        {
+          "line": 19,
+          "path": "src/assistant.js"
+        }
+      ],
+      "conversationSetup": "A fresh conversation, one turn"
+    }
+  ],
+  "findings": [],
+  "executions": [
+    {
+      "id": "eaf1d562-dcca-4b38-980f-11029956f103",
+      "kind": "security_app",
+      "label": "Unpack the app for proving",
+      "command": "mkdir -p /work/app && tar xzf /in/snapshot.tgz -C /work/app --no-same-owner && find /work/app -name '*.sh' -exec chmod +x {} + ; printf '%s' 'CC_TRAVERSAL_CANARY_7f3a9 (synthetic file outside the app directory; do not serve)' > /work/cc-canary-secret.txt ; node --version",
+      "network": false,
+      "outcome": "ok",
+      "retryOf": null,
+      "sandbox": {
+        "imageId": "docker.io/library/node:22-bookworm",
+        "provider": "local-docker",
+        "operationId": "cc-a48bd827-c84d-40bf-80fa-7d152264e12d"
+      },
+      "envNames": [],
+      "exitCode": 0,
+      "timedOut": false,
+      "artifacts": [
+        {
+          "key": "testing/f76f2d57-b194-4cec-9d58-d345391ae68f/eaf1d562-dcca-4b38-980f-11029956f103/output.txt",
+          "name": "output.txt",
+          "bytes": 9,
+          "sha256": "33e26f35db6e57ce0c486ddc815fe966867e4f649e418eaf323f75f4720eb8e9"
+        }
+      ],
+      "resources": {
+        "maxRssKb": null,
+        "cpuSeconds": null
+      },
+      "startedAt": "2026-10-17T09:09:30.695Z",
+      "workspace": null,
+      "durationMs": 4840,
+      "finishedAt": "2026-10-17T09:09:35.745Z",
+      "outputTail": "v22.23.3\n"
+    },
+    {
+      "id": "1afd6c7a-c02c-4635-8fd6-8656e85c0a4d",
+      "kind": "security_app",
+      "label": "Install dependencies (.)",
+      "command": "cd '/work/app' && npm ci --no-audit --no-fund </dev/null",
+      "network": true,
+      "outcome": "ok",
+      "retryOf": null,
+      "sandbox": {
+        "imageId": "sha256:d1e5ead069603729969a43f29dadc5e4a3a8bac1750143a509ec39d58669b1bb",
+        "provider": "local-docker",
+        "operationId": "cc-90ba728c-6401-4831-a880-7e9f20033659"
+      },
+      "envNames": [
+        "CI",
+        "NODE_OPTIONS",
+        "PIP_DISABLE_PIP_VERSION_CHECK",
+        "npm_config_fund",
+        "npm_config_update_notifier"
+      ],
+      "exitCode": 0,
+      "timedOut": false,
+      "artifacts": [
+        {
+          "key": "testing/f76f2d57-b194-4cec-9d58-d345391ae68f/1afd6c7a-c02c-4635-8fd6-8656e85c0a4d/output.txt",
+          "name": "output.txt",
+          "bytes": 263,
+          "sha256": "71b18c510fa40dcd0d93d404592ac585134ab5b428cf0104e04d5f61a61e7c5b"
+        }
+      ],
+      "resources": {
+        "maxRssKb": null,
+        "cpuSeconds": null
+      },
+      "startedAt": "2026-10-17T09:09:35.754Z",
+      "workspace": ".",
+      "durationMs": 8128,
+      "finishedAt": "2026-10-17T09:09:44.171Z",
+      "outputTail": "\nadded 66 packages in 2s\n\nnpm warn EBADENGINE Unsupported engine {\nnpm warn EBADENGINE   package: 'clean-ai-support@1.0.0',\nnpm warn EBADENGINE   required: { node: '>=24' },\nnpm warn EBADENGINE   current: { node: 'v22.23.3', npm: '10.9.9' }\nnpm warn EBADENGINE }\n"
+    },
+    {
+      "id": "98df78af-febf-47ee-afc2-de1de9a4496a",
+      "kind": "probe",
+      "label": "Run 8 AI evaluation case(s) against the running app",
+      "command": "mkdir -p /out && node /cc/harness.mjs /cc/spec.json /out",
+      "network": false,
+      "outcome": "ok",
+      "retryOf": null,
+      "sandbox": {
+        "imageId": "sha256:9c0bfe7cee29c3aafb81bcad4f10e7f4e6f5f080efe3a9e703ea2c48a1858423",
+        "provider": "local-docker",
+        "operationId": "cc-68ecd3fa-fb77-43c2-bae8-7ea88d99105e"
+      },
+      "envNames": [
+        "AI_API_KEY",
+        "AI_BASE_URL",
+        "CI",
+        "NODE_OPTIONS",
+        "PIP_DISABLE_PIP_VERSION_CHECK",
+        "PORT",
+        "TOKEN_SECRET",
+        "npm_config_fund",
+        "npm_config_update_notifier"
+      ],
+      "exitCode": 0,
+      "timedOut": false,
+      "artifacts": [
+        {
+          "key": "testing/f76f2d57-b194-4cec-9d58-d345391ae68f/98df78af-febf-47ee-afc2-de1de9a4496a/output.txt",
+          "name": "output.txt",
+          "bytes": 73,
+          "sha256": "9cb25767e5aaabd97c79312e8517e82583d93935cf19295889004ed622ba32ae"
+        },
+        {
+          "key": "testing/f76f2d57-b194-4cec-9d58-d345391ae68f/98df78af-febf-47ee-afc2-de1de9a4496a/harness.json",
+          "name": "harness.json",
+          "bytes": 17539,
+          "sha256": "f1247e2a4e684794b19604235f7ecc2e801d1a6b4757e9da0838ba20afb05476"
+        },
+        {
+          "key": "testing/f76f2d57-b194-4cec-9d58-d345391ae68f/98df78af-febf-47ee-afc2-de1de9a4496a/server.log",
+          "name": "server.log",
+          "bytes": 238,
+          "sha256": "f640c699966ea7eb5f8a8b6133d1028412eddc4c5bf82c4f79069d1f5ca35b70"
+        }
+      ],
+      "resources": {
+        "maxRssKb": null,
+        "cpuSeconds": null
+      },
+      "startedAt": "2026-10-17T09:09:44.186Z",
+      "workspace": ".",
+      "durationMs": 36060,
+      "finishedAt": "2026-10-17T09:10:22.064Z",
+      "outputTail": "harness: scenarios=0 boot=true fixtures=4/4 probes=0 failed=0 not-sent=0\n"
+    }
+  ],
+  "report": {
+    "mode": {
+      "used": "replay",
+      "reason": "The component's provider base URL can be pointed at cybercheck's replay model; live mode needs the model gateway, which this engine version does not have.",
+      "requested": "auto"
+    },
+    "audit": [
+      {
+        "ok": true,
+        "check": "evidence ownership",
+        "detail": "5 source item(s) checked against this snapshot."
+      },
+      {
+        "ok": true,
+        "check": "cases belong to this run's catalogue and datasets",
+        "detail": "8 case(s), each from the built-in catalogue or a frozen dataset."
+      },
+      {
+        "ok": true,
+        "check": "credentials redacted",
+        "detail": "No credential-like value in stored samples or findings."
+      },
+      {
+        "ok": true,
+        "check": "canary values redacted",
+        "detail": "No raw marker value is stored."
+      },
+      {
+        "ok": true,
+        "check": "network off while the app ran",
+        "detail": "Every run of the project's app had the network off; model traffic stayed on loopback."
+      },
+      {
+        "ok": true,
+        "check": "no verdict without execution",
+        "detail": "Every decided case has an executed sample."
+      },
+      {
+        "ok": true,
+        "check": "no pass on a status code alone",
+        "detail": "Every passed case rests on a content or handling check."
+      }
+    ],
+    "judge": {
+      "calls": 0,
+      "model": null,
+      "reason": "The AI judge is not part of this engine version; only deterministic checks decide.",
+      "status": "off",
+      "costUsd": 0,
+      "provider": null,
+      "calibration": null,
+      "rubricVersions": []
+    },
+    "claims": [
+      "Replay mode: the model's answers were scripted by cybercheck, so the results show how the application handles model output, errors and citations. They do not establish the real model's answer quality, latency or cost.",
+      "Every verdict comes from deterministic checks; no AI judge was used, so cases that need a judgement of meaning are left undecided.",
+      "Only defensive cases ran: ordinary questions, provider failures and unusual input. Prompt injection, extraction and cross-tenant cases are not part of this engine version."
+    ],
+    "engine": "2026-10-17.e2",
+    "metrics": [
+      {
+        "name": "functional pass rate",
+        "pass": true,
+        "score": 1,
+        "rubric": null,
+        "caseIds": [
+          "builtin.functional.answer-reaches-user"
+        ],
+        "samples": 1,
+        "category": "functional",
+        "evaluator": "deterministic",
+        "numerator": 1,
+        "rationale": "1 of 1 decided case(s) passed; 0 undecided.",
+        "threshold": 0.85,
+        "denominator": 1,
+        "rubricVersion": null
+      },
+      {
+        "name": "grounding pass rate",
+        "pass": true,
+        "score": 1,
+        "rubric": null,
+        "caseIds": [
+          "builtin.grounding.unknown-citation-dropped"
+        ],
+        "samples": 1,
+        "category": "grounding",
+        "evaluator": "deterministic",
+        "numerator": 1,
+        "rationale": "1 of 1 decided case(s) passed; 0 undecided.",
+        "threshold": 0.9,
+        "denominator": 1,
+        "rubricVersion": null
+      },
+      {
+        "name": "reliability pass rate",
+        "pass": true,
+        "score": 1,
+        "rubric": null,
+        "caseIds": [
+          "builtin.reliability.transient-error",
+          "builtin.reliability.provider-down",
+          "builtin.reliability.malformed-response",
+          "builtin.reliability.provider-timeout",
+          "builtin.reliability.blank-input",
+          "builtin.reliability.long-input"
+        ],
+        "samples": 6,
+        "category": "reliability",
+        "evaluator": "deterministic",
+        "numerator": 6,
+        "rationale": "6 of 6 decided case(s) passed; 0 undecided.",
+        "threshold": 0.9,
+        "denominator": 6,
+        "rubricVersion": null
+      },
+      {
+        "name": "leakage pass rate",
+        "pass": true,
+        "score": 1,
+        "rubric": null,
+        "caseIds": [],
+        "samples": 8,
+        "category": "leakage",
+        "evaluator": "deterministic",
+        "numerator": 8,
+        "rationale": "8 of 8 decided case(s) passed; 0 undecided.",
+        "threshold": 1,
+        "denominator": 8,
+        "rubricVersion": null
+      },
+      {
+        "name": "p95 turn latency (ms)",
+        "pass": true,
+        "score": 52,
+        "rubric": null,
+        "caseIds": [],
+        "samples": 2,
+        "category": "performance",
+        "evaluator": "deterministic",
+        "numerator": 2,
+        "rationale": "95th percentile of 2 turn(s), failure-injection cases excluded.",
+        "threshold": 10000,
+        "denominator": 2,
+        "rubricVersion": null
+      }
+    ],
+    "coverage": {
+      "decisive": 8,
+      "applicable": 8,
+      "criticalDecisive": 0,
+      "criticalApplicable": 0
+    },
+    "datasets": [
+      {
+        "id": "builtin",
+        "name": "cybercheck defensive catalogue",
+        "cases": 8,
+        "digest": "381c35370704e3ae1f3aebc6e22e504f686e15aea20dde8f121117e5b09581b5",
+        "source": "builtin",
+        "version": "2026-10-17.c2"
+      }
+    ],
+    "decision": "ready_with_evidence",
+    "findings": {
+      "rejected": 0,
+      "confirmed": 0,
+      "suspected": 0,
+      "inconclusive": 0,
+      "confirmedCriticalHigh": 0
+    },
+    "headline": "All 8 decided case(s) met their thresholds, with no confirmed high or critical finding.",
+    "untested": [
+      {
+        "what": "Repository-derived cases",
+        "reason": "Cases from the project's own tests, examples and documentation are not built in this engine version."
+      },
+      {
+        "what": "Prompt injection, extraction, cross-tenant and tool-permission cases",
+        "reason": "The adversarial built-in catalogue is not part of this engine version; uploaded cases in those categories still run."
+      }
+    ],
+    "versions": {
+      "model": null,
+      "engine": "2026-10-17.e2",
+      "grader": "2026-10-17.g2",
+      "rubric": null,
+      "provider": "cybercheck replay model",
+      "runtimeImage": "docker.io/library/node:22-bookworm",
+      "datasetDigests": [
+        "381c35370704e3ae1f3aebc6e22e504f686e15aea20dde8f121117e5b09581b5"
+      ],
+      "snapshotDigest": "60894f42c0968460dafb7a4ee52f583380c145697bed90f8b6842713ccbf23b4"
+    },
+    "categories": [
+      {
+        "score": 1,
+        "failed": 0,
+        "passed": 1,
+        "status": "passed",
+        "samples": 1,
+        "category": "functional",
+        "threshold": 0.85,
+        "undecided": 0,
+        "applicable": 1,
+        "evaluators": [
+          "deterministic"
+        ],
+        "limitations": [
+          "Replay mode: the model's answer was scripted, so this checks the application's handling, not the real model's quality, latency or cost."
+        ]
+      },
+      {
+        "score": 1,
+        "failed": 0,
+        "passed": 1,
+        "status": "passed",
+        "samples": 1,
+        "category": "grounding",
+        "threshold": 0.9,
+        "undecided": 0,
+        "applicable": 1,
+        "evaluators": [
+          "deterministic"
+        ],
+        "limitations": [
+          "Replay mode: the model's answer was scripted, so this checks the application's handling, not the real model's quality, latency or cost."
+        ]
+      },
+      {
+        "score": 1,
+        "failed": 0,
+        "passed": 6,
+        "status": "passed",
+        "samples": 6,
+        "category": "reliability",
+        "threshold": 0.9,
+        "undecided": 0,
+        "applicable": 6,
+        "evaluators": [
+          "deterministic"
+        ],
+        "limitations": [
+          "Replay mode: the model's answer was scripted, so this checks the application's handling, not the real model's quality, latency or cost."
+        ]
+      },
+      {
+        "score": 1,
+        "failed": 0,
+        "passed": 8,
+        "status": "passed",
+        "samples": 8,
+        "category": "leakage",
+        "threshold": 1,
+        "undecided": 0,
+        "applicable": 8,
+        "evaluators": [
+          "deterministic"
+        ],
+        "limitations": [
+          "Passive checks of every reply for credentials, the system prompt, cybercheck markers and identity numbers; nothing extra was sent."
+        ]
+      }
+    ],
+    "thresholds": {
+      "coverage": 0.9,
+      "grounding": 0.9,
+      "functional": 0.85,
+      "maxCostUsd": 3,
+      "robustness": 0.8,
+      "reliability": 0.9,
+      "p95LatencyMs": 10000,
+      "safetyCritical": 1
+    },
+    "environment": {
+      "provider": "local-docker",
+      "selected": "local",
+      "isolation": "A disposable local container with no host project mount; the network was off while the app ran, capabilities were dropped and no-new-privileges was set. Model traffic went only to the loopback replay model.",
+      "requested": "local",
+      "fallbackReason": null
+    },
+    "limitations": [
+      "Latency and cost were not measured against a real model."
+    ],
+    "performance": {
+      "maxMs": 52,
+      "p50Ms": 6,
+      "p95Ms": 52,
+      "turns": 2,
+      "costUsd": 0,
+      "tokensIn": 3011,
+      "costBasis": "not_measured",
+      "tokensOut": 43,
+      "modelRequests": 9
+    },
+    "applicability": {
+      "reason": "1 AI component bound to a callable route.",
+      "status": "applicable",
+      "targets": [
+        {
+          "target": {
+            "path": "/api/assistant",
+            "method": "POST",
+            "transport": "http",
+            "authFixture": "user-a",
+            "componentId": "ai:1",
+            "historyPath": "/api/assistant/history",
+            "requestTemplate": {
+              "message": "{{message}}"
+            },
+            "citationSelector": "citations",
+            "responseSelector": "reply",
+            "conversationSelector": "conversationId"
+          },
+          "boundBy": "single_route",
+          "auxiliary": {
+            "listPaths": [
+              "/api/orders"
+            ],
+            "historyPath": "/api/assistant/history",
+            "approvalPaths": [
+              "/api/assistant/approvals/:id/confirm"
+            ]
+          }
+        }
+      ],
+      "unbound": [],
+      "ownership": {
+        "ok": true,
+        "failed": [],
+        "checked": 5
+      },
+      "candidates": [
+        {
+          "path": "/api/assistant",
+          "method": "POST",
+          "reason": "reads the message from the request field \"message\"",
+          "evidence": [
+            {
+              "line": 35,
+              "path": "src/app.js",
+              "endLine": 46
+            }
+          ],
+          "componentId": "ai:1",
+          "replyFields": [
+            "reply",
+            "answer",
+            "content"
+          ],
+          "messageField": "message",
+          "requiresAuth": true,
+          "citationField": "citations",
+          "conversationField": "conversationId"
+        },
+        {
+          "path": "/api/assistant/approvals/:id/confirm",
+          "method": "POST",
+          "reason": "reaches the component but reads no message field",
+          "evidence": [
+            {
+              "line": 48,
+              "path": "src/app.js",
+              "endLine": 51
+            }
+          ],
+          "componentId": "ai:1",
+          "replyFields": [
+            "reply",
+            "answer",
+            "content",
+            "message"
+          ],
+          "messageField": null,
+          "requiresAuth": true,
+          "citationField": "citations",
+          "conversationField": null
+        }
+      ],
+      "components": [
+        {
+          "id": "ai:1",
+          "kind": "provider_http",
+          "name": "OpenAI-compatible API (HTTP, address from configuration)",
+          "files": [
+            "src/model.js",
+            "src/assistant.js"
+          ],
+          "tools": [
+            {
+              "name": "get_order_status",
+              "evidence": {
+                "line": 18,
+                "path": "src/assistant.js"
+              },
+              "parameters": [
+                "orderId"
+              ],
+              "consequential": false
+            },
+            {
+              "name": "cancel_order",
+              "evidence": {
+                "line": 19,
+                "path": "src/assistant.js"
+              },
+              "parameters": [
+                "orderId"
+              ],
+              "consequential": true
+            }
+          ],
+          "evidence": [
+            {
+              "line": 17,
+              "path": "src/model.js"
+            },
+            {
+              "line": 18,
+              "path": "src/assistant.js"
+            },
+            {
+              "line": 19,
+              "path": "src/assistant.js"
+            },
+            {
+              "line": 8,
+              "path": "src/assistant.js"
+            }
+          ],
+          "provider": {
+            "name": "OpenAI-compatible API (HTTP, address from configuration)",
+            "model": null,
+            "family": "openai_compatible",
+            "reason": null,
+            "apiKeyEnv": [
+              "AI_API_KEY"
+            ],
+            "baseUrlEnv": [
+              "AI_BASE_URL"
+            ],
+            "interceptable": true,
+            "hardcodedHosts": []
+          },
+          "endpoints": [
+            "POST /api/assistant",
+            "POST /api/assistant/approvals/:id/confirm",
+            "GET /api/assistant/history"
+          ],
+          "retrieval": [
+            {
+              "line": 67,
+              "path": "src/assistant.js"
+            },
+            {
+              "line": 96,
+              "path": "src/assistant.js"
+            }
+          ],
+          "limitations": [],
+          "systemPrompts": [
+            {
+              "line": 8,
+              "path": "src/assistant.js"
+            }
+          ],
+          "messageTriggers": []
+        }
+      ],
+      "unsupported": []
+    },
+    "graderVersion": "2026-10-17.g2",
+    "schemaVersion": 1
+  },
+  "usage": {
+    "models": {},
+    "aiCalls": 0,
+    "costUsd": 0,
+    "inputTokens": 0,
+    "outputTokens": 0,
+    "sandboxCpuSeconds": 0,
+    "sandboxOperations": 3
+  }
+}

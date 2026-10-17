@@ -50,18 +50,24 @@ const schema = z.object({
   /** The model provider is independent of the sandbox provider. Nebius Sandboxes still execute all project code. */
   TESTING_AI_PROVIDER: z.enum(["nebius", "gemini"]).default("nebius"),
   GEMINI_API_KEY: optional,
+  /** Salt for the fingerprints of secrets the Security check finds (the values themselves are never stored). Derived from BETTER_AUTH_SECRET when unset. */
+  SECURITY_FINGERPRINT_SALT: optional,
   GEMINI_BASE_URL: z.string().url().default("https://generativelanguage.googleapis.com/v1beta/openai/"),
   GEMINI_MODEL_AUTHOR: z.string().default("gemini-3.8-flash"),
   GEMINI_MODEL_TRIAGE: z.string().default("gemini-3.8-flash"),
   GEMINI_MODEL_CRITIC: z.string().default("gemini-2.5-pro"),
+  /** Gemini's thinking counts against max_tokens on its OpenAI-compatible API; "low" keeps answers whole. */
+  GEMINI_REASONING_EFFORT: z.enum(["none", "low", "medium", "high"]).default("low"),
   /** Model that writes extra probes and tests (code-specialised). */
   TESTING_MODEL_AUTHOR: z.string().default("moonshotai/Kimi-K2.7-Code"),
   /** Model that plans booting and explains failures. */
   TESTING_MODEL_TRIAGE: z.string().default("deepseek-ai/DeepSeek-V4-Pro-0813"),
   /** Independent model (different family) that must agree before a product defect is confirmed. */
   TESTING_MODEL_CRITIC: z.string().default("zai-org/GLM-5.3"),
-  /** Spending cap on AI for one Testing run, in US dollars. */
-  TESTING_RUN_BUDGET_USD: z.coerce.number().positive().default(1.5),
+  /** Spending cap on AI for one Testing run, in US dollars (the 9+/10 plan's hard limit for a Deep run is $1). */
+  TESTING_RUN_BUDGET_USD: z.coerce.number().positive().default(1),
+  /** "1" runs the previous Testing engine (no requirements or typed scenarios, no backend-served screens, no in-memory database lane, no stage budgets): a temporary rollback switch. */
+  TESTING_LEGACY_ENGINE: z.enum(["0", "1"]).default("0"),
 
   SMTP_HOST: z.string().trim().min(1).default("smtp.gmail.com"),
   SMTP_PORT: z.coerce.number().int().positive().default(465),

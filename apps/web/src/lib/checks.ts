@@ -42,9 +42,10 @@ export const CHECK_INFO: Record<CheckId, CheckInfo> = {
     icon: BotMessageSquare,
     tagline: "Make sure your AI does its job and nothing else.",
     does: [
-      "Tests prompt-injection and data-leak resistance",
-      "Checks tool permissions and approval safety",
-      "Measures answer quality, grounding, speed and cost",
+      "Checks that answers reach users and citations match what was retrieved",
+      "Tests how the AI copes with provider errors, timeouts and unusual input",
+      "Checks every reply for leaked credentials and the system prompt",
+      "Runs your own JSONL test cases against the running app",
     ],
     youGet: "Pass rates with the denominator, failing cases with evidence, and suggested guardrails.",
     note: "Only applies to projects that contain an AI model, chatbot, agent or document search.",

@@ -251,7 +251,7 @@ export type BackgroundJob = z.infer<typeof BackgroundJob>;
 // ---------------------------------------------------------------- Security model
 
 export const AuthMechanism = z.object({
-  kind: z.enum(["session", "jwt", "oauth", "api_key", "basic", "third_party"]),
+  kind: z.enum(["session", "jwt", "oauth", "api_key", "basic", "third_party", "bearer_token", "custom_token"]),
   /** e.g. "Encrypted cookie session (@fastify/secure-session)" */
   detail: z.string(),
   library: z.string().nullable(),

@@ -39,6 +39,25 @@ const statusOf = (run: TestingRunDetail, prefix: string) => run.obligations.filt
 /** Test names compare the same whether written "a > b", "a b" or pytest's "file::name". */
 const norm = (s: string) => s.toLowerCase().replace(/[>›]|::/g, " ").replace(/\s+/g, " ").trim();
 
+/** Whether the project's own suite got the expected verdict (passed, failed, flaky, zero tests, timed out, environment). */
+export function suiteVerdict(run: TestingRunDetail, want: string) {
+  const runs = statusOf(run, "suite:runs:");
+  const passes = statusOf(run, "suite:passes:");
+  const verdicts = run.report?.suites?.map((s) => s.verdict) ?? [];
+  const ok =
+    want === "passed" ? passes.length > 0 && passes.every((s) => s === "passed")
+    : want === "failed" ? passes.includes("failed") && !passes.includes("flaky")
+    : want === "flaky" ? passes.includes("flaky") || run.findings.some((f) => f.kind === "flaky")
+    : want === "zero_tests" ? (verdicts.includes("zero_tests") || (passes.length === 0 && runs.every((s) => s === "not_applicable" || s === "blocked"))) && !passes.includes("passed")
+    : want === "timed_out" ? verdicts.includes("timed_out") && !passes.includes("passed")
+    : want === "partially_failed_environment" ? !passes.includes("passed") && run.findings.some((f) => f.kind === "environment_failure")
+    : false;
+  return { ok, detail: `expected ${want}; obligations runs=${runs.join(",")} passes=${passes.join(",")}; report=${verdicts.join(",")}` };
+}
+
+/** A test the answer key calls flaky was flagged as flaky. */
+export const flakyFlagged = (run: TestingRunDetail, test: string) => run.findings.some((f) => f.kind === "flaky" && sameTest(f.title, test));
+
 /**
  * Score out of 10: outcomes 25%, defect recall 20%, precision 20%, classification 10%, release decision and
  * completeness band 10%, layer coverage and fixture success 10%, report integrity (minus contradictions) 5%.
@@ -58,19 +77,8 @@ export function scoreRun(run: TestingRunDetail, exp: Expected) {
     else add(step, got.length > 0 && (want === "passed" ? got.every((s) => s === "passed" || s === "not_applicable") : got.some((s) => s === want)), `expected ${want}, got ${got.join(",") || "none planned"}`);
   }
   if (o.testSuite) {
-    const runs = statusOf(run, "suite:runs:");
-    const passes = statusOf(run, "suite:passes:");
-    const verdicts = run.report?.suites.map((s) => s.verdict) ?? [];
-    const want = o.testSuite;
-    const ok =
-      want === "passed" ? passes.length > 0 && passes.every((s) => s === "passed")
-      : want === "failed" ? passes.includes("failed") && !passes.includes("flaky")
-      : want === "flaky" ? passes.includes("flaky") || run.findings.some((f) => f.kind === "flaky")
-      : want === "zero_tests" ? (verdicts.includes("zero_tests") || (passes.length === 0 && runs.every((s) => s === "not_applicable" || s === "blocked"))) && !passes.includes("passed")
-      : want === "timed_out" ? verdicts.includes("timed_out") && !passes.includes("passed")
-      : want === "partially_failed_environment" ? !passes.includes("passed") && run.findings.some((f) => f.kind === "environment_failure")
-      : false;
-    add("test suite verdict", ok, `expected ${want}; obligations runs=${runs.join(",")} passes=${passes.join(",")}; report=${verdicts.join(",")}`);
+    const v = suiteVerdict(run, o.testSuite);
+    add("test suite verdict", v.ok, v.detail);
   }
   const failedCases = new Set((run.report?.suites ?? []).flatMap((s) => s.cases.filter((c) => c.status === "failed" || c.status === "error").map((c) => norm(c.name))));
   for (const t of o.failingTests ?? []) add(`failing test seen: ${t}`, [...failedCases].some((c) => sameTest(c, t)), [...failedCases].slice(0, 6).join(" | ") || "no failed cases");
