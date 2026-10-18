@@ -30,6 +30,11 @@ test("a run with findings shows the decision, the confirmed findings and redacte
   await page.getByRole("tab", { name: /Findings/ }).click();
   await expect(page.getByRole("heading", { name: "AI replies expose credential-like values" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "AI replies repeat the system prompt" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Model output executes as HTML in the browser (cross-site scripting)" })).toBeVisible();
+
+  await page.getByRole("tab", { name: /summary/i }).click();
+  await expect(page.getByRole("listitem").filter({ hasText: "Tool permissions and approval" }).getByText("Decisive: failed")).toBeVisible();
+  await expect(page.getByRole("listitem").filter({ hasText: "Output rendering" }).getByText("Decisive: failed")).toBeVisible();
 
   await page.getByRole("tab", { name: /Cases/ }).click();
   await page.getByText("The assistant answers an ordinary question").click();
@@ -38,25 +43,36 @@ test("a run with findings shows the decision, the confirmed findings and redacte
   await expect(page.locator("body")).not.toContainText("sk-fixture");
 });
 
-test("a clean run is ready with evidence, and its categories and audit are shown with denominators", async ({ page }) => {
+test("a clean run upholds every required safety lane and is ready, with evidence", async ({ page }) => {
   await signedInUser(page, "ai-eval-clean");
   const run = load("ai-run-control.json");
   await mockRun(page, run);
   await page.goto(`/app/projects/${run.projectId}/ai-evaluator/${run.id}`);
   await expect(page.getByText("Ready, with evidence")).toBeVisible();
-  await expect(page.getByText(/1 of 1 passed|of \d+ passed/).first()).toBeVisible();
+
+  // The required-lanes panel shows the critical safety lanes upheld (output rendering does not apply: the reply is text).
+  await expect(page.getByRole("heading", { name: "Required evaluation lanes" })).toBeVisible();
+  await expect(page.getByRole("listitem").filter({ hasText: "Prompt injection" }).getByText("Decisive: upheld")).toBeVisible();
+  await expect(page.getByRole("listitem").filter({ hasText: "User and tenant isolation" }).getByText("Decisive: upheld")).toBeVisible();
+
+  // Components tab shows the target's selectors checked against a real response, and the live-gateway health.
+  await page.getByRole("tab", { name: "Components and targets" }).click();
+  await expect(page.getByRole("heading", { name: "Target selectors, checked against a real response" })).toBeVisible();
+  await expect(page.getByRole("listitem").filter({ hasText: "responseSelector" }).getByText("resolved", { exact: true })).toBeVisible();
+  await expect(page.getByText("Live model gateway")).toBeVisible();
 
   await page.getByRole("tab", { name: "Categories" }).click();
   await page.getByRole("tab", { name: /Reliability/ }).click();
   await expect(page.getByText("A provider outage is answered cleanly")).toBeVisible();
 
+  // Repository-derived cases (from the project's own tests) are informational: a failure is shown but does not gate.
   await page.getByRole("tab", { name: /Cases/ }).click();
-  await page.getByRole("button", { name: /Failed/ }).click();
-  await expect(page.getByText("No case with this result.")).toBeVisible();
+  await page.getByText("From this project's tests:").first().click();
+  await expect(page.getByText("The project's own tests or documentation").first()).toBeVisible();
 
   await page.getByRole("tab", { name: /Untested and audit/ }).click();
   await expect(page.getByText("network off while the app ran")).toBeVisible();
-  await expect(page.getByText(/AI judge: off/)).toBeVisible();
+  await expect(page.getByText(/AI judge: (off|unavailable|not_needed)/)).toBeVisible();
 });
 
 test("every tab fits a phone screen with no sideways scrolling", async ({ page }) => {

@@ -27,15 +27,27 @@ export function aiRunToMarkdown(run: AiEvaluationRunDetail, projectName: string)
   }
   lines.push(`## Decision`, "", `**${DECISION[r.decision] ?? r.decision}.** ${r.headline}`, "");
   if (r.claims.length) lines.push("What this decision covers:", "", ...r.claims.map((c) => `- ${c}`), "");
-  lines.push(`Mode: ${r.mode.used} (requested ${r.mode.requested}). ${r.mode.reason}`, `Runtime: ${r.environment.selected}${r.environment.fallbackReason ? ` (${r.environment.fallbackReason})` : ""}. ${r.environment.isolation}`, "");
+  lines.push(`Mode: ${r.mode.used} (requested ${r.mode.requested}). ${r.mode.reason}`, `Runtime: ${r.environment.selected}${r.environment.fallbackReason ? ` (${r.environment.fallbackReason})` : ""}. ${r.environment.isolation}`);
+  if (r.gateway) lines.push(`Live model gateway: ${r.gateway.available ? `available (${r.gateway.model})` : "unavailable"}. ${r.gateway.reason}`);
+  if (r.pairwise) lines.push(`Baseline comparison: ${r.pairwise.note}`);
+  lines.push("");
 
   lines.push("## AI components and targets", "");
   for (const c of r.applicability.components) lines.push(`- **${c.name}** (${c.kind}${c.provider.name ? `, ${c.provider.name}` : ""}): ${c.endpoints.join(", ") || "no route found"}. ${c.provider.reason ?? ""}`.trim());
   for (const t of r.applicability.targets) lines.push(`- Target: ${t.target.method ?? "POST"} ${t.target.path}, reply at \`${t.target.responseSelector}\` (bound by ${t.boundBy === "user" ? "the user" : "the only matching route"}).`);
   for (const u of r.applicability.unbound) lines.push(`- Not bound: ${u.componentId}: ${u.reason}`);
+  if (r.targetValidation?.probed) {
+    lines.push("", `Target selectors checked against a real response (${r.targetValidation.endpoint}, bound by ${r.targetValidation.boundBy === "user" ? "the user" : "the only matching route"}):`, ...r.targetValidation.selectors.map((s) => `- ${s.name} \`${s.path}\`: ${s.resolved ? "resolved" : "did not resolve"}. ${s.detail}`));
+  }
   lines.push("");
 
   lines.push("## Coverage", "", `${r.coverage.decisive} of ${r.coverage.applicable} applicable cases are decisive; critical: ${r.coverage.criticalDecisive} of ${r.coverage.criticalApplicable}.`, "");
+  if (r.obligations.length) {
+    const oc = r.obligationCoverage;
+    lines.push(`Required evaluation lanes: ${oc ? `${oc.decisive} of ${oc.required} decisive, critical ${oc.criticalDecisive} of ${oc.criticalRequired}` : "n/a"}.`, "", "| Lane | Required | Status | Cases | Why |", "| --- | --- | --- | --- | --- |");
+    for (const o of r.obligations) lines.push(`| ${cell(o.label)} | ${o.required ? (o.critical ? "critical" : "yes") : "no"} | ${o.status} | ${o.decided}/${o.cases} | ${cell(o.required ? o.reason : o.why)} |`);
+    lines.push("");
+  }
   lines.push("| Category | Result | Passed | Failed | Undecided | Score | Threshold | Evaluated by |", "| --- | --- | --- | --- | --- | --- | --- | --- |");
   for (const c of r.categories) lines.push(`| ${c.category} | ${c.status} | ${c.passed} | ${c.failed} | ${c.undecided} | ${pct(c.score)} | ${pct(c.threshold)} | ${c.evaluators.join(", ") || "n/a"} |`);
   lines.push("");

@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, CircleCheck, CircleDashed, CircleX, Download, RotateCcw, ShieldQuestion } from "lucide-react";
-import type { AiCaseCategory, AiCategoryResult, AiEvaluationCase, AiEvaluationDecision, AiEvaluationFinding, AiEvaluationRunDetail } from "@cybercheck/contracts";
+import type { AiCaseCategory, AiCategoryResult, AiEvaluationCase, AiEvaluationDecision, AiEvaluationFinding, AiEvaluationRunDetail, AiLaneObligation } from "@cybercheck/contracts";
 import { Card, CardTitle, EmptyState } from "@/components/app/ui";
 import { Badge, Mono } from "@/components/architecture/parts";
 import { CodeViewerProvider, EvidenceLink } from "@/components/architecture/code-viewer";
@@ -50,7 +50,7 @@ const CATEGORY: Record<AiCaseCategory, string> = {
   fairness: "Fairness",
 };
 
-const MODE: Record<string, string> = { replay: "Replay model", direct: "Direct (no model)", live: "Live model", none: "Nothing executed" };
+const MODE: Record<string, string> = { replay: "Replay model", direct: "Direct (no model)", live: "Live model", mixed: "Mixed modes", none: "Nothing executed" };
 
 const GROUPS: Array<{ id: string; label: string; categories: AiCaseCategory[] }> = [
   { id: "quality", label: "Quality", categories: ["functional", "structured_output", "fairness"] },
@@ -275,6 +275,7 @@ function Summary({ run }: { run: AiEvaluationRunDetail }) {
               <p className="mt-1 text-sm text-fg-muted">{r.mode.reason}</p>
             </Card>
           </div>
+          {r.obligations.length > 0 && <LaneObligations obligations={r.obligations} coverage={r.obligationCoverage} />}
           <Card>
             <CardTitle>Results by category</CardTitle>
             {r.categories.length ? (
@@ -290,6 +291,53 @@ function Summary({ run }: { run: AiEvaluationRunDetail }) {
         </>
       )}
     </>
+  );
+}
+
+const LANE_STATUS: Record<AiLaneObligation["status"], { label: string; tone: Tone; icon: typeof CircleCheck }> = {
+  passed: { label: "Decisive: upheld", tone: "good", icon: CircleCheck },
+  failed: { label: "Decisive: failed", tone: "bad", icon: CircleX },
+  inconclusive: { label: "Undecided", tone: "warn", icon: ShieldQuestion },
+  blocked: { label: "Blocked", tone: "warn", icon: CircleDashed },
+  unsupported: { label: "No case yet", tone: "muted", icon: CircleDashed },
+  not_applicable: { label: "Not applicable", tone: "muted", icon: CircleDashed },
+};
+
+type LaneCoverage = { decisive: number; required: number; criticalDecisive: number; criticalRequired: number } | null;
+function LaneObligations({ obligations, coverage }: { obligations: AiLaneObligation[]; coverage: LaneCoverage }) {
+  const required = obligations.filter((o) => o.required);
+  return (
+    <Card>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <CardTitle>Required evaluation lanes</CardTitle>
+        {coverage && (
+          <span className="text-sm text-fg-muted tabular-nums">
+            {coverage.decisive} of {coverage.required} decisive; {coverage.criticalDecisive} of {coverage.criticalRequired} critical
+          </span>
+        )}
+      </div>
+      <p className="mt-1 text-sm text-fg-muted">Every required lane needs decisive evidence before a component can be ready. A lane with no case is not a pass.</p>
+      <ul className="mt-3 divide-y divide-border">
+        {required.map((o) => {
+          const s = LANE_STATUS[o.status];
+          return (
+            <li key={o.lane} className="flex flex-col gap-1 py-3 sm:flex-row sm:items-start sm:gap-4">
+              <span className="flex w-52 shrink-0 items-center gap-2">
+                <Badge tone={s.tone}>
+                  <s.icon className="size-3.5" aria-hidden="true" /> {s.label}
+                </Badge>
+              </span>
+              <span className="min-w-0">
+                <span className="block text-sm text-fg">
+                  {o.label} {o.critical && <span className="text-xs font-medium text-danger">critical</span>}
+                </span>
+                <span className="block text-xs text-fg-muted">{o.reason}</span>
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+    </Card>
   );
 }
 
@@ -379,7 +427,7 @@ function CaseDetail({ c, onRerun, busy }: { c: AiEvaluationCase; onRerun?: (id: 
         <dd className="text-fg">{c.reason || "No reason recorded."}</dd>
         <dt className="text-fg-muted">Source</dt>
         <dd className="text-fg-muted">
-          {c.source.kind === "builtin" ? "Built-in catalogue" : "Uploaded dataset"} version <Mono>{c.source.version}</Mono>, digest <Mono>{c.source.digest.slice(0, 12)}</Mono>
+          {c.source.kind === "builtin" ? "Built-in catalogue" : c.source.kind === "repository" ? "The project's own tests or documentation" : "Uploaded dataset"} version <Mono>{c.source.version}</Mono>, digest <Mono>{c.source.digest.slice(0, 12)}</Mono>
         </dd>
         <dt className="text-fg-muted">Route</dt>
         <dd>
@@ -405,6 +453,24 @@ function CaseDetail({ c, onRerun, busy }: { c: AiEvaluationCase; onRerun?: (id: 
                 <span className="min-w-0 text-fg">
                   {g.detail} <span className="text-xs text-fg-muted">({HYGIENE.has(g.grader) ? "reply check: a failure is a finding" : g.hard ? "decides the case" : "reported only"})</span>
                 </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {c.judge.length > 0 && (
+        <div>
+          <p className="text-xs font-medium tracking-wide text-fg-muted uppercase">Judge ({c.evaluator === "judge" ? "settled this case" : "informational"})</p>
+          <ul className="mt-2 space-y-1 text-sm">
+            {c.judge.map((j, i) => (
+              <li key={i} className="flex flex-col gap-0.5 sm:flex-row sm:items-start sm:gap-3">
+                <span className="flex shrink-0 items-center gap-2 sm:w-40">
+                  <Badge tone={j.error ? "muted" : j.preference ? (j.preference === "candidate" ? "good" : j.preference === "baseline" ? "bad" : "muted") : j.score === null ? "muted" : j.score >= 3 ? "good" : "bad"}>
+                    {j.error ? "no score" : j.preference ? (j.preference === "candidate" ? "better than baseline" : j.preference === "baseline" ? "worse than baseline" : "tied with baseline") : `${j.score} of 4`}
+                  </Badge>
+                  <Mono>{j.rubric}</Mono>
+                </span>
+                <span className="min-w-0 text-fg">{j.error ? j.error : j.rationale} <span className="text-fg-muted">{j.calibrated ? "" : "(uncalibrated, informational)"}</span></span>
               </li>
             ))}
           </ul>
@@ -552,6 +618,25 @@ function Performance({ run }: { run: AiEvaluationRunDetail }) {
         {stat("p95 turn", p.p95Ms == null ? "n/a" : `${p.p95Ms} ms`, `threshold ${r.thresholds.p95LatencyMs} ms${r.mode.used === "replay" ? "; not judged in replay" : ""}`)}
         {stat("Model calls", String(p.modelRequests), `about ${p.tokensIn} input and ${p.tokensOut} output tokens`)}
       </div>
+      {run.report!.pairwise && (
+        <Card>
+          <CardTitle>Compared with the baseline run</CardTitle>
+          <p className="mt-2 text-sm text-fg">{run.report!.pairwise.note}</p>
+          {run.report!.pairwise.compared > 0 && (
+            <div className="mt-3 grid gap-4 sm:grid-cols-3">
+              <p className="text-sm text-fg">
+                <span className="text-2xl font-semibold text-success tabular-nums">{run.report!.pairwise.better}</span> better
+              </p>
+              <p className="text-sm text-fg">
+                <span className="text-2xl font-semibold text-danger tabular-nums">{run.report!.pairwise.worse}</span> worse
+              </p>
+              <p className="text-sm text-fg">
+                <span className="text-2xl font-semibold text-fg tabular-nums">{run.report!.pairwise.tie}</span> tied
+              </p>
+            </div>
+          )}
+        </Card>
+      )}
       <Card>
         <CardTitle>Cost</CardTitle>
         <p className="mt-2 text-sm text-fg">
@@ -640,6 +725,27 @@ function Components({ run }: { run: AiEvaluationRunDetail }) {
           {a.unbound.map((u) => `${u.componentId}: ${u.reason}${u.candidates.length ? ` Candidates: ${u.candidates.join(", ")}.` : ""}`).join(" ")}
         </Alert>
       )}
+      {a.targets[0] && run.report!.targetValidation?.probed && (
+        <Card>
+          <CardTitle>Target selectors, checked against a real response</CardTitle>
+          <p className="mt-1 text-sm text-fg-muted">
+            {run.report!.targetValidation.endpoint}, bound by {run.report!.targetValidation.boundBy === "user" ? "you" : "the only matching route"}. A selector that does not resolve blocks only the cases that need it.
+          </p>
+          <ul className="mt-3 divide-y divide-border">
+            {run.report!.targetValidation.selectors.map((s) => (
+              <li key={s.name} className="flex flex-col gap-1 py-2 sm:flex-row sm:items-start sm:gap-4">
+                <span className="flex w-56 shrink-0 items-center gap-2">
+                  <Badge tone={s.resolved ? "good" : "warn"}>{s.resolved ? "resolved" : "did not resolve"}</Badge>
+                  <Mono>{s.name}</Mono>
+                </span>
+                <span className="min-w-0 text-fg">
+                  <Mono>{s.path}</Mono> <span className="text-fg-muted">{s.detail}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
       <Card>
         <CardTitle>Execution environment</CardTitle>
         <dl className="mt-3 grid gap-x-6 gap-y-2 text-sm md:grid-cols-[12rem_minmax(0,1fr)]">
@@ -653,6 +759,14 @@ function Components({ run }: { run: AiEvaluationRunDetail }) {
           )}
           <dt className="text-fg-muted">Isolation</dt>
           <dd className="text-fg">{env.isolation}</dd>
+          {run.report!.gateway && (
+            <>
+              <dt className="text-fg-muted">Live model gateway</dt>
+              <dd className="text-fg">
+                <Badge tone={run.report!.gateway.available ? "good" : "muted"}>{run.report!.gateway.available ? `available (${run.report!.gateway.model})` : "unavailable"}</Badge> <span className="text-fg-muted">{run.report!.gateway.reason}</span>
+              </dd>
+            </>
+          )}
         </dl>
       </Card>
     </>
@@ -689,6 +803,11 @@ function UntestedAudit({ run, undecided }: { run: AiEvaluationRunDetail; undecid
           <ul className="mt-3 space-y-2 text-sm">
             <li>
               <span className="text-fg">AI judge: {r.judge.status}.</span> <span className="text-fg-muted">{r.judge.reason}</span>
+              {r.judge.calibration && (
+                <span className="block text-xs text-fg-muted">
+                  Calibration {r.judge.calibration.datasetVersion}: balanced accuracy {r.judge.calibration.balancedAccuracy.toFixed(2)}, {r.judge.calibration.passed ? "passed the gate" : "below the gate (scores informational)"}. {r.judge.calls} judge call(s), ${r.judge.costUsd.toFixed(3)}.
+                </span>
+              )}
             </li>
             {r.datasets.map((d) => (
               <li key={d.id} className="text-fg">

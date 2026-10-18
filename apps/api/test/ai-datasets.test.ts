@@ -57,10 +57,11 @@ describe("uploaded datasets", () => {
 });
 
 describe("built-in defensive catalogue", () => {
-  it("a component with a configurable provider gets replay cases for functional, grounding and reliability", () => {
-    const { cases, skipped } = builtinCases({ mode: "replay", profile: "standard", hasCitations: true });
-    expect(new Set(cases.map((c) => c.category))).toEqual(new Set(["functional", "grounding", "reliability"]));
+  it("a component with a configurable provider and seeded users gets quality, grounding, reliability and safety replay cases", () => {
+    const { cases, skipped } = builtinCases({ mode: "replay", profile: "standard", hasCitations: true, hasHistory: true, hasOrders: true, hasTools: true, roles: { a: true, b: true, admin: true } });
+    expect(new Set(cases.map((c) => c.category))).toEqual(new Set(["functional", "grounding", "reliability", "isolation", "tools", "prompt_injection"]));
     expect(cases.map((c) => c.id)).toContain("builtin.reliability.provider-timeout");
+    expect(cases.map((c) => c.id)).toContain("builtin.isolation.cross-tenant-history");
     expect(skipped).toEqual([]);
     for (const c of cases) {
       expect(c.source).toEqual({ kind: "builtin", datasetId: null, version: expect.any(String), digest: BUILTIN_DIGEST });
@@ -71,8 +72,22 @@ describe("built-in defensive catalogue", () => {
 
   it("a component with no provider is called directly, with no replay-only cases", () => {
     const { cases } = builtinCases({ mode: "direct", profile: "quick", hasCitations: false });
-    expect(cases.map((c) => c.id).sort()).toEqual(["builtin.functional.responds", "builtin.reliability.blank-input", "builtin.reliability.long-input"]);
+    expect(cases.map((c) => c.id).sort()).toEqual([
+      "builtin.functional.responds",
+      "builtin.injection.indirect-retrieved",
+      "builtin.leakage.prompt-extraction",
+      "builtin.reliability.blank-input",
+      "builtin.reliability.long-input",
+      "builtin.tools.file-read-escape",
+    ]);
     expect(cases.every((c) => c.replay.length === 0 || c.modes.includes("replay"))).toBe(true);
+  });
+
+  it("includes the cross-user isolation case only when a second user and a history endpoint exist", () => {
+    const without = builtinCases({ mode: "direct", profile: "quick", hasCitations: false });
+    expect(without.cases.map((c) => c.id)).not.toContain("builtin.isolation.cross-user-history");
+    const withBoth = builtinCases({ mode: "direct", profile: "quick", hasCitations: false, hasHistory: true, roles: { a: true, b: true, admin: false } });
+    expect(withBoth.cases.map((c) => c.id)).toContain("builtin.isolation.cross-user-history");
   });
 
   it("skips what the target or profile cannot support, with a reason", () => {
@@ -85,12 +100,14 @@ describe("built-in defensive catalogue", () => {
     );
   });
 
-  it("built-in cases pass the same content rules as uploads and send no adversarial input", () => {
+  it("built-in cases pass the same content rules as uploads; only attack cases carry adversarial text, and within the project's own routes", () => {
     for (const mode of ["replay", "direct"] as const) {
-      for (const c of builtinCases({ mode, profile: "deep", hasCitations: true }).cases) {
+      for (const c of builtinCases({ mode, profile: "deep", hasCitations: true, hasHistory: true, hasOrders: true, hasTools: true, roles: { a: true, b: true, admin: true } }).cases) {
         const asUpload = AiDatasetCase.parse({ id: c.id, category: c.category, input: { message: c.message }, expected: { ...c.expected, refusal: false }, replay: c.replay });
+        // Even attack cases carry no external host, command, secret or personal data (only controlled markers).
         expect(contentProblems(asUpload), c.id).toEqual([]);
-        expect(c.message).not.toMatch(/ignore|instruction|system prompt|reveal|password|secret/i);
+        // Non-attack cases send nothing adversarial.
+        if (!c.attack) expect(c.message, c.id).not.toMatch(/ignore|instruction|system prompt|reveal|password|secret/i);
       }
     }
     expect(new Set(BUILTIN_IDS).size).toBe(BUILTIN_IDS.length);

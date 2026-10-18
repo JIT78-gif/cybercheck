@@ -955,3 +955,79 @@ export async function startReplay(port, host = "127.0.0.1") {
     },
   };
 }
+
+/**
+ * The restricted live-model gateway: a loopback OpenAI-compatible server the app is pointed at. It overrides the model
+ * to cybercheck's configured one, forwards each chat completion to the upstream provider with cybercheck's credentials
+ * (which the app never sees), enforces request, token and cost limits, and records sanitized usage only (model, token
+ * counts, latency, cost; never the credentials or the raw messages). A gateway or upstream error is reported to the
+ * app as a clean 502, so it never becomes an AI-quality failure. `cfg`: { upstreamUrl, upstreamKey, model, maxRequests,
+ * maxTokensPerCall, maxCostUsd, inPricePerMTok, outPricePerMTok }.
+ */
+export async function startGateway(port, cfg, host = "127.0.0.1") {
+  const state = { requests: [], spentUsd: 0, overBudget: false };
+  const cost = (inTok, outTok) => (inTok * cfg.inPricePerMTok + outTok * cfg.outPricePerMTok) / 1_000_000;
+  const server = createServer((req, res) => {
+    let raw = "";
+    req.on("data", (c) => (raw += c));
+    req.on("end", async () => {
+      const path = String(req.url ?? "").split("?")[0];
+      if (req.method === "GET" && /\/models$/.test(path)) return res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ object: "list", data: [{ id: cfg.model, object: "model" }] }));
+      if (!(req.method === "POST" && /\/chat\/completions$/.test(path))) return res.writeHead(404, { "content-type": "application/json" }).end(JSON.stringify({ error: { message: "The gateway only forwards chat completions.", type: "invalid_request_error" } }));
+      let body = null;
+      try {
+        body = JSON.parse(raw || "null");
+      } catch {}
+      const requestedModel = typeof body?.model === "string" ? body.model : null;
+      // Request and cost budgets: stop before sending once either is used up.
+      if (state.requests.length >= (cfg.maxRequests ?? 1e9) || state.spentUsd >= (cfg.maxCostUsd ?? 1e9)) {
+        state.overBudget = true;
+        state.requests.push({ requestedModel, served: "budget", inputTokens: 0, outputTokens: 0, costUsd: 0, ms: 0 });
+        return res.writeHead(429, { "content-type": "application/json" }).end(JSON.stringify({ error: { message: "The gateway budget was reached.", type: "rate_limit_error" } }));
+      }
+      // Cap the output tokens cybercheck's model may produce (the app's own value is clamped down, never up).
+      const forward = { ...(body ?? {}), model: cfg.model, max_tokens: Math.min(Number(body?.max_tokens ?? cfg.maxTokensPerCall ?? 1024), cfg.maxTokensPerCall ?? 1024), stream: false };
+      const started = Date.now();
+      try {
+        const up = await fetch(`${cfg.upstreamUrl}/chat/completions`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${cfg.upstreamKey}` }, body: JSON.stringify(forward), signal: AbortSignal.timeout(cfg.timeoutMs ?? 30000) });
+        const text = await up.text();
+        const ms = Date.now() - started;
+        let json = null;
+        try {
+          json = JSON.parse(text);
+        } catch {}
+        const inTok = json?.usage?.prompt_tokens ?? approxTokens(JSON.stringify(body?.messages ?? ""));
+        const outTok = json?.usage?.completion_tokens ?? approxTokens(JSON.stringify(json?.choices ?? ""));
+        const c = cost(inTok, outTok);
+        state.spentUsd += c;
+        state.requests.push({ requestedModel, served: up.ok ? "forwarded" : `upstream ${up.status}`, inputTokens: inTok, outputTokens: outTok, costUsd: c, ms });
+        if (!up.ok) return res.writeHead(502, { "content-type": "application/json" }).end(JSON.stringify({ error: { message: "The model provider returned an error.", type: "server_error" } }));
+        return res.writeHead(200, { "content-type": "application/json" }).end(text);
+      } catch (err) {
+        state.requests.push({ requestedModel, served: `error ${String(err?.name ?? err)}`, inputTokens: 0, outputTokens: 0, costUsd: 0, ms: Date.now() - started });
+        return res.writeHead(502, { "content-type": "application/json" }).end(JSON.stringify({ error: { message: "The gateway could not reach the model provider.", type: "server_error" } }));
+      }
+    });
+  });
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(port, host, resolve);
+  });
+  return {
+    port: server.address().port,
+    since: (from) => state.requests.slice(from),
+    get count() {
+      return state.requests.length;
+    },
+    get spentUsd() {
+      return state.spentUsd;
+    },
+    get overBudget() {
+      return state.overBudget;
+    },
+    close() {
+      server.closeAllConnections?.();
+      server.close();
+    },
+  };
+}

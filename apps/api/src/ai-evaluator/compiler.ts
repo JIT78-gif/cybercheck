@@ -22,7 +22,7 @@ export const HYGIENE: GraderSpec[] = [
 /** Graders that read the answer's content. In replay without a scripted answer they cannot decide anything. */
 export const CONTENT_GRADERS = new Set<GraderSpec["id"]>(["answer_match", "contains", "excludes", "regex", "json_schema", "number", "refusal", "citation_context", "answer_support", "tool_name"]);
 
-export type CompiledTurn = { as: string | null; method: "GET" | "POST"; path: string; json: Record<string, unknown>; replay: AiReplayTurn[] | null; timeoutMs: number; capture?: { name: string; path: string } };
+export type CompiledTurn = { as: string | null; method: "GET" | "POST"; path: string; json?: Record<string, unknown>; replay: AiReplayTurn[] | null; timeoutMs: number; capture?: { name: string; path: string } };
 
 export type CompiledCase = {
   spec: CaseSpec;
@@ -53,10 +53,29 @@ export type CompileContext = {
   identities: string[];
   /** The target's auth fixture resolved to one of `identities` (null: the route needs no sign-in). */
   identity: string | null;
+  /** Seeded identity roles resolved to names: "a"/"b" two distinct members, "admin" an admin. */
+  roleMap?: { a?: string; b?: string; admin?: string };
+  /** Auxiliary read endpoints a safety case may probe (from the bound target's auxiliary routes). */
+  auxPaths?: { history?: string; orders?: string };
 };
 
 const SELECTOR = /^\$?\.?[\w-]+(\.[\w-]+|\[\d+\])*$/;
 const PRIORITY_ORDER = { critical: 0, high: 1, medium: 2, low: 3 } as const;
+
+/**
+ * How many times to run a case. A deterministic replay or direct case runs once (its answer is scripted or the
+ * component is local, so repeats are identical). A subjective case (one a judge would settle, such as a semantic
+ * answer match) run live uses the profile's sample count, because a real model's answer varies between calls.
+ */
+export function samplesFor(mode: AiExecutionMode, subjective: boolean, profile: AiEvaluationProfile): number {
+  return mode === "live" && subjective ? AI_PROFILE_LIMITS[profile].samples : 1;
+}
+
+/** A case needs a judge (is subjective) when its only answer check is a semantic match, not a literal one. */
+function isSubjective(graders: GraderSpec[]): boolean {
+  const content = graders.filter((g) => CONTENT_GRADERS.has(g.id));
+  return content.length > 0 && content.every((g) => g.id === "answer_match" || g.id === "answer_support");
+}
 
 /** Every grader an uploaded case's expectations call for. */
 export function gradersFor(e: AiDatasetExpected, context: string[]): GraderSpec[] {
@@ -118,8 +137,10 @@ export function validateCase(spec: CaseSpec, turns: CompiledTurn[], ctx: Compile
   for (const [name, sel] of Object.entries({ responseSelector: t.responseSelector, conversationSelector: t.conversationSelector, citationSelector: t.citationSelector, toolTraceSelector: t.toolTraceSelector, retrievalTraceSelector: t.retrievalTraceSelector })) {
     if (sel !== undefined && !SELECTOR.test(sel)) out.push(`${name} "${sel}" is not a plain JSON path`);
   }
-  if (t.authFixture && !ctx.identity) out.push(`the route needs the sign-in "${t.authFixture}", which this project's seeded accounts cannot provide`);
+  if (t.authFixture && !ctx.identity && !spec.asRole) out.push(`the route needs the sign-in "${t.authFixture}", which this project's seeded accounts cannot provide`);
   for (const turn of turns) if (turn.as !== null && !ctx.identities.includes(turn.as)) out.push(`unknown identity "${turn.as}"`);
+  // Every turn goes to a route of this project (the target or an auxiliary read endpoint).
+  for (const turn of turns) if (!pathMatchesRoute(turn.method, turn.path, ctx.endpoints)) out.push(`a turn targets ${turn.method} ${turn.path}, which is not a route of this project`);
   if (turns.length > AI_CASE_LIMITS.maxTurns) out.push(`${turns.length} turns; at most ${AI_CASE_LIMITS.maxTurns} are allowed`);
   if (spec.timeoutMs > AI_CASE_LIMITS.maxTimeoutMs) out.push(`a ${spec.timeoutMs} ms timeout is over the ${AI_CASE_LIMITS.maxTimeoutMs} ms limit`);
   for (const g of spec.graders) if (!AiGraderId.safeParse(g.id).success) out.push(`unsupported grader "${g.id}"`);
@@ -156,13 +177,15 @@ export function compileCases(specs: CaseSpec[], ctx: CompileContext): CompileRes
       out.skipped.push({ id: s.id, reason: `Means nothing in ${ctx.mode} mode.` });
       continue;
     }
+    // The identity that sends the message turns: a chosen role, or the target's own auth identity.
+    const sender = s.asRole ? (ctx.roleMap?.[s.asRole] ?? null) : ctx.identity;
     const messages = [...s.conversation, s.message];
     const turns: CompiledTurn[] = messages.map((m, i) => {
       const last = i === messages.length - 1;
       const json = body(t, m, s.extra);
       if (i > 0 && convField) json[convField] = `{{cc_conversation}}`;
       return {
-        as: ctx.identity,
+        as: sender,
         method,
         path: t.path,
         json,
@@ -171,7 +194,17 @@ export function compileCases(specs: CaseSpec[], ctx: CompileContext): CompileRes
         ...(i === 0 && convField && messages.length > 1 ? { capture: { name: "cc_conversation", path: t.conversationSelector! } } : {}),
       };
     });
-    const reasons = validateCase(s, turns, ctx);
+    // Probe turns: a read as another identity, used by isolation and consequential-action cases.
+    const auxPath = (to: "history" | "orders") => (to === "history" ? ctx.auxPaths?.history : ctx.auxPaths?.orders);
+    const probeReasons: string[] = [];
+    for (const pr of s.probes ?? []) {
+      const who = ctx.roleMap?.[pr.role];
+      const path = auxPath(pr.to);
+      if (!who) probeReasons.push(`the case probes as "${pr.role}", which has no seeded account`);
+      else if (!path) probeReasons.push(`the case probes the ${pr.to} endpoint, which this project does not expose`);
+      else turns.push({ as: who, method: "GET", path, replay: null, timeoutMs: 10_000 });
+    }
+    const reasons = [...probeReasons, ...validateCase(s, turns, ctx)];
     if (reasons.length) {
       out.rejected.push({ id: s.id, reasons });
       continue;
@@ -190,7 +223,7 @@ export function compileCases(specs: CaseSpec[], ctx: CompileContext): CompileRes
     if (answerSource === "replay_default" && s.graders.some((g) => CONTENT_GRADERS.has(g.id))) limitations.push("No frozen answer was given for this case, so its answer checks cannot be decided in replay mode; add replay turns or run it live.");
     if (ctx.mode === "direct" && s.replay.length) limitations.push("The component calls no model, so the case's replay turns were not used.");
     const graders = [...s.graders, ...(ctx.mode === "replay" && !s.graders.some((g) => g.id === "model_received_message") ? [{ id: "model_received_message" as const, hard: false }] : []), ...HYGIENE];
-    out.cases.push({ spec: s, seq: out.cases.length + 1, componentId: ctx.component.id, endpoint, mode: ctx.mode, turns, graders, answerSource, samples: 1, reset: "fresh_conversation", limitations });
+    out.cases.push({ spec: s, seq: out.cases.length + 1, componentId: ctx.component.id, endpoint, mode: ctx.mode, turns, graders, answerSource, samples: samplesFor(ctx.mode, isSubjective(s.graders), ctx.profile), reset: "fresh_conversation", limitations });
   }
   return out;
 }

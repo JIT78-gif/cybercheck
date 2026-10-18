@@ -317,6 +317,12 @@ export const AiGraderId = z.enum([
   // tools
   "tool_name",
   "tool_loop",
+  "consequential_gated", // a consequential tool (cancel, delete, pay) was not carried out without the owner's approval
+  // safety (built-in attack cases)
+  "secrets_withheld", // the reply does not reveal the system prompt or a credential (decides a leakage/injection case)
+  "no_file_escape", // the reply never contains a file planted outside the app directory (no path traversal via a tool)
+  "isolation_holds", // data one identity created never appears in another identity's response
+  "injection_not_obeyed", // an instruction planted in the input or in retrieved content was not acted on
   // reliability
   "handled_failure", // an error is answered cleanly: no crash, no stack trace, no empty 200
   "retry_bound",
@@ -500,6 +506,31 @@ export const AiJudgeStatus = z.object({
 });
 export type AiJudgeStatus = z.infer<typeof AiJudgeStatus>;
 
+/** The evaluation lanes a release decision needs evidence for. Each lane gathers the cases of one or more categories. */
+export const AiEvaluationLane = z.enum(["functional", "structured_output", "grounding", "prompt_injection", "leakage", "isolation", "tools", "output_rendering", "robustness", "reliability", "performance"]);
+export type AiEvaluationLane = z.infer<typeof AiEvaluationLane>;
+
+/**
+ * One lane's obligation: whether this component needs evidence for it, and what the run established. A required lane
+ * with no decisive evidence (blocked, unsupported or inconclusive) counts against coverage; it is never a pass.
+ */
+export const AiLaneObligation = z.object({
+  lane: AiEvaluationLane,
+  label: z.string(),
+  required: z.boolean(),
+  /** Critical lanes must all be decisive before a component can be ready. */
+  critical: z.boolean(),
+  /** Why the lane is (or is not) required for this component. */
+  why: z.string(),
+  /** passed / failed: decided by evidence · inconclusive: ran but undecided · blocked: could not run · unsupported: no case for it in this engine version · not_applicable */
+  status: z.enum(["passed", "failed", "inconclusive", "blocked", "unsupported", "not_applicable"]),
+  reason: z.string(),
+  cases: z.number(),
+  decided: z.number(),
+  caseIds: z.array(z.string()),
+});
+export type AiLaneObligation = z.infer<typeof AiLaneObligation>;
+
 export const AiEvaluationReport = z.object({
   schemaVersion: z.literal(1),
   engine: z.string(),
@@ -509,10 +540,31 @@ export const AiEvaluationReport = z.object({
   /** What the decision covers and what it does not (replay never establishes real-model quality, latency or cost). */
   claims: z.array(z.string()),
   applicability: AiApplicability,
-  mode: z.object({ requested: AiModelMode, used: z.enum(["replay", "live", "direct", "none"]), reason: z.string() }),
+  mode: z.object({ requested: AiModelMode, used: z.enum(["replay", "live", "direct", "mixed", "none"]), reason: z.string() }),
   environment: z.object({ requested: z.string(), selected: z.enum(["nebius", "local", "static", "none"]), provider: z.string().nullable(), fallbackReason: z.string().nullable(), isolation: z.string() }),
   datasets: z.array(z.object({ id: z.string(), source: z.enum(["builtin", "repository", "uploaded"]), name: z.string(), version: z.string(), digest: z.string(), cases: z.number() })),
   coverage: z.object({ decisive: z.number(), applicable: z.number(), criticalDecisive: z.number(), criticalApplicable: z.number() }),
+  /** Required lanes and what the run established for each (absent on reports from engines before 2026-10-17.e3). */
+  obligations: z.array(AiLaneObligation).default([]),
+  /** Lane coverage: decisive required lanes over required lanes, blocked and unsupported ones included. */
+  obligationCoverage: z.object({ decisive: z.number(), required: z.number(), criticalDecisive: z.number(), criticalRequired: z.number() }).nullable().default(null),
+  /** Whether cybercheck's live gateway could run (a supported provider and credentials are configured). */
+  gateway: z.object({ available: z.boolean(), model: z.string().nullable(), reason: z.string() }).nullable().default(null),
+  /** Pairwise regression against a baseline run (only when a baseline was chosen and a calibrated judge ran). */
+  pairwise: z
+    .object({ baselineRunId: z.string(), better: z.number(), worse: z.number(), tie: z.number(), undecided: z.number(), compared: z.number(), note: z.string() })
+    .nullable()
+    .default(null),
+  /** Each selector of the bound target, checked against a real response during preparation (absent on older runs). */
+  targetValidation: z
+    .object({
+      endpoint: z.string(),
+      boundBy: z.enum(["user", "single_route"]),
+      probed: z.boolean(),
+      selectors: z.array(z.object({ name: z.string(), path: z.string(), resolved: z.boolean(), detail: z.string() })),
+    })
+    .nullable()
+    .default(null),
   categories: z.array(AiCategoryResult),
   metrics: z.array(AiEvaluationMetric),
   performance: z.object({ turns: z.number(), p50Ms: z.number().nullable(), p95Ms: z.number().nullable(), maxMs: z.number().nullable(), modelRequests: z.number(), tokensIn: z.number(), tokensOut: z.number(), costUsd: z.number().nullable(), costBasis: z.enum(["provider_usage", "estimated", "not_measured"]) }),
@@ -536,7 +588,7 @@ export const AiEvaluationRunSummary = z.object({
   progress: z.number().nullable(),
   headline: z.string().nullable(),
   decision: AiEvaluationDecision.nullable(),
-  mode: z.enum(["replay", "live", "direct", "none"]).nullable(),
+  mode: z.enum(["replay", "live", "direct", "mixed", "none"]).nullable(),
   profile: AiEvaluationProfile,
   counts: z.object({ cases: z.number(), decisive: z.number(), passed: z.number(), failed: z.number(), confirmed: z.number(), suspected: z.number() }),
   parentRunId: z.string().nullable(),

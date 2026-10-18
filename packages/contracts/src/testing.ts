@@ -126,7 +126,7 @@ export type Obligation = z.infer<typeof Obligation>;
 
 // ---------------------------------------------------------------- Executions (supervisor evidence)
 
-export const ExecutionKind = z.enum(["prepare", "command", "suite", "suite_rerun", "probe", "generated_tests", "fixture", "browser", "database", "load", "security_tools", "security_scan", "security_app", "security_api_proof", "security_browser_proof", "security_canary", "ai_eval_app", "ai_eval_cases", "ai_eval_gateway"]);
+export const ExecutionKind = z.enum(["prepare", "command", "suite", "suite_rerun", "probe", "generated_tests", "fixture", "browser", "database", "load", "security_tools", "security_scan", "security_app", "security_api_proof", "security_browser_proof", "security_canary", "ai_eval_app", "ai_eval_cases", "ai_eval_gateway", "ai_eval_canary"]);
 
 export const TestExecution = z.object({
   id: z.string(),

@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { AI_DEFAULT_THRESHOLDS, type AiApplicability, type AiEvaluationCase, type AiEvaluationRunDetail } from "@cybercheck/contracts";
 import { BUILTIN_DIGEST } from "../src/ai-evaluator/catalog.ts";
-import { categoryResults, decide, findingsOf, performanceOf } from "../src/ai-evaluator/decide.ts";
+import type { AiComponentInventory, AiEvaluationTarget } from "@cybercheck/contracts";
+import { categoryResults, decide, findingsOf, laneObligations, obligationCoverageOf, performanceOf, type LaneContext } from "../src/ai-evaluator/decide.ts";
 import { aiRunToMarkdown } from "../src/ai-evaluator/export.ts";
 import { redactAiRun } from "../src/ai-evaluator/redact.ts";
 import { buildAiReport } from "../src/ai-evaluator/report.ts";
@@ -88,10 +89,10 @@ describe("findings", () => {
 });
 
 describe("decision", () => {
-  const base = (cases: AiEvaluationCase[], o: { env?: string | null } = {}) => {
+  const base = (cases: AiEvaluationCase[], o: { env?: string | null; obligations?: Parameters<typeof decide>[0]["obligations"] } = {}) => {
     const findings = findingsOf(cases, []);
     const categories = categoryResults(cases, T);
-    return decide({ cases, categories, findings, thresholds: T, environmentBlocked: o.env ?? null, perf: performanceOf(cases, "replay"), perfMeasured: false }).decision;
+    return decide({ cases, categories, findings, obligations: o.obligations ?? [], thresholds: T, environmentBlocked: o.env ?? null, perf: performanceOf(cases, "replay"), perfMeasured: false }).decision;
   };
   it("follows the chain: environment, confirmed high/critical, thresholds, critical undecided, coverage, ready", () => {
     expect(base(many(5, {}), { env: "no runtime" })).toBe("not_ready_environment_blocked");
@@ -101,6 +102,67 @@ describe("decision", () => {
     expect(base([...many(8, {}), ...many(2, { category: "grounding", hard: [["citation_context", null]] }), ...many(8, { category: "grounding" })])).toBe("not_ready_insufficient_evidence");
     expect(base(many(10, {}))).toBe("ready_with_evidence");
     expect(base([])).toBe("not_ready_insufficient_evidence");
+  });
+
+  it("a required critical lane with no decisive evidence blocks readiness, before case coverage is even checked", () => {
+    const ok = (over: Record<string, unknown>) => ({ lane: "prompt_injection" as const, label: "x", required: true, critical: false, why: "", status: "passed" as const, reason: "", cases: 1, decided: 1, caseIds: [], ...over });
+    // All lanes decisive: ready.
+    expect(base(many(10, {}), { obligations: [ok({}), ok({ lane: "functional" })] })).toBe("ready_with_evidence");
+    // A critical lane left unsupported (no case yet): not ready, even though every case passed.
+    expect(base(many(10, {}), { obligations: [ok({ critical: true, status: "unsupported" })] })).toBe("not_ready_insufficient_evidence");
+    // A required (non-critical) lane undecided drops lane coverage below 100%: not ready.
+    expect(base(many(10, {}), { obligations: [ok({}), ok({ lane: "output_rendering", status: "inconclusive" })] })).toBe("not_ready_insufficient_evidence");
+  });
+});
+
+describe("lane obligations", () => {
+  const component = (over: Partial<AiComponentInventory> = {}): AiComponentInventory => ({ id: "ai:1", name: "assistant", kind: "provider_http", provider: { name: "openai", family: "openai_compatible", baseUrlEnv: ["AI_BASE_URL"], apiKeyEnv: ["AI_API_KEY"], hardcodedHosts: [], model: null, interceptable: true, reason: null }, files: [], systemPrompts: [], tools: [], retrieval: [], messageTriggers: [], endpoints: ["POST /api/assistant"], evidence: [], limitations: [], ...over });
+  const target = (over: Partial<AiEvaluationTarget> = {}): AiEvaluationTarget => ({ componentId: "ai:1", transport: "http", method: "POST", path: "/api/assistant", requestTemplate: { message: "{{message}}" }, responseSelector: "reply", ...over });
+  const ctx = (over: Partial<LaneContext> = {}): LaneContext => ({ component: component(), target: target(), identityCount: 1, ...over });
+  const lane = (obs: ReturnType<typeof laneObligations>, name: string) => obs.find((o) => o.lane === name)!;
+
+  it("requires functional, leakage, prompt-injection and reliability for every component", () => {
+    const obs = laneObligations([...many(3, {}), ...many(2, { category: "reliability" })], ctx(), T);
+    for (const l of ["functional", "leakage", "prompt_injection", "reliability"]) expect(lane(obs, l).required, l).toBe(true);
+    expect(lane(obs, "prompt_injection").critical).toBe(true);
+    expect(lane(obs, "functional").critical).toBe(false);
+  });
+
+  it("requires output rendering only when a page injects the reply as HTML", () => {
+    expect(lane(laneObligations(many(2, {}), ctx({ rendersHtml: false }), T), "output_rendering")).toMatchObject({ required: false, status: "not_applicable" });
+    expect(lane(laneObligations(many(2, {}), ctx({ rendersHtml: true }), T), "output_rendering")).toMatchObject({ required: true, critical: true });
+  });
+
+  it("marks a required safety lane with no case as unsupported, not passed", () => {
+    const obs = laneObligations(many(3, {}), ctx(), T);
+    expect(lane(obs, "prompt_injection")).toMatchObject({ status: "unsupported", required: true, critical: true });
+    // Leakage is carried by the passive reply checks even with no dedicated case.
+    expect(lane(obs, "leakage").status).toBe("passed");
+    expect(lane(obs, "leakage").reason).toMatch(/passive/i);
+  });
+
+  it("requires isolation, tools and grounding only when the component has them", () => {
+    const bare = laneObligations(many(2, {}), ctx({ component: component(), target: target() }), T);
+    expect(lane(bare, "isolation").required).toBe(false);
+    expect(lane(bare, "tools").required).toBe(false);
+    expect(lane(bare, "grounding").required).toBe(false);
+    const rich = laneObligations(many(2, {}), ctx({ component: component({ tools: [{ name: "cancel_order", evidence: { path: "a", line: 1 }, consequential: true, parameters: [] }] }), target: target({ historyPath: "/api/history", citationSelector: "citations" }), identityCount: 2 }), T);
+    expect(lane(rich, "isolation")).toMatchObject({ required: true, critical: true });
+    expect(lane(rich, "tools")).toMatchObject({ required: true, critical: true });
+    expect(lane(rich, "grounding").required).toBe(true);
+  });
+
+  it("treats a message-triggered side effect as a tool obligation", () => {
+    const triggered = component({ messageTriggers: [{ pattern: "write file", sink: "file", evidence: { path: "src/ai.js", line: 17 } }] });
+    expect(lane(laneObligations(many(2, {}), ctx({ component: triggered }), T), "tools")).toMatchObject({ required: true, critical: true, status: "unsupported" });
+  });
+
+  it("settles a lane from its cases and counts required-lane coverage", () => {
+    const obs = laneObligations([...many(3, { category: "reliability" }), c({ category: "reliability", hard: [["handled_failure", false]] })], ctx(), T);
+    expect(lane(obs, "reliability")).toMatchObject({ status: "failed", cases: 4, decided: 4 });
+    const cov = obligationCoverageOf(obs);
+    expect(cov.required).toBeGreaterThan(0);
+    expect(cov.criticalRequired).toBeGreaterThanOrEqual(2);
   });
 });
 
@@ -118,6 +180,11 @@ describe("report and export", () => {
     expect(report.claims.join(" ")).toMatch(/do not establish the real model's answer quality/);
     expect(report.judge.status).toBe("off");
     expect(report.performance.costBasis).toBe("not_measured");
+  });
+
+  it("reports multiple component execution modes explicitly", () => {
+    const { report } = buildAiReport({ applicability, cases: [c({ mode: "replay" }), c({ id: "c2", mode: "direct" })], components: [], thresholds: T, modelMode: "auto", modes: ["replay", "direct"], environment: { requested: "auto", selected: "local", provider: "docker", fallbackReason: null, isolation: "x" }, environmentBlocked: null, datasets: [], untested: [], executions: [], snapshotDigest: "s".repeat(64), runtimeImage: "node:22-bookworm" });
+    expect(report.mode).toMatchObject({ used: "mixed", reason: expect.stringMatching(/replay, direct/) });
   });
 
   it("flags an unredacted credential in stored samples", () => {

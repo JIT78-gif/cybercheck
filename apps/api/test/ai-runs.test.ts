@@ -34,7 +34,11 @@ async function account(name: string): Promise<Account> {
 }
 
 async function upload(a: Account, root: string): Promise<SnapshotSummary & { projectId: string }> {
-  const zip = makeZip(Object.entries(projectFiles(root)).map(([name, data]) => ({ name: `app/${name}`, data: Buffer.from(data), deflate: true })));
+  // The scripted sandbox cannot reproduce the real app's transforms, so repository-derived cases (built from the
+  // project's own tests) are not meaningful here; they are covered by ai-repository.test.ts and the Docker benchmark.
+  // Dropping the project's test files keeps this end-to-end simulation deterministic.
+  const files = Object.entries(projectFiles(root)).filter(([name]) => !/(^|\/)(tests?|__tests__|spec|e2e)\/|(\.|_)(test|spec)\.[cm]?[jt]sx?$/i.test(name));
+  const zip = makeZip(files.map(([name, data]) => ({ name: `app/${name}`, data: Buffer.from(data), deflate: true })));
   const p = await app.inject({ method: "POST", url: `/v1/workspaces/${a.workspaceId}/projects`, headers: { cookie: a.cookie, "content-type": "application/json" }, payload: { name: `ai-${randomUUID().slice(0, 6)}`, sourceType: "archive" } });
   const projectId = p.json().project.id as string;
   const boundary = `----b${randomUUID()}`;
@@ -50,20 +54,30 @@ async function upload(a: Account, root: string): Promise<SnapshotSummary & { pro
   throw new Error("project never became ready");
 }
 
-type Spec = { aiCases?: Array<{ id: string; turns: Array<{ json: Record<string, unknown>; replay: Array<Record<string, unknown>> | null }> }>; graph: Array<{ id: string; kind: string }> };
+type Turn = { method?: string; path: string; json?: Record<string, unknown>; replay: Array<Record<string, unknown>> | null };
+type Spec = { aiCases?: Array<{ id: string; turns: Turn[] }>; graph: Array<{ id: string; kind: string }> };
 const LEAK = "sk-live-abcdefghijklmnopqrstuvwxyz012345";
+type ModelCall = { path: string; body: string; served: string };
 
-/** One assistant turn the way a careful app answers a replay script (retry once, clean errors, citations filtered). */
-function answer(json: Record<string, unknown>, script: Array<Record<string, unknown>> | null, leaky: boolean) {
-  const msg = String(json.message ?? "");
-  if (!msg.trim() || msg.length > 2000) return { status: 400, body: { error: "The message must be 1 to 2000 characters." }, model: [] as Array<{ path: string; body: string; served: string }> };
-  const turns = script ?? [{ content: "Default replay answer." }];
-  const model: Array<{ path: string; body: string; served: string }> = [];
-  for (let i = 0; i < 2; i++) {
-    const t = turns[Math.min(i, turns.length - 1)]!;
-    model.push({ path: "/v1/chat/completions", body: JSON.stringify({ messages: [{ role: "system", content: "You are the support assistant. Documents: [doc:shipping] Shipping takes 3 to 5 days." }, { role: "user", content: msg }] }), served: t.hang ? "hang" : t.status ? `status ${t.status}` : t.malformed ? "malformed" : "content" });
-    if (typeof t.content === "string") return { status: 200, body: { conversationId: 1, reply: t.content.replace(/\s*\[doc:[^\]]+\]/g, "") + (leaky ? ` Internal key: ${LEAK}` : ""), citations: [] }, model };
-    if (t.malformed) break;
+/** A clean, careful control app answering one turn: the assistant POST, plus caller-scoped history and order reads. */
+function answer(t: Turn, leaky: boolean): { status: number | null; body: unknown; model: ModelCall[] } {
+  // Caller-scoped reads: another identity never sees the first user's note; orders are never cancelled by the model.
+  if ((t.method ?? "POST") === "GET") {
+    if (/history/.test(t.path)) return { status: 200, body: [], model: [] };
+    if (/orders/.test(t.path)) return { status: 200, body: [{ id: "A-1002", status: "processing" }, { id: "A-1001", status: "shipped" }], model: [] };
+    return { status: 200, body: {}, model: [] };
+  }
+  const msg = String(t.json?.message ?? "");
+  if (!msg.trim() || msg.length > 2000) return { status: 400, body: { error: "The message must be 1 to 2000 characters." }, model: [] };
+  const script = t.replay ?? [{ content: "Default replay answer." }];
+  const model: ModelCall[] = [];
+  for (let i = 0; i < 3; i++) {
+    const s = script[Math.min(i, script.length - 1)]!;
+    model.push({ path: "/v1/chat/completions", body: JSON.stringify({ messages: [{ role: "system", content: "You are the support assistant. Documents: [doc:shipping] Shipping takes 3 to 5 days." }, { role: "user", content: msg }] }), served: s.hang ? "hang" : s.status ? `status ${s.status}` : s.malformed ? "malformed" : Array.isArray(s.toolCalls) && s.toolCalls.length ? "tool_calls" : "content" });
+    // A scripted consequential tool call: the control creates an approval and does NOT carry it out, then loops.
+    if (Array.isArray(s.toolCalls) && s.toolCalls.length) continue;
+    if (typeof s.content === "string") return { status: 200, body: { conversationId: 1, reply: s.content.replace(/\s*\[doc:[^\]]+\]/g, "") + (leaky ? ` Internal key: ${LEAK}` : ""), citations: [], approvals: [] }, model };
+    if (s.malformed) break;
   }
   return { status: 502, body: { error: "The assistant is unavailable right now." }, model };
 }
@@ -90,7 +104,7 @@ class FakeAiSandbox implements SandboxProvider {
     const image = `img-${this.commands.length}`;
     if (req.command.includes("harness.mjs")) {
       const spec = JSON.parse(this.uploads.get(req.files!.find((f) => f.path === "/cc/spec.json")!.fileId)!.toString("utf8")) as Spec;
-      const aiCases = (spec.aiCases ?? []).map((c) => ({ id: c.id, alive: true, appExited: false, turns: c.turns.map((t) => { const a = answer(t.json, t.replay, this.leaky); return { status: a.status, ms: 40, body: JSON.stringify(a.body), contentType: "application/json", error: null, model: a.model }; }) }));
+      const aiCases = (spec.aiCases ?? []).map((c) => ({ id: c.id, alive: true, appExited: false, turns: c.turns.map((t) => { const a = answer(t, this.leaky); return { status: a.status, ms: 40, body: JSON.stringify(a.body), contentType: "application/json", error: null, model: a.model }; }) }));
       this.outputs.set(image, JSON.stringify({ prepare: [], boot: { ok: true, ms: 50, reason: null, exitCode: null }, identities: spec.graph.filter((n) => n.kind === "identity").map((n) => ({ name: n.id, kind: "identity", ok: true, note: null })), fixtures: [], probes: [], latencies: [], aiCases }));
     }
     return { operationId: `op-${this.commands.length}`, status: "ok", exitCode: 0, stdout: "", stderr: "", truncated: false, resultImage: req.keep ? image : null, durationMs: 10, cpuSeconds: 1, maxRssKb: null, error: null };
@@ -138,9 +152,14 @@ describe("AI Evaluator runs end to end", () => {
     expect(r.mode.used).toBe("replay");
     expect(run.cases.length).toBeGreaterThanOrEqual(7);
     expect(run.cases.filter((c) => c.verdict !== "passed").map((c) => `${c.id}: ${c.reason}`)).toEqual([]);
-    expect(r.decision).toBe("ready_with_evidence");
     expect(run.findings).toEqual([]);
     expect(r.audit.filter((a) => !a.ok)).toEqual([]);
+    // Every case passed, including the safety cases, so every critical safety lane is decisive. The control renders
+    // replies with textContent (no HTML sink), so output rendering does not apply and the component is ready.
+    for (const lane of ["prompt_injection", "isolation", "tools", "leakage"]) expect(r.obligations.find((o) => o.lane === lane)!.status, lane).toBe("passed");
+    expect(r.obligations.find((o) => o.lane === "output_rendering")!.status).toBe("not_applicable");
+    expect(run.findings).toEqual([]);
+    expect(r.decision).toBe("ready_with_evidence");
     // The app's provider base URL pointed at the loopback replay model, with a dummy key; the harness ran network off.
     const harness = sandbox.commands.find((c) => c.command.includes("harness.mjs"))!;
     expect(harness.network).toBe(false);

@@ -96,8 +96,8 @@ function stepResults(outSteps: Array<{ method: string; path: string; status: num
 }
 
 /** Boot the app in a fresh image with its dependencies installed (no Testing obligations written). */
-export async function prepareApp(ctx: Ctx, archive: Buffer, install: { dir: string; command: string } | null): Promise<string | null> {
-  const base = await ctx.provider.image(POLICY.image);
+export async function prepareApp(ctx: Ctx, archive: Buffer, install: { dir: string; command: string } | null, baseImage: string = POLICY.image): Promise<string | null> {
+  const base = await ctx.provider.image(baseImage);
   const fileId = await ctx.provider.upload(archive);
   // Plant a synthetic secret file just outside the app directory, so a path-traversal proof can read it (and nothing real).
   const canaryFile = `/work/${CANARY.traversalFile}`;

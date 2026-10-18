@@ -39,7 +39,6 @@ if (spec.replay?.port) {
     result.replayError = String(err?.code ?? err);
   }
 }
-
 result.prepare = await runPrepare(app, env, spec.prepareTimeoutSec ?? 600);
 if (result.prepare.some((p) => p.exitCode !== 0)) {
   result.boot.reason = `prepare command failed: ${result.prepare.find((p) => p.exitCode !== 0).command}`;
@@ -146,7 +145,20 @@ if (h.boot.ok) {
   // for earlier turns), the model calls that turn caused are recorded with it, and the app is checked to still answer
   // afterwards. The full reply body is kept (masked), since graders read the reply itself.
   result.aiCases = [];
+  // Budget: the whole AI stage has a wall-clock and a model-request budget. Once either is reached no new case is
+  // started; completed evidence is kept and the rest are marked blocked.
+  const aiStart = Date.now();
+  let aiModelReqs = 0;
+  result.aiBudget = { modelRequests: 0, overBudget: false };
   for (const c of spec.aiCases ?? []) {
+    const overTime = spec.aiDeadlineMs && Date.now() - aiStart > spec.aiDeadlineMs;
+    const overReqs = spec.aiMaxModelRequests && aiModelReqs >= spec.aiMaxModelRequests;
+    if (overTime || overReqs) {
+      result.aiBudget.overBudget = true;
+      result.aiCases.push({ id: c.id, blocked: { node: "budget", note: overTime ? "the time budget was reached" : "the model-request budget was reached" }, turns: [], alive: null, appExited: Boolean(h.exited) });
+      save();
+      continue;
+    }
     if (h.exited && restarts < 2) {
       restarts++;
       h = await startApp(app, env, logPath, spec.bootTimeoutSec ?? 60, true);
@@ -180,13 +192,17 @@ if (h.boot.ok) {
           if (usable(v)) vars[raw.capture.name] = v;
         } catch {}
       }
-      const model = (replay?.since(from) ?? []).map((m) => ({ path: m.path, body: mask(m.body), served: m.served }));
+      const model = replay
+        ? (replay.since(from) ?? []).map((m) => ({ path: m.path, body: mask(m.body), served: m.served }))
+        : [];
       turns.push({ status: r.status, ms: r.ms, body: mask((r.text ?? "").slice(0, 20000)), contentType: r.contentType ?? null, error: r.error ?? null, model, logFrom, logTo: logSize(logPath) });
       emit({ k: "req", method: step.method, path: String(step.path).slice(0, 160), status: r.status ?? null, ms: r.ms ?? null, ok: r.status != null && r.status < 500, as: raw.as ?? null, check: c.id });
       if (r.status == null && h.exited) break;
     }
     // Still answering? Any response (even 404) counts; no response or an exited process does not.
     const ping = h.exited ? null : await request({ method: "GET", path: c.alivePath ?? "/", timeoutMs: 5000 }, null);
+    aiModelReqs += turns.reduce((n, t) => n + (t.model?.length ?? 0), 0);
+    result.aiBudget.modelRequests = aiModelReqs;
     result.aiCases.push({ id: c.id, turns, alive: ping ? ping.status != null : false, appExited: Boolean(h.exited) });
     save();
   }

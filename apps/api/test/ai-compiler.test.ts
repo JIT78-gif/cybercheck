@@ -40,7 +40,7 @@ describe("case compiler", () => {
     expect(c.turns).toHaveLength(2);
     expect(c.turns[0]!.capture).toEqual({ name: "cc_conversation", path: ctx.target.conversationSelector });
     expect(c.turns[0]!.replay).toBeNull();
-    expect(c.turns[1]!.json[ctx.target.conversationSelector!.split(".").pop()!]).toBe("{{cc_conversation}}");
+    expect(c.turns[1]!.json![ctx.target.conversationSelector!.split(".").pop()!]).toBe("{{cc_conversation}}");
     expect(c.turns[1]!.replay).toEqual([expect.objectContaining({ content: "We open at 9:00." })]);
   });
 

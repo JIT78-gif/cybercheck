@@ -91,10 +91,10 @@ export function useAiDatasets(projectId: string | null) {
   return { datasets: projectId ? datasets : null, reload };
 }
 
-export type StartOptions = Pick<AiEvaluationPolicyInput, "profile" | "datasetIds">;
+export type StartOptions = Pick<AiEvaluationPolicyInput, "profile" | "datasetIds" | "target" | "judge" | "modelMode" | "runtime" | "baselineRunId">;
 
 export async function startAiEvaluation(snapshotId: string, options: StartOptions) {
-  return api<{ run: AiEvaluationRunSummary }>(`/v1/snapshots/${snapshotId}/checks/ai-evaluator`, { method: "POST", headers: { "idempotency-key": crypto.randomUUID() }, json: { profile: options.profile, datasetIds: options.datasetIds, judge: "off", modelMode: "auto", runtime: "auto" } });
+  return api<{ run: AiEvaluationRunSummary }>(`/v1/snapshots/${snapshotId}/checks/ai-evaluator`, { method: "POST", headers: { "idempotency-key": crypto.randomUUID() }, json: { profile: options.profile, datasetIds: options.datasetIds, judge: options.judge ?? "auto", modelMode: options.modelMode ?? "auto", runtime: options.runtime ?? "auto", ...(options.baselineRunId ? { baselineRunId: options.baselineRunId } : {}), ...(options.target ? { target: options.target } : {}) } });
 }
 
 export async function cancelAiEvaluation(runId: string) {

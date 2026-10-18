@@ -37,15 +37,20 @@ export type HarnessOut = {
   /** AI Evaluator cases: each turn's response and the replay-model calls it caused. */
   aiCases?: HarnessAiCase[];
   replayError?: string;
+  aiBudget?: { modelRequests: number; overBudget: boolean };
 };
 
-export type HarnessAiTurn = { status: number | null; ms: number; body: string; contentType: string | null; error: string | null; model: Array<{ path: string; body: string; served: string }>; logFrom?: number; logTo?: number };
+export type HarnessAiTurn = { status: number | null; ms: number; body: string; contentType: string | null; error: string | null; model: Array<{ path: string; body: string; served: string; inputTokens?: number; outputTokens?: number; costUsd?: number }>; logFrom?: number; logTo?: number };
 export type HarnessAiCase = { id: string; blocked?: { node: string; note: string }; turns: HarnessAiTurn[]; alive: boolean | null; appExited: boolean };
 /** What an AI Evaluator run adds to the harness spec. */
 export type HarnessAiSpec = {
-  aiCases: Array<{ id: string; needs: string[]; alivePath: string; turns: Array<{ method: string; path: string; json: Record<string, unknown>; as: string | null; replay: unknown[] | null; timeoutMs: number; capture?: { name: string; path: string } }> }>;
+  aiCases: Array<{ id: string; needs: string[]; alivePath: string; turns: Array<{ method: string; path: string; json?: Record<string, unknown>; as: string | null; replay: unknown[] | null; timeoutMs: number; capture?: { name: string; path: string } }> }>;
   replay: { port: number } | null;
   timeoutSec: number;
+  /** Wall-clock budget for the AI cases; once reached, no new case is started. */
+  deadlineMs?: number;
+  /** Model-request budget for the run; once reached, no new case is started. */
+  maxModelRequests?: number;
 };
 
 /** Settings for an app: synthetic values for everything without a default, plus every ${ENV:X} the fixture graph uses. */
@@ -87,11 +92,12 @@ const graphSpec = (graph: FixtureNode[]) => graph.map((n) => ({ id: n.id, kind: 
 
 export async function runHarness(ctx: Ctx, image: string, app: BootApp, graph: FixtureNode[], probes: Probe[], label: string, retryOf: string | null, extra: Record<string, string> = {}, scenarios: ScenarioJob[] = [], canaryPort?: number, ai?: HarnessAiSpec) {
   const env = appEnv(ctx, app, extra, graph);
-  const spec = { cwd: wsPath(app.workspace), prepare: app.prepare, start: app.start, port: app.port, readyPath: app.readyPath, bootTimeoutSec: POLICY.bootTimeoutSec, env, graph: graphSpec(graph), probes: probes.map((p) => ({ id: p.id, identity: p.identity, needs: p.needs ?? [], steps: p.steps })), scenarios: scenarios.map((j) => ({ scenario: j.scenario })), canaryPort, ...(ai ? { aiCases: ai.aiCases, replay: ai.replay } : {}) };
+  const spec = { cwd: wsPath(app.workspace), prepare: app.prepare, start: app.start, port: app.port, readyPath: app.readyPath, bootTimeoutSec: POLICY.bootTimeoutSec, env, graph: graphSpec(graph), probes: probes.map((p) => ({ id: p.id, identity: p.identity, needs: p.needs ?? [], steps: p.steps })), scenarios: scenarios.map((j) => ({ scenario: j.scenario })), canaryPort, ...(ai ? { aiCases: ai.aiCases, replay: ai.replay, aiDeadlineMs: ai.deadlineMs, aiMaxModelRequests: ai.maxModelRequests } : {}) };
   const [libId, harnessId, specId] = await Promise.all([ctx.provider.upload(HARNESS_LIB), ctx.provider.upload(HARNESS), ctx.provider.upload(Buffer.from(JSON.stringify(spec)))]);
   const r = await execute(ctx, { kind: "probe", label, workspace: app.workspace, retryOf, fetch: [`${OUT}/harness.json`, `${OUT}/server.log`] }, {
     image,
     command: `${startServices(ctx.services)}mkdir -p ${OUT} && node /cc/harness.mjs /cc/spec.json ${OUT}`,
+    // Evaluated project code never receives general outbound network access.
     network: false,
     keep: true,
     timeoutSec: (ai?.timeoutSec ?? POLICY.commandTimeoutSec) + POLICY.bootTimeoutSec,

@@ -2,7 +2,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { buffer } from "node:stream/consumers";
 import { AI_DEFAULT_THRESHOLDS, AiEvaluationPolicyInput, type AiApplicability, type AiEvaluationReport, type ProjectDossier, type TestExecution, type TestingUsage } from "@cybercheck/contracts";
 import { db } from "../db/client.ts";
-import { aiEvaluationDataset, snapshot, testingRun, understandingRun } from "../db/schema.ts";
+import { aiEvaluationCase, aiEvaluationDataset, snapshot, testingRun, understandingRun } from "../db/schema.ts";
 import type { AiSession } from "../understanding/ai/gateway.ts";
 import type { ObjectStore } from "../storage/object-store.ts";
 import { selectSecurityRuntime } from "../security/runtime.ts";
@@ -12,6 +12,11 @@ import type { RunStore } from "../testing/store.ts";
 import { getSnapshotSource } from "../understanding/source.ts";
 import { assessApplicability } from "./applicability.ts";
 import { readFrozenDataset } from "./datasets.ts";
+import { detectRenderSinks } from "./rendering.ts";
+import { runRenderCanary, type CanaryResult } from "./canary.ts";
+import { calibrate, sessionJudge, JUDGE_RUBRIC_VERSION, type Calibration, type JudgeProvider } from "./judge.ts";
+import { JUDGE_CALIBRATION } from "./judge-calibration.ts";
+import { liveGatewayStatus } from "./gateway.ts";
 import { buildAiReport } from "./report.ts";
 import { runAiCases, type AiRunResult } from "./run.ts";
 import { AI_EVALUATOR_ENGINE, AI_GRADER_VERSION } from "./version.ts";
@@ -37,6 +42,11 @@ function notApplicableReport(applicability: AiApplicability, contentDigest: stri
     environment: { requested: "auto", selected: "none", provider: null, fallbackReason: null, isolation: "Nothing was executed." },
     datasets: [],
     coverage: { decisive: 0, applicable: 0, criticalDecisive: 0, criticalApplicable: 0 },
+    obligations: [],
+    obligationCoverage: null,
+    gateway: null,
+    pairwise: null,
+    targetValidation: null,
     categories: [],
     metrics: [],
     performance: { turns: 0, p50Ms: null, p95Ms: null, maxMs: null, modelRequests: 0, tokensIn: 0, tokensOut: 0, costUsd: null, costBasis: "not_measured" },
@@ -105,9 +115,30 @@ export async function runAiEvaluation(store: RunStore, deps: AiDeps, onProgress:
   }
   const datasetInfo = datasets.map((x) => ({ id: x.id, name: x.name, version: x.version, digest: x.digest, cases: x.cases.length }));
 
-  const finish = async (o: { result: AiRunResult | null; environmentBlocked: string | null; environment: AiEvaluationReport["environment"]; executions: TestExecution[]; usage: TestingUsage; headline?: string }) => {
+  // The judge is optional and never blocks deterministic work. It is built only when the user asked for it and a
+  // model session exists, and it must calibrate against the frozen human-labelled set before it may gate anything.
+  let judgeProvider: JudgeProvider | null = null;
+  let calibration: Calibration | null = null;
+  const judgeCost = () => (deps.session?.usage.filter((u) => u.purpose === "ai-judge").reduce((s, u) => s + u.costUsd, 0) ?? 0);
+  const judgeStatusOf = (result: AiRunResult | null): AiEvaluationReport["judge"] => {
+    const base = { provider: judgeProvider?.name ?? null, model: judgeProvider?.model ?? null, rubricVersions: judgeProvider ? [JUDGE_RUBRIC_VERSION] : [], calibration, calls: result?.judge?.calls ?? 0, costUsd: judgeCost() };
+    if (policy.judge === "off") return { ...base, status: "off", reason: "The judge was turned off for this run; only deterministic checks decided." };
+    if (!judgeProvider) return { ...base, status: "unavailable", reason: "No judge model or credit is available, so cases that need a judgement of meaning stay inconclusive." };
+    if (!result?.judge?.scored) return { ...base, status: "not_needed", reason: "No case needed a judgement of meaning; deterministic checks settled every case." };
+    return { ...base, status: "ran", reason: calibration?.passed ? `The judge was calibrated (balanced accuracy ${calibration.balancedAccuracy.toFixed(2)}) and settled ${result.judge.scored} case(s).` : "The judge is not calibrated for this version, so its scores are informational and dependent cases stay inconclusive." };
+  };
+
+  const finish = async (o: { result: AiRunResult | null; environmentBlocked: string | null; environment: AiEvaluationReport["environment"]; executions: TestExecution[]; usage: TestingUsage; headline?: string; renderCanary?: CanaryResult | null }) => {
     await step("aggregating", "Grading cases and building findings");
     const cases = o.result?.cases ?? [];
+    const bt = applicability.targets[0];
+    const renderSinks = bt
+      ? detectRenderSinks(src, { routePaths: [bt.target.path, ...(applicability.components.find((c) => c.id === bt.target.componentId)?.endpoints.map((e) => e.split(" ").pop() ?? "") ?? [])], replySelector: bt.target.responseSelector })
+      : [];
+    const untested = [...(o.result?.untested ?? []), ...applicability.unbound.map((u) => ({ what: `Component ${u.componentId}`, reason: u.reason })), ...applicability.unsupported];
+    if (renderSinks.length && !(o.renderCanary?.executed || (o.renderCanary?.ran && o.renderCanary.reflected))) {
+      untested.push({ what: "Unsafe output rendering (browser canary)", reason: o.renderCanary?.detail ?? (o.environmentBlocked ? `The browser proof could not run because ${o.environmentBlocked}` : "The application did not produce a runnable response before the browser proof step.") });
+    }
     const { report, findings } = buildAiReport({
       applicability,
       cases,
@@ -118,11 +149,18 @@ export async function runAiEvaluation(store: RunStore, deps: AiDeps, onProgress:
       environment: o.environment,
       environmentBlocked: o.environmentBlocked,
       datasets: datasetInfo,
-      untested: [...(o.result?.untested ?? []), ...applicability.unbound.map((u) => ({ what: `Component ${u.componentId}`, reason: u.reason })), ...applicability.unsupported],
+      untested,
       executions: o.executions,
       snapshotDigest: snap.contentDigest!,
+      identityCount: o.result?.identities ?? 0,
+      targetValidation: o.result?.targetValidation ?? null,
+      gateway: o.result?.gateway ?? liveGatewayStatus(),
+      pairwise: o.result?.pairwise ?? null,
+      renderSinks,
+      renderCanary: o.renderCanary ?? null,
       runtimeImage: o.environment.selected === "none" || o.environment.selected === "static" ? null : POLICY.image,
-      extraLimitations: [...(rerun ? [`A rerun of ${rerun.parentRunId}: only ${rerun.caseIds.length} chosen case(s) ran, and no verdict was copied from that run.`] : []), ...(o.result?.bootNote && !o.result.appBooted ? [o.result.bootNote] : [])],
+      judge: judgeStatusOf(o.result),
+      extraLimitations: [...(o.result?.limitations ?? []), ...(rerun ? [`A rerun of ${rerun.parentRunId}: only ${rerun.caseIds.length} chosen case(s) ran, and no verdict was copied from that run.`] : []), ...(o.result?.bootNote && !o.result.appBooted ? [o.result.bootNote] : [])],
     });
     if (o.headline) report.headline = o.headline;
     await step("reporting", "Writing the report");
@@ -146,11 +184,33 @@ export async function runAiEvaluation(store: RunStore, deps: AiDeps, onProgress:
   const usage = (): TestingUsage => ({ ...noUsage(), sandboxOperations: ctx.sandboxOps, sandboxCpuSeconds: Math.round(ctx.sandboxCpu) });
   const executions = () => (ctx as unknown as { executions: TestExecution[] }).executions;
 
+  if (policy.judge === "auto" && deps.session) {
+    judgeProvider = sessionJudge(deps.session);
+    await step("judging", "Calibrating the judge against the human-labelled set");
+    try {
+      calibration = await calibrate(judgeProvider, JUDGE_CALIBRATION);
+      await store.event("judging", `Judge calibration: balanced accuracy ${calibration.balancedAccuracy.toFixed(2)}, ${calibration.passed ? "passed the gate" : "below the gate (its scores will be informational only)"}.`);
+    } catch (err) {
+      judgeProvider = null;
+      await store.event("judging", `The judge could not be calibrated (${(err as Error).message}); its scores will not be used.`);
+    }
+  }
+
+  // A baseline run to compare against (pairwise regression): its cases' replies, keyed by case id.
+  let baseline: { runId: string; byId: Map<string, { reply: string | null }> } | null = null;
+  if (policy.baselineRunId) {
+    const [br] = await db.select().from(testingRun).where(and(eq(testingRun.id, policy.baselineRunId), eq(testingRun.projectId, run.projectId)));
+    if (br) {
+      const rows = await db.select().from(aiEvaluationCase).where(eq(aiEvaluationCase.runId, policy.baselineRunId));
+      baseline = { runId: policy.baselineRunId, byId: new Map(rows.map((row) => { const c = row.data as import("@cybercheck/contracts").AiEvaluationCase; return [c.id, { reply: c.samples[0]?.turns.at(-1)?.reply ?? null }]; })) };
+    }
+  }
+
   await step("compiling", "Compiling the cases and checking them against the safety rules");
   let result: AiRunResult;
   try {
     await step("executing", "Preparing the app and running the cases");
-    result = await runAiCases(ctx, { d, src, archive: await buffer(deps.objects.get(snap.archiveObjectKey)), applicability, policy, datasets, onlyCaseIds: rerun?.caseIds, onEvent: (m) => store.event("executing", m) });
+    result = await runAiCases(ctx, { d, src, archive: await buffer(deps.objects.get(snap.archiveObjectKey)), applicability, policy, datasets, onlyCaseIds: rerun?.caseIds, judge: judgeProvider && calibration ? { provider: judgeProvider, calibration } : null, baseline, onEvent: (m) => store.event("executing", m) });
   } catch (err) {
     if (!(err instanceof SandboxUnavailableError)) throw err;
     return finish({ result: null, environmentBlocked: `the ${selection.selected} runtime became unavailable: ${err.message}`, environment, executions: executions(), usage: usage() });
@@ -158,6 +218,22 @@ export async function runAiEvaluation(store: RunStore, deps: AiDeps, onProgress:
   await store.event("executing", result.bootNote);
   const runnable = result.plans.some((p) => p.mode);
   const ran = result.cases.some((c) => c.samples.length);
-  const environmentBlocked = !runnable ? `no component can be exercised in this engine version (${result.plans.map((p) => p.reason).join(" ")})` : !ran && result.cases.length ? result.bootNote || "no case could be executed" : null;
-  return finish({ result, environmentBlocked, environment, executions: executions(), usage: usage() });
+  const environmentBlocked = !runnable ? `no component can be exercised in this engine version (${result.plans.map((p) => p.reason).join(" ")})` : result.liveProviderError ? result.liveProviderError : !ran && result.cases.length ? result.bootNote || "no case could be executed" : null;
+  // Output-rendering canary (engine step 2b): only when a page injects the reply as HTML. It opens that page in a real
+  // browser and tries to make the reply's markup execute; a real execution upgrades the finding to confirmed.
+  let renderCanary: CanaryResult | null = null;
+  const bt = applicability.targets[0];
+  const sinks = bt
+    ? detectRenderSinks(src, { routePaths: [bt.target.path, ...(applicability.components.find((c) => c.id === bt.target.componentId)?.endpoints.map((e) => e.split(" ").pop() ?? "") ?? [])], replySelector: bt.target.responseSelector })
+    : [];
+  if (sinks.length && !environmentBlocked && ran) {
+    await store.event("executing", "A page injects the reply as HTML; opening it in a browser to test whether model output executes (unsafe rendering)");
+    try {
+      renderCanary = await runRenderCanary(ctx, { d, src, archive: await buffer(deps.objects.get(snap.archiveObjectKey)), applicability, sinks, nonce: `CCXSS${run.id.replace(/\D/g, "").slice(0, 8)}${Date.now().toString(36)}` });
+      await store.event("executing", `Rendering canary: ${renderCanary.executed ? "model output executed in the browser (confirmed)" : renderCanary.ran ? "sent a payload; it did not execute" : "could not drive the page"}`);
+    } catch (err) {
+      renderCanary = { ran: false, executed: false, reflected: false, page: null, detail: `The rendering canary could not run: ${(err as Error).message}`, executionId: null };
+    }
+  }
+  return finish({ result, environmentBlocked, environment, executions: executions(), usage: usage(), renderCanary });
 }

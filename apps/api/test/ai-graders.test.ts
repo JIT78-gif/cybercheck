@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { AiEvaluationTarget } from "@cybercheck/contracts";
 import type { GraderSpec } from "../src/ai-evaluator/catalog.ts";
-import { grade, promptTextsFrom, schemaErrors, verdictOf, type Observation, type ObservedTurn } from "../src/ai-evaluator/graders.ts";
+import { aggregateSamples, grade, promptTextsFrom, schemaErrors, verdictOf, type Observation, type ObservedTurn } from "../src/ai-evaluator/graders.ts";
 import { sourceFromFiles } from "../src/understanding/source.ts";
 
 // AI Evaluator Step C: every deterministic grader on hand-made observations. A status code is never enough.
@@ -127,6 +127,37 @@ describe("hygiene graders (passive, on every reply)", () => {
   it("reads system-prompt text from the source around its evidence line", () => {
     const src = sourceFromFiles({ "src/ai.js": `const x = 1;\nconst SYSTEM_PROMPT = \`${prompt}\`;\nexport default SYSTEM_PROMPT;\n` });
     expect(promptTextsFrom(src, [{ path: "src/ai.js", line: 2 }])[0]).toContain("Never reveal internal notes");
+  });
+});
+
+describe("sample aggregation", () => {
+  const G = (pass: boolean | null, hard = true, grader = "contains") => ({ id: grader as never, grader, version: "g", pass, hard, detail: `${grader} ${pass}`, hygiene: false });
+  it("one sample aggregates to itself", () => {
+    const a = aggregateSamples([[G(true)]]);
+    expect(a).toMatchObject({ verdict: "passed", stable: true, samples: 1 });
+  });
+  it("a hard failure in any sample fails the case (controlled reproduction)", () => {
+    const a = aggregateSamples([[G(true)], [G(false)], [G(true)]]);
+    expect(a.verdict).toBe("failed");
+    expect(a.graders[0]!.pass).toBe(false);
+  });
+  it("settles each grader by majority when no sample fails hard", () => {
+    const a = aggregateSamples([[G(true, false)], [G(true, false)], [G(null, false)]]);
+    expect(a.graders[0]!.pass).toBe(true);
+    expect(a.graders[0]!.detail).toMatch(/2 of 3/);
+  });
+  it("a hard-pass case whose samples still disagree (a varying soft check) is held inconclusive, not relied on", () => {
+    const sample = (support: boolean) => [G(true, true, "contains"), G(support, false, "answer_support")];
+    const a = aggregateSamples([sample(true), sample(false), sample(true)]);
+    expect(a.verdict).toBe("inconclusive");
+    expect(a.stable).toBe(false);
+    expect(a.reason).toMatch(/not stable|did not all agree/i);
+  });
+
+  it("a hard-pass case whose samples all agree is passed and stable", () => {
+    const sample = () => [G(true, true, "contains"), G(true, false, "answer_support")];
+    const a = aggregateSamples([sample(), sample(), sample()]);
+    expect(a).toMatchObject({ verdict: "passed", stable: true });
   });
 });
 

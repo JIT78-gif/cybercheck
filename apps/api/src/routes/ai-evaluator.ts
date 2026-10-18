@@ -23,6 +23,7 @@ import { aiRunToMarkdown } from "../ai-evaluator/export.ts";
 import { validateDataset } from "../ai-evaluator/datasets.ts";
 import { redactAiRun } from "../ai-evaluator/redact.ts";
 import { AI_EVALUATOR_ENGINE } from "../ai-evaluator/version.ts";
+import { liveGatewayStatus } from "../ai-evaluator/gateway.ts";
 import { selectSecurityRuntime } from "../security/runtime.ts";
 import { objectStore } from "../storage/object-store.ts";
 import { sandboxProvider } from "../testing/worker.ts";
@@ -128,7 +129,8 @@ export async function aiEvaluatorRoutes(app: FastifyInstance) {
     const session = await requireSession(request, reply);
     if (!session) return;
     const sel = await selectSecurityRuntime("auto", sandboxProvider());
-    return { selected: sel.selected, fallbackReason: sel.fallbackReason, health: sel.health, liveGateway: sel.selected === "local" ? "available" : "unavailable", networkIsolation: "The app runs with the network off; model traffic only reaches cybercheck's replay server or, in live mode, its gateway." };
+    const gw = liveGatewayStatus();
+    return { selected: sel.selected, fallbackReason: sel.fallbackReason, health: sel.health, liveGateway: gw.available ? "available" : "unavailable", liveGatewayReason: gw.reason, networkIsolation: "In replay mode the app runs with the network off and model traffic only reaches cybercheck's loopback replay server. In live mode the gateway forwards model traffic to cybercheck's provider; other application network access is still restricted." };
   });
 
   /** Upload a dataset version. Every case is validated; one invalid case rejects the upload and nothing is stored. */
