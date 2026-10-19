@@ -298,7 +298,7 @@ export async function runAiCases(ctx: Ctx, input: { d: ProjectDossier; src: Snap
   };
   if (!app) return notRun("No startable app was found.");
   const ws = workspaces.find((w) => w.dir === app.workspace);
-  const image = await prepareApp(ctx, input.archive, app.prepare.length || ws?.install ? { dir: app.workspace, command: ws?.install?.command ?? "npm install" } : null);
+  const image = await prepareApp(ctx, input.archive, app.prepare.length || ws?.install ? { dir: app.workspace, command: ws?.install?.command ?? "npm install" } : null, undefined, "ai_eval_app");
   if (!image) return notRun("The app could not be prepared in the sandbox.");
 
   const extra: Record<string, string> = {};

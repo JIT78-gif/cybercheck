@@ -1,5 +1,5 @@
 import { buffer } from "node:stream/consumers";
-import type { ProjectDossier, SecurityObligation, SecurityProof } from "@cybercheck/contracts";
+import type { ProjectDossier, SecurityObligation, SecurityProof, TestExecution } from "@cybercheck/contracts";
 import { APP_ROOT, planWorkspaces, slug, wsPath } from "../../testing/adapters.ts";
 import { bootGraph, planBoot, type BootApp } from "../../testing/agents.ts";
 import { seededAccounts, verifyTarget } from "../../testing/fixtures.ts";
@@ -96,16 +96,16 @@ function stepResults(outSteps: Array<{ method: string; path: string; status: num
 }
 
 /** Boot the app in a fresh image with its dependencies installed (no Testing obligations written). */
-export async function prepareApp(ctx: Ctx, archive: Buffer, install: { dir: string; command: string } | null, baseImage: string = POLICY.image): Promise<string | null> {
+export async function prepareApp(ctx: Ctx, archive: Buffer, install: { dir: string; command: string } | null, baseImage: string = POLICY.image, executionKind: TestExecution["kind"] = "security_app"): Promise<string | null> {
   const base = await ctx.provider.image(baseImage);
   const fileId = await ctx.provider.upload(archive);
   // Plant a synthetic secret file just outside the app directory, so a path-traversal proof can read it (and nothing real).
   const canaryFile = `/work/${CANARY.traversalFile}`;
-  const unpack = await execute(ctx, { kind: "security_app", label: "Unpack the app for proving", workspace: null }, { image: base, command: `mkdir -p ${APP_ROOT} && tar xzf /in/snapshot.tgz -C ${APP_ROOT} --no-same-owner && find ${APP_ROOT} -name '*.sh' -exec chmod +x {} + ; printf '%s' '${CANARY.traversalMarker} (synthetic file outside the app directory; do not serve)' > ${canaryFile} ; node --version`, network: false, keep: true, timeoutSec: 300, files: [{ path: "/in/snapshot.tgz", fileId }] });
+  const unpack = await execute(ctx, { kind: executionKind, label: "Unpack the app for proving", workspace: null }, { image: base, command: `mkdir -p ${APP_ROOT} && tar xzf /in/snapshot.tgz -C ${APP_ROOT} --no-same-owner && find ${APP_ROOT} -name '*.sh' -exec chmod +x {} + ; printf '%s' '${CANARY.traversalMarker} (synthetic file outside the app directory; do not serve)' > ${canaryFile} ; node --version`, network: false, keep: true, timeoutSec: 300, files: [{ path: "/in/snapshot.tgz", fileId }] });
   let image = unpack.result.resultImage;
   if (!image || unpack.exec.outcome !== "ok") return null;
   if (install) {
-    const r = await execute(ctx, { kind: "security_app", label: `Install dependencies (${install.dir})`, workspace: install.dir }, { image, command: `cd ${shq(wsPath(install.dir))} && ${install.command} </dev/null`, network: true, keep: true, timeoutSec: POLICY.installTimeoutSec, env: CI_ENV });
+    const r = await execute(ctx, { kind: executionKind, label: `Install dependencies (${install.dir})`, workspace: install.dir }, { image, command: `cd ${shq(wsPath(install.dir))} && ${install.command} </dev/null`, network: true, keep: true, timeoutSec: POLICY.installTimeoutSec, env: CI_ENV });
     if (r.exec.outcome === "ok" && r.result.resultImage) image = r.result.resultImage;
     else return null;
   }

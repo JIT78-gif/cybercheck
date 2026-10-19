@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Agent Mart</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main>
+      <h1>Agent Mart</h1>
+      <input id="email" placeholder="Email" value="ava@acme.test" />
+      <input id="password" type="password" placeholder="Password" value="AvaPass123!" />
+      <button id="login">Sign in</button>
+      <p id="status"></p>
+      <p><a href="/assistant.html">Open the assistant</a></p>
+    </main>
+    <script>
+      login.onclick = async () => {
+        const response = await fetch('/api/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: email.value, password: password.value }) });
+        const data = await response.json();
+        if (data.token) {
+          localStorage.setItem('token', data.token);
+          status.textContent = 'Signed in as ' + data.user.name;
+        } else {
+          status.textContent = data.error || 'sign in failed';
+        }
+      };
+    </script>
+  </body>
+</html>

@@ -8,6 +8,7 @@ import { objectStore } from "../storage/object-store.ts";
 import { AiSession } from "../understanding/ai/gateway.ts";
 import { runSecurity } from "../security/orchestrator.ts";
 import { runAiEvaluation } from "../ai-evaluator/orchestrator.ts";
+import { runAdversarial } from "../adversarial/orchestrator.ts";
 import { runTesting } from "./orchestrator.ts";
 import { processRepair } from "./repair.ts";
 import { NebiusSandboxProvider } from "./sandbox/nebius.ts";
@@ -75,6 +76,11 @@ export async function processRun(claim: { id: string; generation: number }, deps
     // finished without any sandbox, and a missing Nebius falls back to Docker.
     if (check === "ai-evaluator") {
       await runAiEvaluation(store, { provider: deps.provider, session: deps.session, objects: objectStore, signal: controller.signal }, deps.onProgress ?? (() => {}));
+      return;
+    }
+    // AI Adversarial chooses its own runtime (Nebius, local Docker or none), like the AI Evaluator.
+    if (check === "adversarial") {
+      await runAdversarial(store, { provider: deps.provider, session: deps.session, objects: objectStore, signal: controller.signal }, deps.onProgress ?? (() => {}));
       return;
     }
     if (!deps.provider) {

@@ -90,11 +90,11 @@ export function missingVars(ctx: Ctx, log: string, already: Record<string, strin
 /** The graph a probe run sends: only what the harness needs (no evidence, no labels). */
 const graphSpec = (graph: FixtureNode[]) => graph.map((n) => ({ id: n.id, kind: n.kind, dependsOn: n.dependsOn, command: n.command, exports: n.exports, identity: n.identity ?? null, steps: n.steps, auth: n.auth, verify: n.verify ?? null, forge: n.forge ?? null }));
 
-export async function runHarness(ctx: Ctx, image: string, app: BootApp, graph: FixtureNode[], probes: Probe[], label: string, retryOf: string | null, extra: Record<string, string> = {}, scenarios: ScenarioJob[] = [], canaryPort?: number, ai?: HarnessAiSpec) {
+export async function runHarness(ctx: Ctx, image: string, app: BootApp, graph: FixtureNode[], probes: Probe[], label: string, retryOf: string | null, extra: Record<string, string> = {}, scenarios: ScenarioJob[] = [], canaryPort?: number, ai?: HarnessAiSpec, executionKind: TestExecution["kind"] = "probe") {
   const env = appEnv(ctx, app, extra, graph);
   const spec = { cwd: wsPath(app.workspace), prepare: app.prepare, start: app.start, port: app.port, readyPath: app.readyPath, bootTimeoutSec: POLICY.bootTimeoutSec, env, graph: graphSpec(graph), probes: probes.map((p) => ({ id: p.id, identity: p.identity, needs: p.needs ?? [], steps: p.steps })), scenarios: scenarios.map((j) => ({ scenario: j.scenario })), canaryPort, ...(ai ? { aiCases: ai.aiCases, replay: ai.replay, aiDeadlineMs: ai.deadlineMs, aiMaxModelRequests: ai.maxModelRequests } : {}) };
   const [libId, harnessId, specId] = await Promise.all([ctx.provider.upload(HARNESS_LIB), ctx.provider.upload(HARNESS), ctx.provider.upload(Buffer.from(JSON.stringify(spec)))]);
-  const r = await execute(ctx, { kind: "probe", label, workspace: app.workspace, retryOf, fetch: [`${OUT}/harness.json`, `${OUT}/server.log`] }, {
+  const r = await execute(ctx, { kind: executionKind, label, workspace: app.workspace, retryOf, fetch: [`${OUT}/harness.json`, `${OUT}/server.log`] }, {
     image,
     command: `${startServices(ctx.services)}mkdir -p ${OUT} && node /cc/harness.mjs /cc/spec.json ${OUT}`,
     // Evaluated project code never receives general outbound network access.

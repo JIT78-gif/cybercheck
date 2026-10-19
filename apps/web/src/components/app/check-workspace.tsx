@@ -5,6 +5,9 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ArrowRight, Check, ChevronDown, Info, ListChecks, Lock, Play, Plus } from "lucide-react";
 import type { CheckId, ProjectSummary } from "@cybercheck/contracts";
+import { AdversarialRunsCard } from "@/components/adversarial/adversarial-runs-card";
+import { AdversarialStart } from "@/components/adversarial/adversarial-start";
+import { useAdversarialRuns } from "@/components/adversarial/use-adversarial";
 import { AiRunsCard } from "@/components/ai-evaluator/ai-runs-card";
 import { AiStart } from "@/components/ai-evaluator/ai-start";
 import { useAiRuns } from "@/components/ai-evaluator/use-ai-evaluator";
@@ -73,17 +76,20 @@ export function CheckWorkspace({ check }: { check: CheckId }) {
 
   const snap = selected?.latestSnapshot;
   const isReady = selected?.analysis.stage === "ready";
-  // Testing, Security and AI Evaluator have engines; the other tab keeps its placeholder.
+  // Every check tab now has a runnable engine.
   const testingEngine = check === "testing";
   const securityEngine = check === "security";
   const aiEngine = check === "ai-evaluator";
-  const engine = testingEngine || securityEngine || aiEngine;
+  const adversarialEngine = check === "adversarial";
+  const engine = testingEngine || securityEngine || aiEngine || adversarialEngine;
   const testingRuns = useTestingRuns(testingEngine ? (selected?.id ?? null) : null);
   const securityRuns = useSecurityRuns(securityEngine ? (selected?.id ?? null) : null);
   const aiRuns = useAiRuns(aiEngine ? (selected?.id ?? null) : null);
-  const { error: runsError, reload } = securityEngine ? securityRuns : aiEngine ? aiRuns : testingRuns;
-  const activeRun = (securityEngine ? securityRuns.runs : aiEngine ? aiRuns.runs : testingRuns.runs)?.find((r) => ACTIVE_RUN.has(r.status));
-  const runPath = (id: string) => `/app/projects/${selected?.id}/${securityEngine ? "security" : aiEngine ? "ai-evaluator" : "testing"}/${id}`;
+  const adversarialRuns = useAdversarialRuns(adversarialEngine ? (selected?.id ?? null) : null);
+  const selectedRuns = securityEngine ? securityRuns : aiEngine ? aiRuns : adversarialEngine ? adversarialRuns : testingRuns;
+  const { error: runsError, reload } = selectedRuns;
+  const activeRun = selectedRuns.runs?.find((r) => ACTIVE_RUN.has(r.status));
+  const runPath = (id: string) => `/app/projects/${selected?.id}/${securityEngine ? "security" : aiEngine ? "ai-evaluator" : adversarialEngine ? "adversarial" : "testing"}/${id}`;
   const { status: testingStatus } = useTestingStatus(testingEngine ? (workspace?.id ?? null) : null);
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<ApiError | null>(null);
@@ -205,11 +211,13 @@ export function CheckWorkspace({ check }: { check: CheckId }) {
 
               {aiEngine && selected && !activeRun && isReady && <AiStart projectId={selected.id} snapshotId={snap?.id ?? null} onStarted={reload} />}
 
+              {adversarialEngine && selected && !activeRun && isReady && <AdversarialStart projectId={selected.id} snapshotId={snap?.id ?? null} onStarted={reload} />}
+
               {testingEngine && selected && !activeRun && isReady && (
                 <TestingStart projectId={selected.id} snapshotId={snap?.id ?? null} ready={isReady} />
               )}
 
-              <div className={cn((testingEngine || aiEngine) && selected && !activeRun && isReady && "hidden")}>
+              <div className={cn((testingEngine || aiEngine || adversarialEngine) && selected && !activeRun && isReady && "hidden")}>
                 {engine && activeRun && selected ? (
                   <Link href={runPath(activeRun.id)} className={buttonVariants({ shape: "pill", size: "lg", className: "w-full" })}>
                     <Spinner /> View the running check
@@ -231,6 +239,8 @@ export function CheckWorkspace({ check }: { check: CheckId }) {
                       ? "Your project is ready. Re-checks the project analysis, then scans for leaked secrets, vulnerable dependencies, risky code and configuration in an isolated sandbox with the network off. Your code is only read: it is never run or changed."
                       : aiEngine
                       ? "Your project is ready. Starts your app in an isolated sandbox with the network off, points its model calls at a scripted replay model, and checks every answer. No real model is called and your code is never changed."
+                      : adversarialEngine
+                      ? "Your project is ready. Runs typed, bounded attack campaigns against a disposable sandbox with external network disabled. Deterministic checks do not need AI credits; optional attacker and critic models are best-effort."
                       : engine
                       ? "Your project is ready. Builds it, runs its own tests, sets up sign-in and data, then checks the API, the screens, the database and load in an isolated sandbox. Your code is never changed."
                       : `Your project is ready. The ${info.name} engine is the next build step, so nothing runs yet.`
@@ -306,6 +316,8 @@ export function CheckWorkspace({ check }: { check: CheckId }) {
             <SecurityRunsCard projectId={selected?.id ?? null} runs={securityRuns.runs} error={runsError} />
           ) : aiEngine ? (
             <AiRunsCard projectId={selected?.id ?? null} runs={aiRuns.runs} error={runsError} />
+          ) : adversarialEngine ? (
+            <AdversarialRunsCard projectId={selected?.id ?? null} runs={adversarialRuns.runs} error={runsError} />
           ) : testingEngine ? (
             <TestingRunsCard projectId={selected?.id ?? null} runs={testingRuns.runs} error={runsError} />
           ) : (

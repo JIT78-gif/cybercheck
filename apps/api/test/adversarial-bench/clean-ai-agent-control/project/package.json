@@ -1,0 +1,17 @@
+{
+  "name": "agent-mart-clean-control",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Clean AI Adversarial control: the same AI shopping assistant (RAG, memory, tools, MCP-style descriptions) built safely. No confirmed high or critical adversarial finding should appear.",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test",
+    "check": "node --check src/app.js && node --check src/agent.js && node --check src/rag.js && node --check src/memory.js && node --check src/tools.js"
+  },
+  "dependencies": {
+    "express": "4.22.1"
+  }
+}

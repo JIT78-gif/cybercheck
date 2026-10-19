@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import type { AiApplicability, Evidence, ProjectDossier } from "@cybercheck/contracts";
+import type { AiApplicability, Evidence, ProjectDossier, TestExecution } from "@cybercheck/contracts";
 import { buildIdentities, prepareApp } from "../security/proofs/run.ts";
 import { OUT, planWorkspaces, wsPath } from "../testing/adapters.ts";
 import { planBoot } from "../testing/agents.ts";
@@ -61,7 +61,7 @@ function pagesFor(sinks: Evidence[]): string[] {
   return [...urls].filter((u) => u.length > 0).slice(0, 6);
 }
 
-export async function runRenderCanary(ctx: Ctx, input: { d: ProjectDossier; src: SnapshotSource; archive: Buffer; applicability: AiApplicability; sinks: Evidence[]; nonce: string }): Promise<CanaryResult> {
+export async function runRenderCanary(ctx: Ctx, input: { d: ProjectDossier; src: SnapshotSource; archive: Buffer; applicability: AiApplicability; sinks: Evidence[]; nonce: string; executionKind?: TestExecution["kind"] }): Promise<CanaryResult> {
   const { d, src } = input;
   const no = (detail: string, executionId: string | null = null): CanaryResult => ({ ran: false, executed: false, reflected: false, page: null, detail, executionId });
   const pages = pagesFor(input.sinks);
@@ -72,11 +72,12 @@ export async function runRenderCanary(ctx: Ctx, input: { d: ProjectDossier; src:
   const app = boot.apps[0];
   if (!app) return no("No startable app was found for the rendering canary.");
   const ws = workspaces.find((w) => w.dir === app.workspace);
-  const image0 = await prepareApp(ctx, input.archive, app.prepare.length || ws?.install ? { dir: app.workspace, command: ws?.install?.command ?? "npm install" } : null, CANARY_IMAGE);
+  const image0 = await prepareApp(ctx, input.archive, app.prepare.length || ws?.install ? { dir: app.workspace, command: ws?.install?.command ?? "npm install" } : null, CANARY_IMAGE, input.executionKind === "adversarial_browser" ? "adversarial_app" : "ai_eval_app");
   if (!image0) return no("The app could not be prepared for the rendering canary.");
 
   // Install Chromium on top of the prepared image (network on, kept). This runs only because a render sink was found.
-  const inst = await execute(ctx, { kind: "ai_eval_canary", label: "Install the browser (Chromium) for the output-rendering canary", workspace: null }, { image: image0, command: `${BROWSER_INSTALL} </dev/null`, network: true, keep: true, timeoutSec: POLICY.installTimeoutSec, env: CI_ENV });
+  const kind = input.executionKind ?? "ai_eval_canary";
+  const inst = await execute(ctx, { kind, label: "Install the browser (Chromium) for the output-rendering canary", workspace: null }, { image: image0, command: `${BROWSER_INSTALL} </dev/null`, network: true, keep: true, timeoutSec: POLICY.installTimeoutSec, env: CI_ENV });
   if (inst.exec.outcome !== "ok" || !inst.result.resultImage) return no("Chromium could not be installed in the sandbox, so the rendering canary could not run.", inst.exec.id);
   const image = inst.result.resultImage;
 
@@ -106,7 +107,7 @@ export async function runRenderCanary(ctx: Ctx, input: { d: ProjectDossier; src:
     canary: { pages, nonce: input.nonce },
   };
   const [libId, mjsId, specId] = await Promise.all([ctx.provider.upload(HARNESS_LIB), ctx.provider.upload(CANARY_MJS), ctx.provider.upload(Buffer.from(JSON.stringify(spec)))]);
-  const r = await execute(ctx, { kind: "ai_eval_canary", label: "Open the assistant page in Chromium and test unsafe output rendering", workspace: null, fetch: [`${OUT}/ai-canary.json`, `${OUT}/${first.name}.log`, `${OUT}/frontend.log`] }, {
+  const r = await execute(ctx, { kind, label: "Open the assistant page in Chromium and test unsafe output rendering", workspace: null, fetch: [`${OUT}/ai-canary.json`, `${OUT}/${first.name}.log`, `${OUT}/frontend.log`] }, {
     image,
     command: `mkdir -p ${OUT} && node /cc/ai-canary.mjs /cc/cspec.json ${OUT}`,
     network: false,

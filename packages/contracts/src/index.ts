@@ -253,3 +253,4 @@ export * from "./testing.ts";
 export * from "./testing-scenarios.ts";
 export * from "./security.ts";
 export * from "./ai-evaluator.ts";
+export * from "./adversarial.ts";

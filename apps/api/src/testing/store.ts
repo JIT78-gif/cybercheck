@@ -1,7 +1,7 @@
 import { and, asc, eq, sql } from "drizzle-orm";
-import type { AiEvaluationCase, AiEvaluationFinding, AiEvaluationPhase, LiveAction, Obligation, SecurityFinding, SecurityObligation, SecurityPhase, SecurityProof, TestExecution, TestFinding, TestingPhase } from "@cybercheck/contracts";
+import type { AdversarialCampaign, AdversarialFinding, AdversarialPhase, AdversarialStep, AiEvaluationCase, AiEvaluationFinding, AiEvaluationPhase, AttackChain, LiveAction, Obligation, SecurityFinding, SecurityObligation, SecurityPhase, SecurityProof, TestExecution, TestFinding, TestingPhase } from "@cybercheck/contracts";
 import { db } from "../db/client.ts";
-import { aiEvaluationCase, securityProof, testExecution, testFinding, testingRun, testObligation, testRunEvent } from "../db/schema.ts";
+import { adversarialCampaign, adversarialChain, adversarialStep, aiEvaluationCase, securityProof, testExecution, testFinding, testingRun, testObligation, testRunEvent } from "../db/schema.ts";
 
 export class FencedError extends Error {
   constructor() {
@@ -49,7 +49,7 @@ export class RunStore {
     await db.update(testingRun).set({ usage }).where(and(eq(testingRun.id, this.runId), eq(testingRun.generation, this.generation), eq(testingRun.status, "running")));
   }
 
-  async phase(phase: TestingPhase | SecurityPhase | AiEvaluationPhase, message: string) {
+  async phase(phase: TestingPhase | SecurityPhase | AiEvaluationPhase | AdversarialPhase, message: string) {
     await this.fenced();
     await db.update(testingRun).set({ phase }).where(and(eq(testingRun.id, this.runId), eq(testingRun.generation, this.generation)));
     await db.insert(testRunEvent).values({ runId: this.runId, seq: ++this.seq, type: `phase:${phase}`, message });
@@ -77,7 +77,7 @@ export class RunStore {
     await db.insert(testExecution).values({ id: e.id, runId: this.runId, data: e }).onConflictDoUpdate({ target: testExecution.id, set: { data: e } });
   }
 
-  async putFinding(f: TestFinding | SecurityFinding | AiEvaluationFinding) {
+  async putFinding(f: TestFinding | SecurityFinding | AiEvaluationFinding | AdversarialFinding) {
     await this.fenced();
     await db.insert(testFinding).values({ id: f.id, runId: this.runId, data: f }).onConflictDoUpdate({ target: [testFinding.runId, testFinding.id], set: { data: f } });
   }
@@ -92,6 +92,18 @@ export class RunStore {
   async putAiCase(c: AiEvaluationCase) {
     await this.fenced();
     await db.insert(aiEvaluationCase).values({ runId: this.runId, id: c.id, seq: c.seq, category: c.category, verdict: c.verdict, data: c }).onConflictDoUpdate({ target: [aiEvaluationCase.runId, aiEvaluationCase.id], set: { verdict: c.verdict, data: c } });
+  }
+
+  /** A compiled and executed adversarial campaign plus its sanitized step ledger. */
+  async putAdversarialCampaign(c: AdversarialCampaign) {
+    await this.fenced();
+    await db.insert(adversarialCampaign).values({ runId: this.runId, id: c.id, seq: c.seq, lane: c.lane, techniqueId: c.techniqueId, status: c.status, data: c }).onConflictDoUpdate({ target: [adversarialCampaign.runId, adversarialCampaign.id], set: { status: c.status, data: c } });
+    if (c.steps.length) await db.insert(adversarialStep).values(c.steps.map((s: AdversarialStep) => ({ runId: this.runId, campaignId: c.id, seq: s.seq, operation: s.operation, executionId: s.executionId, result: s.result, data: s }))).onConflictDoUpdate({ target: [adversarialStep.runId, adversarialStep.campaignId, adversarialStep.seq], set: { executionId: sql`excluded.execution_id`, result: sql`excluded.result`, data: sql`excluded.data` } });
+  }
+
+  async putAdversarialChain(c: AttackChain) {
+    await this.fenced();
+    await db.insert(adversarialChain).values({ runId: this.runId, id: c.id, seq: c.seq, verdict: c.verdict, data: c }).onConflictDoUpdate({ target: [adversarialChain.runId, adversarialChain.id], set: { verdict: c.verdict, data: c } });
   }
 
   /** A finding merged into another one (same root cause) is removed; its evidence moves to the survivor. */
@@ -114,6 +126,8 @@ export class RunStore {
     await db.delete(testExecution).where(eq(testExecution.runId, this.runId));
     await db.delete(testFinding).where(eq(testFinding.runId, this.runId));
     await db.delete(aiEvaluationCase).where(eq(aiEvaluationCase.runId, this.runId));
+    await db.delete(adversarialChain).where(eq(adversarialChain.runId, this.runId));
+    await db.delete(adversarialCampaign).where(eq(adversarialCampaign.runId, this.runId));
   }
 
   async cancelRequested() {

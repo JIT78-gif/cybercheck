@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Agent Mart assistant</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main>
+      <h1>Agent Mart assistant</h1>
+      <input id="message" placeholder="Ask about your orders" />
+      <button id="send">Send</button>
+      <!-- Safe: the reply is set as text, so markup in a reply is shown literally and never executes. -->
+      <div id="answer"></div>
+    </main>
+    <script>
+      send.onclick = async () => {
+        const r = await fetch('/api/assistant', { method: 'POST', headers: { authorization: 'Bearer ' + localStorage.getItem('token'), 'content-type': 'application/json' }, body: JSON.stringify({ message: message.value }) });
+        const x = await r.json();
+        answer.textContent = x.reply;
+      };
+    </script>
+  </body>
+</html>

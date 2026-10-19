@@ -4,6 +4,7 @@ import {
   integer,
   jsonb,
   boolean,
+  foreignKey,
   index,
   pgEnum,
   pgTable,
@@ -372,6 +373,89 @@ export const aiEvaluationDataset = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [uniqueIndex("ai_evaluation_dataset_version_idx").on(t.projectId, t.name, t.version), index("ai_evaluation_dataset_project_idx").on(t.projectId, t.createdAt)],
+);
+
+/** One AI Adversarial campaign of a run (a technique's steps, status and structured campaign data). */
+export const adversarialCampaign = pgTable(
+  "adversarial_campaign",
+  {
+    runId: text("run_id")
+      .notNull()
+      .references(() => testingRun.id, { onDelete: "cascade" }),
+    id: text("id").notNull(),
+    seq: integer("seq").notNull(),
+    lane: text("lane").notNull(),
+    techniqueId: text("technique_id").notNull(),
+    status: text("status").notNull(),
+    data: jsonb("data").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.runId, t.id] }), uniqueIndex("adversarial_campaign_run_seq_idx").on(t.runId, t.seq), index("adversarial_campaign_run_lane_idx").on(t.runId, t.lane)],
+);
+
+/** One step of a campaign. Its (run_id, campaign_id) foreign key keeps every step inside the run that owns its campaign. */
+export const adversarialStep = pgTable(
+  "adversarial_step",
+  {
+    runId: text("run_id")
+      .notNull()
+      .references(() => testingRun.id, { onDelete: "cascade" }),
+    campaignId: text("campaign_id").notNull(),
+    seq: integer("seq").notNull(),
+    operation: text("operation").notNull(),
+    /** The trusted execution this step ran as, if any. Scoped to the same run by the campaign foreign key. */
+    executionId: text("execution_id"),
+    result: text("result").notNull(),
+    data: jsonb("data").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.runId, t.campaignId, t.seq] }),
+    foreignKey({ columns: [t.runId, t.campaignId], foreignColumns: [adversarialCampaign.runId, adversarialCampaign.id], name: "adversarial_step_campaign_fk" }).onDelete("cascade"),
+  ],
+);
+
+/** One multi-stage attack chain correlating several campaigns of the same run. */
+export const adversarialChain = pgTable(
+  "adversarial_chain",
+  {
+    runId: text("run_id")
+      .notNull()
+      .references(() => testingRun.id, { onDelete: "cascade" }),
+    id: text("id").notNull(),
+    seq: integer("seq").notNull(),
+    verdict: text("verdict").notNull(),
+    data: jsonb("data").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.runId, t.id] }), uniqueIndex("adversarial_chain_run_seq_idx").on(t.runId, t.seq)],
+);
+
+/** An uploaded, immutable project-owned attack pack (the normalized dataset is an object-store artifact). */
+export const adversarialAttackPack = pgTable(
+  "adversarial_attack_pack",
+  {
+    id: text("id").primaryKey(),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspace.id, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => project.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    version: integer("version").notNull(),
+    digest: text("digest").notNull(),
+    artifactKey: text("artifact_key").notNull(),
+    schemaVersion: integer("schema_version").notNull(),
+    caseCount: integer("case_count").notNull(),
+    byCategory: jsonb("by_category").notNull(),
+    validation: jsonb("validation").notNull(),
+    createdBy: text("created_by")
+      .notNull()
+      .references(() => user.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("adversarial_attack_pack_version_idx").on(t.projectId, t.name, t.version), index("adversarial_attack_pack_project_idx").on(t.projectId, t.createdAt)],
 );
 
 export const testRunEvent = pgTable(
