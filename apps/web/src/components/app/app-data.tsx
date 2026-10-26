@@ -71,6 +71,25 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     };
   }, [workspaceId, handle]);
 
+  // Analysis may be started from another page (or another browser tab).
+  // Revalidate when the user comes back instead of trusting a stale failed
+  // status forever. The running-state poll below then takes over if needed.
+  useEffect(() => {
+    if (!workspaceId) return;
+    const refresh = () => {
+      void refreshProjects();
+    };
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
+  }, [workspaceId, refreshProjects]);
+
   // Live status: while any project is still being analysed, refresh the list every few seconds.
   const running = projects?.some((p) => RUNNING_STAGES.has(p.analysis.stage)) ?? false;
   useEffect(() => {

@@ -11,6 +11,22 @@ import { cn } from "@/lib/cn";
 import { ApiError } from "@/lib/api";
 import { RepairBeforeAfter } from "./charts";
 import { approveRepair, cancelRepair, requestRepair } from "./use-testing";
+import { approveSecurityRepair, requestSecurityRepair } from "@/components/security/use-security";
+import { approveCheckRepair, requestCheckRepair } from "@/components/app/use-check-repairs";
+
+export type RepairCheck = "testing" | "security" | "ai-evaluator" | "adversarial";
+/** What "rerun" means for each check, in plain words. */
+const RERUN: Record<RepairCheck, { title: string; reproduction: string; regression: string }> = {
+  testing: { title: "Checks rerun", reproduction: "reproduction", regression: "regression (build, your tests, the same endpoint or screen)" },
+  security: { title: "Checks rerun", reproduction: "reproduction", regression: "regression (the same endpoint or asset)" },
+  "ai-evaluator": { title: "AI cases rerun", reproduction: "that showed the problem (the browser check included, when it applies)", regression: "that passed before and must still pass" },
+  adversarial: { title: "Attacks rerun", reproduction: "that succeeded and must now be blocked", regression: "that were blocked before and must stay blocked" },
+};
+const PATH = { "ai-evaluator": "ai-evaluation-runs", adversarial: "adversarial-runs" } as const;
+const request = (check: RepairCheck, runId: string, findingId: string) =>
+  check === "security" ? requestSecurityRepair(runId, findingId) : check === "testing" ? requestRepair(runId, findingId) : requestCheckRepair(PATH[check], runId, findingId);
+const approve = (check: RepairCheck, runId: string, findingId: string, repairId: string, max: number) =>
+  check === "security" ? approveSecurityRepair(runId, findingId, repairId, max) : check === "testing" ? approveRepair(runId, findingId, repairId, max) : approveCheckRepair(PATH[check], runId, findingId, repairId, max);
 
 export const REPAIR_STATUS: Record<TestingRepair["status"], { label: string; tone: "good" | "bad" | "warn" | "info" | "muted" }> = {
   awaiting_approval: { label: "Waiting for your approval", tone: "info" },
@@ -36,7 +52,7 @@ const ATTEMPT: Record<RepairAttempt["status"], string> = {
  * Sandbox repair of one confirmed finding: ask, see exactly what may change and what it costs, approve, then follow
  * the attempts. Nothing is ever applied to the project; a verified patch is shown for you to apply yourself.
  */
-export function RepairBox({ runId, projectId, findingId, repair, canApprove, onChange }: { runId: string; projectId: string; findingId: string; repair: TestingRepair | null; canApprove: boolean; onChange: () => void }) {
+export function RepairBox({ runId, projectId, findingId, repair, canApprove, onChange, check = "testing" }: { runId: string; projectId: string; findingId: string; repair: TestingRepair | null; canApprove: boolean; onChange: () => void; check?: RepairCheck }) {
   const [busy, setBusy] = useState<"ask" | "approve" | "cancel" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [attempts, setAttempts] = useState<number | null>(null);
@@ -58,7 +74,7 @@ export function RepairBox({ runId, projectId, findingId, repair, canApprove, onC
       <div className="space-y-2">
         {repair?.status === "cancelled" && <p className="text-xs text-fg-muted">The last repair request was cancelled.</p>}
         {canApprove ? (
-          <Button type="button" variant="outline" size="sm" shape="pill" disabled={busy != null} onClick={() => void act("ask", () => requestRepair(runId, findingId))}>
+          <Button type="button" variant="outline" size="sm" shape="pill" disabled={busy != null} onClick={() => void act("ask", () => request(check, runId, findingId))}>
             {busy === "ask" ? <Spinner /> : <Wrench aria-hidden="true" />} Try repair in sandbox
           </Button>
         ) : (
@@ -93,10 +109,17 @@ export function RepairBox({ runId, projectId, findingId, repair, canApprove, onC
               <dd className="font-mono text-xs text-fg">{repair.scope.files.join(", ")}</dd>
             </div>
             <div>
-              <dt className="text-xs text-fg-muted">Checks rerun</dt>
+              <dt className="text-xs text-fg-muted">{RERUN[check].title}</dt>
               <dd className="text-fg">
-                {repair.scope.reproduction.length} reproduction, {repair.scope.regression.length} regression (build, your tests, the same endpoint or screen)
+                {repair.scope.reproduction.length} {RERUN[check].reproduction}, {repair.scope.regression.length} {RERUN[check].regression}
               </dd>
+              <details className="mt-1 [&_summary::-webkit-details-marker]:hidden">
+                <summary className="min-h-11 cursor-pointer list-none text-xs font-medium text-accent">Show exactly what reruns</summary>
+                <ul className="mt-1 space-y-0.5 font-mono text-xs text-fg-muted">
+                  {repair.scope.reproduction.map((id) => <li key={`r:${id}`}>must now pass: {id}</li>)}
+                  {repair.scope.regression.map((id) => <li key={`g:${id}`}>must keep passing: {id}</li>)}
+                </ul>
+              </details>
             </div>
             <div>
               <dt className="text-xs text-fg-muted">Estimate for {max} attempt{max === 1 ? "" : "s"}</dt>
@@ -118,7 +141,7 @@ export function RepairBox({ runId, projectId, findingId, repair, canApprove, onC
           <p className="text-xs text-fg-muted">The fix may not edit tests, configuration or lint settings, or weaken sign-in, role or accessibility checks; such a patch is refused before it runs.</p>
           {canApprove && (
             <div className="flex flex-wrap gap-2">
-              <Button type="button" size="sm" shape="pill" disabled={busy != null} onClick={() => void act("approve", () => approveRepair(runId, findingId, repair.id, max))}>
+              <Button type="button" size="sm" shape="pill" disabled={busy != null} onClick={() => void act("approve", () => approve(check, runId, findingId, repair.id, max))}>
                 {busy === "approve" ? <Spinner /> : <ShieldCheck aria-hidden="true" />} Approve repair
               </Button>
               <Button type="button" variant="outline" size="sm" shape="pill" disabled={busy != null} onClick={() => void act("cancel", () => cancelRepair(repair.id))}>
@@ -144,7 +167,7 @@ export function RepairBox({ runId, projectId, findingId, repair, canApprove, onC
 
       {repair.error && <p className="text-sm text-fg-muted">{repair.error}</p>}
       {repair.attempts.map((a) => (
-        <Attempt key={a.n} a={a} projectId={projectId} />
+        <Attempt key={a.n} a={a} projectId={projectId} check={check} />
       ))}
       {!["awaiting_approval", "running"].includes(repair.status) && (
         <p className="text-xs text-fg-muted">Nothing was applied to your project. {repair.status === "verified" ? "To use the verified fix, apply the patch above yourself." : ""}</p>
@@ -154,7 +177,7 @@ export function RepairBox({ runId, projectId, findingId, repair, canApprove, onC
   );
 }
 
-function Attempt({ a, projectId }: { a: RepairAttempt; projectId: string }) {
+function Attempt({ a, projectId, check }: { a: RepairAttempt; projectId: string; check: RepairCheck }) {
   const ok = a.status === "verified";
   return (
     <details className="group rounded-md border border-border [&_summary::-webkit-details-marker]:hidden" open={ok}>
@@ -216,7 +239,7 @@ function Attempt({ a, projectId }: { a: RepairAttempt; projectId: string }) {
           </div>
         )}
         {a.validationRunId && (
-          <Link href={`/app/projects/${projectId}/testing/${a.validationRunId}`} className="inline-flex text-xs font-medium text-accent hover:underline">
+          <Link href={`/app/projects/${projectId}/${check}/${a.validationRunId}`} className="inline-flex text-xs font-medium text-accent hover:underline">
             Open the validation run
           </Link>
         )}

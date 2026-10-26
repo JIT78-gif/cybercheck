@@ -146,6 +146,31 @@ function nodeWorkspace(d: ProjectDossier, src: SnapshotSource, rp: ProjectDossie
   return { dir, ecosystem: "node", packageManager: pm, install, steps, suites, orphanTests: suites.length ? 0 : testFiles, start, scripts, typescript };
 }
 
+type PythonStart = { command: string; runner: "uvicorn" | "flask" | "django" | "python" };
+
+/** Deterministic Python web-app entry point. This is deliberately source-derived: no model invents a module or app. */
+function pythonStart(dir: string, paths: string[], src: SnapshotSource, venv: string, port: number): PythonStart | null {
+  const relative = (path: string) => (dir === "." ? path : path.slice(dir.length + 1));
+  const moduleOf = (path: string) => relative(path).replace(/\.py$/, "").replace(/\/__init__$/, "").replace(/\//g, ".");
+  const python = `${venv}/bin/python`;
+  const code = paths
+    .filter((p) => p.endsWith(".py") && !/(^|\/)(test|tests|fixtures)(\/|_)/i.test(relative(p)))
+    .map((path) => ({ path, text: src.files.get(path)?.text ?? "" }));
+
+  for (const f of code) {
+    const match = f.text.match(/\b([A-Za-z_]\w*)\s*(?::[^=\n]+)?=\s*FastAPI\s*\(/);
+    if (match) return { command: `${python} -m uvicorn ${moduleOf(f.path)}:${match[1]} --host 0.0.0.0 --port ${port}`, runner: "uvicorn" };
+  }
+  const manage = paths.find((p) => relative(p) === "manage.py");
+  if (manage) return { command: `${python} manage.py runserver 0.0.0.0:${port} --noreload`, runner: "django" };
+  for (const f of code) {
+    const match = f.text.match(/\b([A-Za-z_]\w*)\s*(?::[^=\n]+)?=\s*Flask\s*\(/);
+    if (match) return { command: `${python} -m flask --app ${moduleOf(f.path)}:${match[1]} run --host 0.0.0.0 --port ${port}`, runner: "flask" };
+  }
+  const executable = code.find((f) => /if\s+__name__\s*==\s*["']__main__["']/.test(f.text) && /\b(?:uvicorn\.run|\.run)\s*\(/.test(f.text));
+  return executable ? { command: `${python} ${relative(executable.path)}`, runner: "python" } : null;
+}
+
 function pythonWorkspaces(d: ProjectDossier, src: SnapshotSource): WorkspacePlan[] {
   const roots = new Set<string>();
   for (const p of src.allPaths) {
@@ -156,15 +181,20 @@ function pythonWorkspaces(d: ProjectDossier, src: SnapshotSource): WorkspacePlan
   for (const dir of [...roots].sort((a, b) => a.length - b.length)) {
     if (out.some((w) => w.dir !== "." && dir.startsWith(`${w.dir}/`))) continue;
     const files = src.allPaths.filter((p) => (dir === "." ? !p.includes("/") : p.startsWith(`${dir}/`) && !p.slice(dir.length + 1).includes("/")));
+    const workspacePaths = src.allPaths.filter((p) => dir === "." || p.startsWith(`${dir}/`));
     const reqs = files.filter((p) => /requirements(?:[-_.][\w-]+)?\.txt$/.test(p)).map((p) => posix.basename(p));
     const venv = `/work/venv-${slug(dir)}`;
     const pip = `${venv}/bin/pip install --disable-pip-version-check --no-input`;
     const pyproject = files.some((p) => p.endsWith("pyproject.toml"));
+    const port = Number(d.runPlan.ports.find((p) => /^\d+$/.test(p.port))?.port ?? 8000);
+    const start = pythonStart(dir, workspacePaths, src, venv, port);
     const installCmd = [
       // Debian ships venv support separately; add it when missing (network is on while installing).
       `(python3 -c "import ensurepip" >/dev/null 2>&1 || (apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq python3-venv >/dev/null))`,
       `python3 -m venv ${venv}`,
       reqs.length ? reqs.map((r) => `${pip} -r ${r}`).join(" && ") : pyproject ? `(${pip} -e ".[test]" || ${pip} -e ".[dev]" || ${pip} -e .)` : "true",
+      start?.runner === "uvicorn" ? `(${venv}/bin/python -c "import uvicorn" >/dev/null 2>&1 || ${pip} uvicorn)` : "true",
+      start?.runner === "flask" ? `(${venv}/bin/python -c "import flask" >/dev/null 2>&1 || ${pip} flask)` : "true",
     ].join(" && ");
     const prefix = dir === "." ? "" : `${dir}/`;
     const tests = src.allPaths.filter((p) => p.startsWith(prefix) && /(^|\/)(test_[\w]+|[\w]+_test)\.py$/.test(p)).length;
@@ -183,7 +213,7 @@ function pythonWorkspaces(d: ProjectDossier, src: SnapshotSource): WorkspacePlan
       steps: [],
       suites,
       orphanTests: 0,
-      start: null,
+      start: start?.command ?? null,
       scripts: {},
       typescript: false,
     });

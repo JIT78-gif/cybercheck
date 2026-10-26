@@ -3,11 +3,11 @@ import { buffer } from "node:stream/consumers";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { and, eq } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
-import type { SecurityProof, SecurityRunDetail, SecurityRunSummary, SnapshotSummary, TestingRunSummary } from "@cybercheck/contracts";
+import type { SecurityFinding, SecurityObligation, SecurityProof, SecurityRunDetail, SecurityRunSummary, SnapshotSummary, TestingRunSummary } from "@cybercheck/contracts";
 import { buildApp } from "../src/app.ts";
 import { auth } from "../src/auth/auth.ts";
 import { db, pool } from "../src/db/client.ts";
-import { securityProof, testingRun, testRunEvent, user } from "../src/db/schema.ts";
+import { securityProof, testFinding, testingRepair, testingRun, testObligation, testRunEvent, user } from "../src/db/schema.ts";
 import type { SandboxProvider, SandboxRunRequest, SandboxRunResult } from "../src/testing/sandbox/provider.ts";
 import { processRun } from "../src/testing/worker.ts";
 import { providers } from "../src/env.ts";
@@ -182,24 +182,24 @@ describe("Security runs on the shared run model", () => {
     const run = { id };
 
     const detail = (await app.inject({ method: "GET", url: `/v1/security-runs/${run.id}`, headers: { cookie: owner.cookie } })).json().run as SecurityRunDetail;
-    expect(detail.status).toBe("completed");
+    expect(detail.status).toBe("partial");
     expect(detail.error).toBeNull();
     // The report: a decision, coverage with both numbers, the tools with their versions, and a clean audit.
-    expect(detail.report).toMatchObject({ engine: expect.any(String), decision: "not_ready_insufficient_evidence", headline: expect.stringMatching(/^Not ready: not enough evidence\. \d+ of \d+ applicable obligations produced decisive evidence/) });
-    expect(detail.decision).toBe("not_ready_insufficient_evidence");
+    expect(detail.report).toMatchObject({ engine: expect.any(String), decision: "not_ready_environment_blocked", headline: expect.stringMatching(/^Not ready: the environment blocked the check\. \d+ of \d+ applicable obligations produced decisive evidence/), proofRuntime: { stage: "no_startable_app", attempted: true, appBooted: false } });
+    expect(detail.decision).toBe("not_ready_environment_blocked");
     expect(detail.report!.tools.map((t) => [t.name, t.version])).toEqual([["Gitleaks", "8.21.2"], ["Semgrep", "1.95.0"], ["OSV-Scanner", "1.9.1"], ["Trivy", "0.74.0"]]);
     expect(detail.report!.audit.filter((a) => !a.ok)).toEqual([]);
     // The tools were prepared (installed or reused), then one scan ran with the network off.
     expect(detail.executions.map((e) => e.kind)).toEqual(["security_tools", "security_scan"]);
     expect(detail.executions.find((e) => e.kind === "security_scan")).toMatchObject({ network: false, outcome: "ok" });
     expect(sandbox.commands.find((c) => c.command.includes("CC_SCAN"))).toMatchObject({ network: false });
-    // Scanner obligations got verdicts with their scope; runtime proofs stayed for Round 2.
+    // Scanner obligations got verdicts with their scope; runtime obligations say exactly why this fixture could not run.
     expect(detail.obligations.find((o) => o.id === "sec:secrets:repository")).toMatchObject({ status: "passed", executionIds: [detail.executions[1]!.id] });
     expect(detail.obligations.find((o) => o.id === "sec:sast:sql-injection")).toMatchObject({ status: "passed", reason: expect.stringMatching(/rule pack [0-9a-f]{16}/) });
-    expect(detail.obligations.filter((o) => o.proofStrategy === "runtime_proof").every((o) => ["unsupported", "inconclusive", "not_applicable"].includes(o.status))).toBe(true);
+    expect(detail.obligations.filter((o) => o.proofStrategy === "runtime_proof").every((o) => ["blocked", "inconclusive", "not_applicable"].includes(o.status))).toBe(true);
     expect(detail.obligations.some((o) => o.status === "planned")).toBe(false);
     const events = await db.select().from(testRunEvent).where(eq(testRunEvent.runId, run.id));
-    expect(events.map((e) => e.type)).toEqual(expect.arrayContaining(["phase:admission", "phase:readiness", "readiness", "phase:planning", "phase:preparing", "phase:scanning", "phase:validating", "phase:reporting"]));
+    expect(events.map((e) => e.type)).toEqual(expect.arrayContaining(["phase:admission", "phase:readiness", "readiness", "phase:planning", "phase:preparing", "phase:scanning", "phase:validating", "phase:critic", "phase:reporting"]));
     // The readiness result and the four artifacts are kept with the run, plus the scan summary.
     const [row] = await db.select().from(testingRun).where(eq(testingRun.id, run.id));
     const plan = row!.plan as { readiness: { level: string }; artifacts: Record<string, string> };
@@ -250,6 +250,70 @@ describe("Security runs on the shared run model", () => {
     // An all-decisive scope has nothing to do; naming unknown ids is rejected.
     const none = await app.inject({ method: "POST", url: `/v1/security-runs/${parentId}/rerun`, headers: { cookie: owner.cookie, "content-type": "application/json", "idempotency-key": randomUUID() }, payload: { scope: "obligations", obligationIds: ["sec:not:a:real:obligation"] } });
     expect(none.statusCode).toBe(409);
+  });
+
+  it("keeps Security review append-only and creates no sandbox repair before explicit confirmation and approval", async () => {
+    const [seed] = await db.select().from(testingRun).where(and(eq(testingRun.snapshotId, snap.id), eq(testingRun.check, "security")));
+    const runId = randomUUID();
+    await db.insert(testingRun).values({ id: runId, check: "security", snapshotId: snap.id, projectId: snap.projectId, understandingRunId: seed!.understandingRunId, requestedBy: seed!.requestedBy, policy: { engine: "test" }, status: "completed", phase: "done", report: { headline: "test report" }, finishedAt: new Date() });
+    const obligation: SecurityObligation = {
+      id: "sec:repair:sql",
+      lane: "injection",
+      category: "sql-injection",
+      asset: { kind: "endpoint", ref: "POST /orders", label: "POST /orders" },
+      requirement: "Order lookup parameterizes SQL",
+      expectedControl: "Bound SQL parameters",
+      applicabilityEvidence: [{ path: "src/server.ts", line: 1 }],
+      standards: ["CWE-89"],
+      priority: "high",
+      proofStrategy: "runtime_proof",
+      dependencies: [],
+      status: "failed",
+      reason: "A controlled boolean differential reproduced the issue.",
+      executionIds: [],
+      findingIds: ["S1"],
+    };
+    const finding: SecurityFinding = {
+      id: "S1",
+      status: "confirmed",
+      severity: "high",
+      lane: "injection",
+      category: "sql-injection",
+      title: "SQL input changes the query",
+      cwe: ["CWE-89"],
+      owasp: ["A03:2021"],
+      expected: "Input is bound as data.",
+      observed: "A boolean differential changed the result set.",
+      impact: "Another customer's records may be read.",
+      location: { path: "src/server.ts", line: 1 },
+      evidence: [{ path: "src/server.ts", line: 1 }],
+      trust: "controlled_reproduction",
+      detector: { tool: "Cybercheck", version: "test", rule: "sql" },
+      secret: null,
+      confirmation: "Reproduced in this run.",
+      obligationIds: [obligation.id],
+      executionIds: [],
+      remediation: "Use a bound parameter.",
+      rootCause: "sql:string-built",
+    };
+    await db.insert(testObligation).values({ runId, id: obligation.id, seq: 1, status: obligation.status, data: obligation });
+    await db.insert(testFinding).values({ runId, id: finding.id, data: finding });
+
+    const repairs = () => app.inject({ method: "POST", url: `/v1/security-runs/${runId}/findings/${finding.id}/repairs`, headers: { cookie: owner.cookie } });
+    expect((await repairs()).statusCode).toBe(409);
+    const review = await app.inject({ method: "POST", url: `/v1/security-runs/${runId}/findings/${finding.id}/reviews`, headers: { cookie: owner.cookie, "content-type": "application/json", "idempotency-key": randomUUID() }, payload: { decision: "confirmed", reason: "Reviewed the proof" } });
+    expect(review.statusCode).toBe(201);
+    expect(review.json().review).toMatchObject({ findingId: finding.id, decision: "confirmed", reason: "Reviewed the proof" });
+    const requested = await repairs();
+    expect(requested.statusCode).toBe(201);
+    expect(requested.json().repair).toMatchObject({ runId, findingId: finding.id, status: "awaiting_approval", approvedBy: null, scope: { files: ["src/server.ts"] } });
+    const repairId = requested.json().repair.id as string;
+    const [stored] = await db.select().from(testingRepair).where(eq(testingRepair.id, repairId));
+    expect(stored).toMatchObject({ status: "awaiting_approval", workerId: null, approvedBy: null });
+
+    const cancelled = await app.inject({ method: "POST", url: `/v1/testing-repairs/${repairId}/cancel`, headers: { cookie: owner.cookie } });
+    expect(cancelled.statusCode).toBe(202);
+    expect(cancelled.json().repair.status).toBe("cancelled");
   });
 
   it("cancels a queued Security run, and fences a stale worker's late writes", async () => {

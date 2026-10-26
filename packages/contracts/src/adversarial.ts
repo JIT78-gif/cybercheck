@@ -15,8 +15,32 @@ import { AiComponentInventory, AiEvaluationTarget } from "./ai-evaluator.ts";
 export const AdversarialAttacker = z.enum(["anonymous", "user", "cross_user", "cross_tenant", "lower_role", "admin", "service", "agent"]);
 export type AdversarialAttacker = z.infer<typeof AdversarialAttacker>;
 
-/** The coverage lanes a release decision needs evidence for (frozen with the benchmark). */
-export const AdversarialLane = z.enum(["prompt", "leakage", "rag_memory", "tools_approval", "identity_tenant", "mcp_agent", "output_handling", "resource_concurrency", "multi_stage"]);
+/**
+ * The coverage lanes a release decision needs evidence for. The first nine are the AI attacker track (used when the
+ * app has an AI component); the general attacker track adds the rest, used against any web or API app. identity_tenant,
+ * resource_concurrency and multi_stage are shared by both tracks.
+ */
+export const AdversarialLane = z.enum([
+  // AI attacker track
+  "prompt",
+  "leakage",
+  "rag_memory",
+  "tools_approval",
+  "mcp_agent",
+  "output_handling",
+  // General attacker track
+  "recon",
+  "broken_access",
+  "auth_takeover",
+  "business_logic",
+  "injection_pivot",
+  "resource_abuse",
+  "data_exposure",
+  // Shared
+  "identity_tenant",
+  "resource_concurrency",
+  "multi_stage",
+]);
 export type AdversarialLane = z.infer<typeof AdversarialLane>;
 
 // ---------------------------------------------------------------- policy and rules of engagement
@@ -35,6 +59,7 @@ export const AD_PROFILE_LIMITS: Record<
 
 /** The typed operations a compiled campaign step may perform. Nothing else is executable, however a plan is phrased. */
 export const AttackOperation = z.enum([
+  // AI attacker track
   "send_message",
   "send_indirect_content",
   "upload_synthetic_document",
@@ -47,6 +72,9 @@ export const AttackOperation = z.enum([
   "repeat_bounded",
   "run_parallel_bounded",
   "reset_state",
+  // General attacker track
+  "send_request", // an arbitrary bounded HTTP request to a known route, as a synthetic identity
+  "capture", // extract a value from a response (an id, a token) to feed the next step and chain
 ]);
 export type AttackOperation = z.infer<typeof AttackOperation>;
 
@@ -103,10 +131,17 @@ export const RerunAdversarialInput = z.object({
 export type RerunAdversarialInput = z.infer<typeof RerunAdversarialInput>;
 
 // ---------------------------------------------------------------- applicability and attack surface
+export const AdversarialTrack = z.enum(["general", "ai"]);
+export type AdversarialTrack = z.infer<typeof AdversarialTrack>;
+
 export const AdversarialApplicability = z.object({
-  /** applicable: an AI component with a reachable target · no_target: AI present but nothing reachable (insufficient evidence) · not_applicable: no AI component · unsupported: language or stack out of scope. */
+  /** applicable: at least one track can run · no_target: a track applies but nothing reachable could be bound · not_applicable: neither the general nor the AI track applies · unsupported: language or stack out of scope. */
   status: z.enum(["applicable", "no_target", "not_applicable", "unsupported"]),
   reason: z.string(),
+  /** Which attacker tracks apply to this app: general (any web/API app) and/or ai (the app has an AI component). */
+  tracks: z.array(AdversarialTrack).default([]),
+  /** The number of reachable HTTP entry points the general track can attack. */
+  entryPoints: z.number().default(0),
   components: z.array(AiComponentInventory),
   targets: z.array(z.object({ target: AiEvaluationTarget, boundBy: z.enum(["user", "single_route"]), auxiliary: z.record(z.string(), z.unknown()).default({}) })),
   unbound: z.array(z.object({ componentId: z.string(), reason: z.string() })),
@@ -292,8 +327,8 @@ export const AdversarialLaneObligation = z.object({
 export type AdversarialLaneObligation = z.infer<typeof AdversarialLaneObligation>;
 
 export const AdversarialReport = z.object({
-  /** Version 2 adds the proof-grade campaign, chain, audit, and optional critic fields. Version 1 remains readable. */
-  schemaVersion: z.union([z.literal(1), z.literal(2)]),
+  /** Version 3 adds exact campaign accounting and the frozen executable-plan digest. Older reports remain readable. */
+  schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3)]),
   engine: z.string(),
   catalogueVersion: z.string(),
   compilerVersion: z.string(),
@@ -308,16 +343,30 @@ export const AdversarialReport = z.object({
   obligations: z.array(AdversarialLaneObligation),
   obligationCoverage: z.object({ decisive: z.number(), required: z.number(), criticalDecisive: z.number(), criticalRequired: z.number() }),
   coverage: z.object({ decisive: z.number(), applicable: z.number() }),
+  /** End-to-end accounting. Every selected attack must land in one of the later buckets; none may disappear. */
+  accounting: z
+    .object({ selected: z.number(), compiled: z.number(), attempted: z.number(), decisive: z.number(), blocked: z.number(), compilerRejected: z.number() })
+    .default({ selected: 0, compiled: 0, attempted: 0, decisive: 0, blocked: 0, compilerRejected: 0 }),
   chains: z.array(AttackChain),
   findings: z.object({ confirmed: z.number(), suspected: z.number(), rejected: z.number(), inconclusive: z.number(), blocked: z.number(), confirmedCriticalHigh: z.number() }),
   /** Hypotheses the run disproved, kept in the audit trail but never shown as active risks. */
   rejectedHypotheses: z.array(z.object({ id: z.string(), lane: AdversarialLane, title: z.string(), reason: z.string() })),
+  /** Security-check findings this run chained from rather than re-proving (so the report shows reuse, not duplication). */
+  reusedSecurity: z
+    .object({ securityRunId: z.string().nullable(), confirmed: z.number(), suspected: z.number(), citedFindingIds: z.array(z.string()), note: z.string() })
+    .nullable()
+    .default(null),
   untested: z.array(z.object({ what: z.string(), reason: z.string() })),
+  // The synthetic test accounts and fixtures the run stood up before attacking, so a blocked attack can name its real
+  // cause (for example "the second guest test account could not be created") instead of only "did not run".
+  setup: z
+    .array(z.object({ name: z.string(), kind: z.enum(["identity", "fixture"]), ok: z.boolean(), detail: z.string() }))
+    .default([]),
   attacker: z.object({ status: z.enum(["ran", "off", "unavailable", "deterministic_only"]), provider: z.string().nullable(), model: z.string().nullable(), hypotheses: z.number(), uniqueFindings: z.number(), reason: z.string() }),
   critic: z.object({ status: z.enum(["ran", "off", "unavailable"]), provider: z.string().nullable(), model: z.string().nullable(), lowered: z.number(), reason: z.string() }),
   usage: z.object({ modelRequests: z.number(), tokensIn: z.number(), tokensOut: z.number(), costUsd: z.number().nullable(), durationMs: z.number().nullable() }),
   audit: z.array(z.object({ check: z.string(), ok: z.boolean(), detail: z.string() })),
-  versions: z.object({ engine: z.string(), catalogue: z.string(), compiler: z.string(), snapshotDigest: z.string(), attackPackDigests: z.array(z.string()), runtimeImage: z.string().nullable(), provider: z.string().nullable(), model: z.string().nullable() }),
+  versions: z.object({ engine: z.string(), catalogue: z.string(), compiler: z.string(), snapshotDigest: z.string(), campaignPlanDigest: z.string().nullable().default(null), attackPackDigests: z.array(z.string()), runtimeImage: z.string().nullable(), provider: z.string().nullable(), model: z.string().nullable() }),
   limitations: z.array(z.string()),
 });
 export type AdversarialReport = z.infer<typeof AdversarialReport>;

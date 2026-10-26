@@ -23,7 +23,8 @@ export function securityRunToMarkdown(run: SecurityRunDetail, projectName: strin
     out.push(`- **Ran on:** ${e.selected}${e.provider ? ` (${e.provider})` : ""}, requested ${e.requested}${e.fallbackReason ? `; fell back because ${e.fallbackReason}` : ""}.`);
     out.push(`- **Isolation:** ${e.isolation}`);
   }
-  if (r.critic) out.push(`- **AI critic:** ${r.critic.ran ? `ran, ${r.critic.accepted} of ${r.critic.proposals} hypotheses passed the compiler` : r.critic.reason}`);
+  if (r.critic) out.push(`- **AI critic:** ${r.critic.ran ? `reviewed ${r.critic.accepted} of ${r.critic.proposals} submitted claim(s); ${r.critic.reviews?.filter((x) => x.verdict === "challenge").length ?? 0} challenged` : r.critic.reason}`);
+  if (r.proofRuntime) out.push(`- **Runtime proving:** ${r.proofRuntime.stage}; ${r.proofRuntime.executed} of ${r.proofRuntime.compiled} compiled proof(s) produced a record; ${r.proofRuntime.reason}`);
   out.push("");
   for (const [title, status] of [["Confirmed findings", "confirmed"], ["Suspected risks", "suspected"]] as const) {
     const list = run.findings.filter((f) => f.status === status);

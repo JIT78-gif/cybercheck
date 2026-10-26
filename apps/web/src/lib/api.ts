@@ -38,7 +38,8 @@ export async function api<T>(path: string, init: RequestInit & { json?: unknown 
       body: json !== undefined ? JSON.stringify(json) : rest.body,
       cache: "no-store",
     });
-  } catch {
+  } catch (error) {
+    if ((error as Error).name === "TimeoutError") throw new ApiError(0, "timeout", "The server took too long to answer.", "Try again. If a check is already running, open it from the recent runs list.");
     throw new ApiError(0, "network", "We couldn't reach the server.", "Check your connection and try again.");
   }
   if (!res.ok) throw await toApiError(res);

@@ -84,6 +84,24 @@ describe("findings", () => {
     expect(findings[1]).toMatchObject({ status: "inconclusive", confirmation: expect.stringMatching(/Only a version range/) });
   });
 
+  it("does not trust OSV's lockfile label for an unpinned requirements.txt", () => {
+    const pySrc = sourceFromFiles({ "requirements.txt": "fastapi>=0.115,<1\npyjwt==2.10.0\n" });
+    const osv = { results: [{ source: { path: `${APP}/requirements.txt`, type: "lockfile" }, packages: [
+      { package: { name: "fastapi", version: "0.115.9", ecosystem: "PyPI" }, vulnerabilities: [{ id: "PYSEC-fastapi" }], groups: [] },
+      { package: { name: "pyjwt", version: "2.10.0", ecosystem: "PyPI" }, vulnerabilities: [{ id: "PYSEC-pyjwt" }], groups: [] },
+    ] }] };
+    const findings = scanFindings([run("osv", osv)], { ...ctx(), src: pySrc }).findings;
+    expect(findings[0]).toMatchObject({ status: "inconclusive", dependency: { limitations: [expect.stringMatching(/declared version range/)] } });
+    expect(findings[1]).toMatchObject({ status: "confirmed", dependency: { version: "2.10.0" } });
+  });
+
+  it("keeps a generic key in an example environment file suspected until a person confirms it is real", () => {
+    const secret = "example-api-key-1234567890";
+    const leaks = [{ RuleID: "generic-api-key", Description: "Generic API Key", File: `${APP}/.env.example`, StartLine: 1, Secret: secret }];
+    const f = scanFindings([run("gitleaks", leaks)], ctx()).findings[0]!;
+    expect(f).toMatchObject({ status: "suspected", severity: "medium", confirmation: expect.stringMatching(/example\/template context/) });
+  });
+
   it("enriches an advisory: aliases deduplicated, fixed version recommended, freshness disclosed, scope and directness", () => {
     const osv = { results: [{ source: { path: `${APP}/package-lock.json`, type: "lockfile" }, packages: [{ package: { name: "qs", version: "6.5.1", ecosystem: "npm" }, vulnerabilities: [{ id: "GHSA-qs", aliases: ["CVE-2022-24999", "GHSA-qs"], affected: [{ ranges: [{ events: [{ introduced: "0" }, { fixed: "6.5.3" }] }] }] }], groups: [{ ids: ["GHSA-qs"], max_severity: "7.5" }] }] }] };
     const f = scanFindings([run("osv", osv)], ctx()).findings[0]!;

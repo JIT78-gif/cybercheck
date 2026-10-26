@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { ArrowRight, Check, ChevronDown, Info, ListChecks, Lock, Play, Plus } from "lucide-react";
+import { ArrowRight, Check, ChevronDown, Info, ListChecks, Lock, Play, Plus, RefreshCw } from "lucide-react";
 import type { CheckId, ProjectSummary } from "@cybercheck/contracts";
 import { AdversarialRunsCard } from "@/components/adversarial/adversarial-runs-card";
 import { AdversarialStart } from "@/components/adversarial/adversarial-start";
@@ -12,12 +12,15 @@ import { AiRunsCard } from "@/components/ai-evaluator/ai-runs-card";
 import { AiStart } from "@/components/ai-evaluator/ai-start";
 import { useAiRuns } from "@/components/ai-evaluator/use-ai-evaluator";
 import { UnderstandingSummary } from "@/components/architecture/understanding-summary";
+import { useUnderstanding } from "@/components/architecture/use-understanding";
 import { SecurityRunsCard } from "@/components/security/security-runs-card";
 import { startSecurity, useSecurityRuns } from "@/components/security/use-security";
 import { ProjectStatusList } from "@/components/testing/project-status-list";
 import { TestingRunsCard } from "@/components/testing/testing-runs-card";
 import { TestingStart } from "@/components/testing/testing-start";
 import { ACTIVE_RUN, startTesting, useTestingRuns, useTestingStatus } from "@/components/testing/use-testing";
+import { CheckProjectStatusList } from "./check-project-status";
+import { useWorkspaceCheckStatus } from "./use-check-runs";
 import { AddProjectFlow } from "@/components/intake/add-project";
 import { useAddFromQuery } from "@/components/intake/use-add-from-query";
 import { SnapshotFacts } from "@/components/intake/snapshot-result";
@@ -53,6 +56,13 @@ export function CheckWorkspace({ check }: { check: CheckId }) {
   const [picked, setPicked] = useState<string | null>(null);
   const last = useSyncExternalStore(noopSubscribe, () => readLast(workspace?.id), () => "");
 
+  // A project can be re-analysed from its Architecture page. Refresh the
+  // shared list whenever a check workspace is opened so this selector does
+  // not keep showing the status that was cached before that re-analysis.
+  useEffect(() => {
+    void refreshProjects();
+  }, [refreshProjects]);
+
   const ready = (projects ?? []).filter((p) => p.analysis.stage === "ready");
   // Priority: explicit choice, ?project=, last used in this workspace, newest ready project.
   const candidates = [picked, params.get("project"), last, ready[0]?.id];
@@ -72,6 +82,7 @@ export function CheckWorkspace({ check }: { check: CheckId }) {
     const q = new URLSearchParams(params.toString());
     q.set("project", id);
     router.replace(`${pathname}?${q.toString()}`, { scroll: false });
+    void refreshProjects();
   }
 
   const snap = selected?.latestSnapshot;
@@ -91,8 +102,17 @@ export function CheckWorkspace({ check }: { check: CheckId }) {
   const activeRun = selectedRuns.runs?.find((r) => ACTIVE_RUN.has(r.status));
   const runPath = (id: string) => `/app/projects/${selected?.id}/${securityEngine ? "security" : aiEngine ? "ai-evaluator" : adversarialEngine ? "adversarial" : "testing"}/${id}`;
   const { status: testingStatus } = useTestingStatus(testingEngine ? (workspace?.id ?? null) : null);
+  const { status: checkStatus } = useWorkspaceCheckStatus(!testingEngine ? (workspace?.id ?? null) : null, check);
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<ApiError | null>(null);
+  const analysis = useUnderstanding(securityEngine ? (snap?.id ?? null) : null);
+  const [reanalyzing, setReanalyzing] = useState(false);
+  const analysisSignal = analysis.run ? `${analysis.run.status}:${analysis.run.dossier?.ai?.status ?? "none"}` : null;
+
+  useEffect(() => {
+    if (!securityEngine || !analysisSignal) return;
+    void refreshProjects();
+  }, [securityEngine, analysisSignal, refreshProjects]);
 
   async function start() {
     if (!snap || !selected) return;
@@ -101,10 +121,28 @@ export function CheckWorkspace({ check }: { check: CheckId }) {
     try {
       const { run } = securityEngine ? await startSecurity(snap.id) : await startTesting(snap.id);
       reload();
+      // router.push is intentionally not awaited in Next.js. Release the button before navigation so a slow
+      // dynamic route can never leave this workspace looking permanently stuck.
+      setStarting(false);
       router.push(runPath(run.id));
     } catch (e) {
       setStartError(e instanceof ApiError ? e : new ApiError(0, "unexpected", "The check could not start.", "Try again."));
+    } finally {
       setStarting(false);
+    }
+  }
+
+  async function reanalyze() {
+    if (!snap) return;
+    setReanalyzing(true);
+    setStartError(null);
+    try {
+      await analysis.rerun();
+      await refreshProjects();
+    } catch (e) {
+      setStartError(e instanceof ApiError ? e : new ApiError(0, "unexpected", "The analysis could not restart.", "Try again."));
+    } finally {
+      setReanalyzing(false);
     }
   }
   const notApplicable = check === "ai-evaluator" && isReady && (snap?.detection?.aiSdks.length ?? 0) === 0;
@@ -113,7 +151,11 @@ export function CheckWorkspace({ check }: { check: CheckId }) {
     <div className="space-y-6">
       <PageHeader section={info.name} title={info.name} />
 
-      {testingEngine && <ProjectStatusList projects={projects} status={testingStatus} selectedId={selected?.id ?? null} onSelect={select} />}
+      {testingEngine ? (
+        <ProjectStatusList projects={projects} status={testingStatus} selectedId={selected?.id ?? null} onSelect={select} />
+      ) : (
+        <CheckProjectStatusList check={check} projects={projects} status={checkStatus} selectedId={selected?.id ?? null} onSelect={select} />
+      )}
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
         {/* Left: run card */}
@@ -164,12 +206,12 @@ export function CheckWorkspace({ check }: { check: CheckId }) {
                     >
                       {!selected && <option value="">Choose a project</option>}
                       {projects.map((p) => {
-                        // Projects still being analysed can be picked to watch progress; failed ones cannot.
+                        // Readiness controls whether a check can start, not
+                        // whether the user may inspect or switch projects.
                         const stage = p.analysis.stage;
-                        const disabled = stage === "failed" || stage === "rejected" || stage === "none";
                         const note = stage === "ready" ? "" : RUNNING_STAGES.has(stage) ? ` (analysing${p.analysis.progress != null ? ` ${Math.round(p.analysis.progress * 100)}%` : ""})` : ` (${stage === "none" ? "no snapshot" : stage})`;
                         return (
-                          <option key={p.id} value={p.id} disabled={disabled}>
+                          <option key={p.id} value={p.id}>
                             {p.name}
                             {note}
                           </option>
@@ -236,7 +278,7 @@ export function CheckWorkspace({ check }: { check: CheckId }) {
                   <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
                   {isReady
                     ? securityEngine
-                      ? "Your project is ready. Re-checks the project analysis, then scans for leaked secrets, vulnerable dependencies, risky code and configuration in an isolated sandbox with the network off. Your code is only read: it is never run or changed."
+                      ? "Your project is ready. Re-checks the project analysis, then scans for leaked secrets, vulnerable dependencies, risky code and configuration. Bounded runtime proofs may run a disposable copy in an isolated sandbox with external network access disabled. Your original code is never changed."
                       : aiEngine
                       ? "Your project is ready. Starts your app in an isolated sandbox with the network off, points its model calls at a scripted replay model, and checks every answer. No real model is called and your code is never changed."
                       : adversarialEngine
@@ -306,6 +348,20 @@ export function CheckWorkspace({ check }: { check: CheckId }) {
                 >
                   View project details <ArrowRight className="size-4" aria-hidden="true" />
                 </Link>
+                {securityEngine && (
+                  <div className="flex flex-wrap items-center gap-3 border-t border-border pt-4">
+                    <Button type="button" variant="outline" shape="pill" size="sm" disabled={reanalyzing || RUNNING_STAGES.has(selected.analysis.stage)} onClick={() => void reanalyze()}>
+                      <RefreshCw className={cn("size-4", reanalyzing && "animate-spin")} aria-hidden="true" />
+                      {RUNNING_STAGES.has(selected.analysis.stage) ? "Analysis running" : reanalyzing ? "Starting analysis" : "Analyze again"}
+                    </Button>
+                    <p className="text-xs text-fg-muted">Rebuilds the architecture facts used by the next Security check. Existing reports stay unchanged.</p>
+                  </div>
+                )}
+                {securityEngine && analysis.error && (
+                  <Alert tone="error">
+                    {analysis.error.message} {analysis.error.fix}
+                  </Alert>
+                )}
               </div>
             ) : (
               <p className="mt-3 text-sm text-fg-muted">Choose or add a project to see its frozen snapshot here.</p>

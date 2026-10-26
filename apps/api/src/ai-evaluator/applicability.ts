@@ -89,7 +89,31 @@ function toolsIn(path: string, text: string): AiComponentInventory["tools"] {
     const parameters = uniq([...props.matchAll(/(?:^|[,{])\s*["']?(\w+)["']?\s*:\s*\{/g)].map((x) => x[1]!));
     out.push({ name, evidence: { path, line: lineAt(text, m.index!) }, consequential: CONSEQUENTIAL.test(name) && !READ_ONLY.test(name), parameters });
   }
+  // Local agents frequently expose tools through a plain object/dictionary instead of an SDK schema.  Treat an
+  // object member as a tool only when it has an executable handler nearby; this deliberately excludes ordinary data
+  // objects and keeps the signal useful for custom JavaScript/TypeScript and Python dispatchers.
+  for (const m of text.matchAll(/(?:^|\n)\s*([A-Za-z_$][\w$-]*)\s*:\s*\{[\s\S]{0,900}?\b(?:run|execute|handler|invoke|call)\s*:\s*(?:async\s*)?(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*=>|(?:^|\n)\s*["']([A-Za-z_$][\w$-]*)["']\s*:\s*\{[\s\S]{0,900}?\b(?:run|execute|handler|invoke|call)\s*:/g)) {
+    const name = m[1] ?? m[2]!;
+    if (out.some((t) => t.name === name)) continue;
+    const after = text.slice(m.index!, m.index! + 900);
+    const params = after.match(/(?:run|execute|handler|invoke|call)\s*:\s*(?:async\s*)?\(\s*\{([^}]*)\}/)?.[1] ?? "";
+    const parameters = uniq(params.split(",").map((x) => x.trim().split(/[=:]/)[0]!.trim()).filter((x) => /^\w+$/.test(x)));
+    out.push({ name, evidence: { path, line: lineAt(text, m.index!) }, consequential: CONSEQUENTIAL.test(name) && !READ_ONLY.test(name), parameters });
+  }
   return out;
+}
+
+/** Tool names embedded in a message-trigger protocol such as `[[TOOL:read_file ...]]`.  These are real callable
+ *  capabilities even when the application does not use an SDK tool schema. */
+export function triggerToolNames(component: Pick<AiComponentInventory, "messageTriggers">): string[] {
+  const names: string[] = [];
+  for (const trigger of component.messageTriggers) {
+    for (const m of trigger.pattern.matchAll(/(?:TOOL|tool|action|command)\\?:?\s*([A-Za-z_$][\w$-]*)/gi)) names.push(m[1]!);
+    for (const m of trigger.pattern.matchAll(/\(\?:?([^)]*\|[^)]*)\)/g)) {
+      for (const part of m[1]!.split("|").map((x) => x.replace(/\\.|[^\w$-]/g, "").trim()).filter(Boolean)) names.push(part);
+    }
+  }
+  return uniq(names);
 }
 
 const SINKS: Array<[RegExp, AiComponentInventory["messageTriggers"][number]["sink"]]> = [
@@ -211,7 +235,9 @@ export function assessApplicability({ dossier: d, src, contentDigest, target }: 
     const retrieval: Evidence[] = [];
     for (const f of files) {
       const t = src.files.get(f)?.text ?? "";
-      for (const m of t.matchAll(/^.*\b(retriev\w*|knowledge\w*|vector\w*|embedding\w*|similarity|rerank\w*|documents?|chunks?|articles?)\b.*$/gim)) if (retrieval.length < 6 && /(const|let|var|def|function)\s+\w*(retriev|knowledge|vector|embed|search|docs?|articles?)/i.test(m[0])) retrieval.push({ path: f, line: lineAt(t, m.index!) });
+      // The capability word may be embedded in a descriptive symbol such as `poisonedKnowledge` or
+      // `tenantVectorSearch`; requiring a word boundary before it silently missed those common forms.
+      for (const m of t.matchAll(/^.*(?:retriev|knowledge|vector|embedding|similarity|rerank|documents?|chunks?|articles?).*$/gim)) if (retrieval.length < 6 && /(const|let|var|def|function)\s+\w*(retriev|knowledge|vector|embed|search|docs?|articles?)\w*/i.test(m[0])) retrieval.push({ path: f, line: lineAt(t, m.index!) });
     }
 
     // Routes whose handler reaches the component through an import, or that live in a component file and call into it.

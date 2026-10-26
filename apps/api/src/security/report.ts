@@ -1,4 +1,4 @@
-import type { AnalyzeReadiness, SecurityFinding, SecurityObligation, SecurityProof, SecurityProofVerdict, SecurityReleaseDecision, SecurityReport, TestExecution } from "@cybercheck/contracts";
+import type { AnalyzeReadiness, SecurityFinding, SecurityObligation, SecurityProof, SecurityProofRuntime, SecurityProofVerdict, SecurityReleaseDecision, SecurityReport, TestExecution } from "@cybercheck/contracts";
 import { SecurityObligationStatus } from "@cybercheck/contracts";
 import type { ToolRun } from "./scan.ts";
 import type { ToolVersions } from "./tools.ts";
@@ -69,6 +69,7 @@ export function buildSecurityReport(input: {
   critic?: SecurityReport["critic"];
   /** Where the check executed and how the runtime was chosen; present makes the report schema version 3. */
   environment?: SecurityReport["environment"];
+  proofRuntime?: SecurityProofRuntime;
 }): SecurityReport {
   const { obligations: obs, findings } = input;
   const applicable = obs.filter((o) => o.status !== "not_applicable");
@@ -80,10 +81,11 @@ export function buildSecurityReport(input: {
   const suspected = findings.filter((f) => f.status === "suspected");
   const confirmedCriticalHigh = confirmed.filter((f) => f.severity === "critical" || f.severity === "high");
   const toolsBroken = input.toolImage === null || input.runs.every((r) => !r.ok);
+  const proofEnvironmentBlocked = Boolean(input.proofRuntime?.attempted && !["completed", "not_attempted"].includes(input.proofRuntime.stage));
   const percent = coverage.applicable ? Math.round((coverage.decisive / coverage.applicable) * 100) : 0;
 
   const decision: SecurityReleaseDecision =
-    input.readiness.level === "BLOCKED" || toolsBroken ? "not_ready_environment_blocked"
+    input.readiness.level === "BLOCKED" || toolsBroken || proofEnvironmentBlocked ? "not_ready_environment_blocked"
     : confirmedCriticalHigh.length ? "not_ready_security_findings"
     : coverage.criticalDecisive < coverage.criticalApplicable || percent < SECURITY_COVERAGE_BAR ? "not_ready_insufficient_evidence"
     : "ready_with_evidence";
@@ -119,6 +121,7 @@ export function buildSecurityReport(input: {
     ...(input.skippedTestFileMatches ? [`${input.skippedTestFileMatches} code-rule match(es) in test files were left out: tests are not shipped.`] : []),
     ...input.runs.filter((r) => !r.ok).map((r) => r.problem ?? `${r.name} did not finish.`),
     ...(v?.osvDatabaseAt ? [`Vulnerability data from the OSV database downloaded ${v.osvDatabaseAt}; advisories published later are not included.`] : []),
+    ...(input.proofRuntime && input.proofRuntime.stage !== "completed" && input.proofRuntime.stage !== "not_attempted" ? [`Runtime proving did not complete: ${input.proofRuntime.reason}`] : []),
     "Configuration that depends on where the app is deployed (headers added by a proxy, cookie defaults) is reported as suspected.",
   ];
 
@@ -138,6 +141,7 @@ export function buildSecurityReport(input: {
     audit: [],
     ...(input.proofs ? { proofs: { total: proofs.length, byVerdict: Object.fromEntries((["passed", "failed", "blocked", "inconclusive"] as SecurityProofVerdict[]).map((v) => [v, proofs.filter((p) => p.verdict === v).length])) as Record<SecurityProofVerdict, number>, requests: proofs.reduce((n, p) => n + p.requests, 0) }, authorizationMatrix: authorizationMatrix(proofs), critic: input.critic ?? { ran: false, reason: "No AI critic was requested or available.", proposals: 0, accepted: 0 } } : {}),
     ...(input.environment ? { environment: input.environment } : {}),
+    ...(input.proofRuntime ? { proofRuntime: input.proofRuntime } : {}),
   };
   report.audit = securityAudit(report, obs, findings, input.executions, input.validationNotes);
   return report;

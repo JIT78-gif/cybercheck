@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Download, FolderSearch, RefreshCw } from "lucide-react";
 import type { ProjectDetail, ProjectDossier } from "@cybercheck/contracts";
+import { useAppData } from "@/components/app/app-data";
 import { AnalysisProgress, Card, EmptyState } from "@/components/app/ui";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Alert, Spinner } from "@/components/ui/form";
@@ -113,6 +114,7 @@ function Dossier({ d }: { d: ProjectDossier }) {
 }
 
 export function ArchitectureView({ id }: { id: string }) {
+  const { refreshProjects } = useAppData();
   const [project, setProject] = useState<ProjectDetail | null>(null);
   const [error, setError] = useState<ApiError | null>(null);
 
@@ -125,6 +127,15 @@ export function ArchitectureView({ id }: { id: string }) {
   const snapshot = project?.snapshots.find((s) => s.status === "BASELINED") ?? null;
   const { run, error: runError, rerun } = useUnderstanding(snapshot?.id ?? null);
   const [rerunning, setRerunning] = useState(false);
+
+  // Keep the app-wide project selector in sync as a re-analysis moves from
+  // queued/running to ready or failed.
+  const runStatus = run?.status;
+  const aiStatus = run?.dossier?.ai?.status;
+  useEffect(() => {
+    if (!runStatus) return;
+    void refreshProjects();
+  }, [runStatus, aiStatus, refreshProjects]);
 
   const back = (
     <Link href={`/app/projects/${id}`} className="inline-flex items-center gap-1.5 text-sm text-fg-muted hover:text-fg">

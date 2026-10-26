@@ -69,6 +69,14 @@ describe("release decision and report", () => {
     // Without an environment a Round 1 report stays version 1.
     expect(report([ob({ id: "a" })], []).schemaVersion).toBe(1);
   });
+
+  it("makes a failed proof runtime explicit and environment-blocking", () => {
+    const proofRuntime = { stage: "boot_failed" as const, attempted: true, appBooted: false, compiled: 12, rejected: 1, executed: 0, identities: 2, reason: "FastAPI did not answer on port 8000.", executionIds: ["exec-1"] };
+    const r = report([ob({ id: "runtime", priority: "critical", status: "blocked", reason: proofRuntime.reason, proofStrategy: "runtime_proof" })], [], { proofs: [], proofRuntime });
+    expect(r.decision).toBe("not_ready_environment_blocked");
+    expect(r.proofRuntime).toEqual(proofRuntime);
+    expect(r.limitations).toContain("Runtime proving did not complete: FastAPI did not answer on port 8000.");
+  });
 });
 
 describe("audit", () => {

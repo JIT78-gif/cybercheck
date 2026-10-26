@@ -438,8 +438,12 @@ export function bootGraph(app: BootApp, verifyFor: (appliesTo: string[]) => { me
 function fallbackBoot(d: ProjectDossier, workspaces: WorkspacePlan[]): BootApp[] {
   const w = workspaces.find((x) => x.start && d.entryPoints.some((e) => e.kind !== "page" && (x.dir === "." || e.handler.path.startsWith(`${x.dir}/`))));
   if (!w?.start) return [];
-  const port = Number(d.runPlan.ports.find((p) => /^\d+$/.test(p.port))?.port ?? 3000);
-  return [{ workspace: w.dir, prepare: w.scripts.build ? [w.packageManager === "npm" ? "npm run build" : `${w.packageManager} run build`] : [], start: w.start, port, readyPath: "/", config: [{ name: "PORT", value: String(port), why: "default" }], identities: [], setup: [], needsServices: [], notes: ["Planned by rules (the AI boot planner was not available)."] }];
+  const commandPort = w.start.match(/(?:--port\s+|:)(\d{2,5})(?:\s|$)/)?.[1];
+  const port = Number(commandPort ?? d.runPlan.ports.find((p) => /^\d+$/.test(p.port))?.port ?? (w.ecosystem === "python" ? 8000 : 3000));
+  const readyPath = d.entryPoints
+    .filter((e) => e.kind === "http" && e.method === "GET" && !/[:{<\[]/.test(e.path) && e.control.kind === "public_intentional")
+    .sort((a, b) => a.path.length - b.path.length)[0]?.path ?? "/";
+  return [{ workspace: w.dir, prepare: w.scripts.build ? [w.packageManager === "npm" ? "npm run build" : `${w.packageManager} run build`] : [], start: w.start, port, readyPath, config: [{ name: "PORT", value: String(port), why: "default" }], identities: [], setup: [], needsServices: [], notes: ["Planned deterministically from the project's manifests and source."] }];
 }
 
 /** Identity name that satisfies an endpoint's control, if any. */

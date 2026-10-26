@@ -1,9 +1,11 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Route } from "@playwright/test";
 import { demoProject, makeZip } from "../../api/test/fixtures";
 import { giveEachTestItsOwnIp, signedInUser } from "./helpers";
 
 giveEachTestItsOwnIp(test);
 
+const json = (route: Route, body: unknown, status = 200) =>
+  route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
 
 const demoZip = makeZip(Object.entries(demoProject).map(([name, data]) => ({ name: `acme-demo/${name}`, data, deflate: true })));
 const hostileZip = makeZip([{ name: "../../evil.js", data: "x" }]);
@@ -19,6 +21,9 @@ test("add a project from the Testing tab; it is shared with every tab and the Ov
 
   await page.goto("/app");
   await expect(page.getByRole("heading", { name: "Overview", level: 1 })).toBeVisible();
+  await expect(page.getByText("Add a project once, then run Testing, Security, AI Evaluator and Adversarial checks")).toBeVisible();
+  await expect(page.getByText("Check types")).toBeVisible();
+  await expect(page.getByText("Check engines arrive in the next step")).toHaveCount(0);
   await expect(page.getByText("No projects yet")).toBeVisible();
 
   await page.getByRole("link", { name: "Testing" }).click();
@@ -41,18 +46,22 @@ test("add a project from the Testing tab; it is shared with every tab and the Ov
   await page.getByRole("button", { name: "Done" }).click();
 
   // Selected in Testing, but not checkable until the full analysis (code + AI step) has finished.
-  const select = page.getByLabel("Project");
+  const select = page.getByLabel("Project", { exact: true });
   await expect(select.locator("option:checked")).toHaveText(new RegExp(`^${name}`));
   await expect(page).toHaveURL(/\?project=/);
-  await expect(page.getByRole("button", { name: "Start Testing check" })).toBeDisabled();
-  // The status updates by itself (no reload) until the project is ready.
-  await expect(page.getByText("Your project is ready.")).toBeVisible({ timeout: 240_000 });
+  const startTesting = page.getByRole("button", { name: "Start Testing check" });
+  // Analysis usually continues after upload, but a fast local run may finish before
+  // this assertion. In both cases the page must update itself without a reload.
+  if (await startTesting.isDisabled()) {
+    await expect(page.getByText("Your project is ready.")).toBeVisible({ timeout: 240_000 });
+  }
+  await expect(startTesting).toBeEnabled();
   await expect(select.locator("option:checked")).toHaveText(name);
 
   // ...and already selected in Security (shared project, remembered choice).
   await page.getByRole("link", { name: "Security" }).click();
   await expect(page.getByRole("heading", { name: "Run a Security check" })).toBeVisible();
-  await expect(page.getByLabel("Project").locator("option:checked")).toHaveText(name);
+  await expect(page.getByLabel("Project", { exact: true }).locator("option:checked")).toHaveText(name);
 
   // AI Evaluator applies: the demo uses the OpenAI SDK.
   await page.getByRole("link", { name: "AI Evaluator" }).click();
@@ -61,6 +70,8 @@ test("add a project from the Testing tab; it is shared with every tab and the Ov
 
   // Overview lists it as ready.
   await page.getByRole("link", { name: "Overview" }).click();
+  await expect(page.getByText("Ready to check")).toBeVisible();
+  await expect(page.getByText("1 of 1")).toBeVisible();
   const row = page.getByRole("row").filter({ hasText: name });
   await expect(row.getByText("Ready")).toBeVisible();
 
@@ -94,4 +105,84 @@ test("files that aren't archives are refused before uploading", async ({ page })
   await page.getByRole("button", { name: /Upload from your computer/ }).click();
   await page.getByTestId("archive-input").setInputFiles({ name: "notes.txt", mimeType: "text/plain", buffer: Buffer.from("hi") });
   await expect(page.getByRole("alert").filter({ hasText: "Choose a project folder, or a .zip" })).toBeVisible();
+});
+
+test("failed projects remain selectable on every check workspace", async ({ page }) => {
+  await signedInUser(page, "Failed Project Selector Tester");
+  const now = new Date().toISOString();
+  let reanalysisStarted = false;
+  const snapshot = (id: string, projectId: string) => ({
+    id,
+    projectId,
+    status: "BASELINED",
+    sourceType: "archive",
+    sourceRef: null,
+    resolvedRevision: null,
+    contentDigest: "d".repeat(64),
+    fileCount: 3,
+    totalBytes: 100,
+    detection: null,
+    warnings: [],
+    rejectionReasons: [],
+    exclusions: [],
+    error: null,
+    createdAt: now,
+    baselinedAt: now,
+  });
+  const project = (id: string, name: string) => ({
+    id,
+    workspaceId: "w",
+    name,
+    description: null,
+    sourceType: "archive",
+    githubRepo: null,
+    createdAt: now,
+    latestSnapshot: snapshot(`snapshot-${id}`, id),
+    analysis: { stage: "failed", step: null, progress: null, error: "The previous analysis failed." },
+  });
+  const projects = [project("failed-a", "First failed project"), project("failed-b", "Second failed project")];
+
+  await page.route("**/v1/workspaces/*/projects", (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    const current = projects.map((item) =>
+      reanalysisStarted && item.id === "failed-b"
+        ? { ...item, analysis: { stage: "reading_code", step: "Reading the code", progress: 0.1, error: null } }
+        : item,
+    );
+    return json(route, { projects: current });
+  });
+  await page.route("**/v1/projects/*/security-runs", (route) => json(route, { runs: [] }));
+  const understanding = (route: Route) => {
+    const snapshotId = route.request().url().split("/snapshots/")[1]!.split("/")[0]!;
+    if (route.request().method() === "POST") reanalysisStarted = true;
+    return json(route, {
+      run: {
+        id: "understanding-rerun",
+        snapshotId,
+        status: reanalysisStarted ? "queued" : "failed",
+        progress: reanalysisStarted ? { step: "Reading the code", progress: 0.1 } : null,
+        dossier: null,
+        error: reanalysisStarted ? null : "The previous analysis failed.",
+        createdAt: now,
+        startedAt: reanalysisStarted ? now : null,
+        finishedAt: reanalysisStarted ? null : now,
+      },
+    });
+  };
+  await page.route("**/v1/snapshots/*/understanding", understanding);
+  await page.route("**/v1/snapshots/*/understanding/rerun", understanding);
+
+  await page.goto("/app/checks/security?project=failed-a");
+  const select = page.getByLabel("Project", { exact: true });
+  await expect(select.locator("option:checked")).toHaveText("First failed project (failed)");
+
+  await select.selectOption("failed-b");
+
+  await expect(select.locator("option:checked")).toHaveText("Second failed project (failed)");
+  await expect(page).toHaveURL(/project=failed-b/);
+  await expect(page.getByRole("link", { name: "View project details" })).toHaveAttribute("href", "/app/projects/failed-b");
+  await expect(page.getByRole("button", { name: "Start Security check" })).toBeDisabled();
+  await page.getByRole("button", { name: "Analyze again" }).click();
+  await expect.poll(() => reanalysisStarted).toBe(true);
+  await expect(page.getByRole("button", { name: "Analysis running" })).toBeDisabled();
 });

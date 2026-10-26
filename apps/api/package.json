@@ -17,7 +17,8 @@
     "eval:testing": "node --env-file-if-exists=../../.env --import tsx scripts/eval-testing.ts",
     "eval:security": "node --env-file-if-exists=../../.env --import tsx scripts/eval-security.ts",
     "eval:ai": "node --env-file-if-exists=../../.env --import tsx scripts/eval-ai.ts",
-    "eval:ai:live": "node --env-file-if-exists=../../.env --import tsx scripts/eval-ai-live.ts"
+    "eval:ai:live": "node --env-file-if-exists=../../.env --import tsx scripts/eval-ai-live.ts",
+    "eval:adversarial": "node --env-file-if-exists=../../.env --import tsx scripts/eval-adversarial.ts"
   },
   "devDependencies": {
     "@types/node": "^24.19.2",

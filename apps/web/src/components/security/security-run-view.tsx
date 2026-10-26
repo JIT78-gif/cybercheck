@@ -1,18 +1,21 @@
 "use client";
 
-import Link from "next/link";
-import { ArrowLeft, CircleCheck, CircleDashed, CircleX, Download, ShieldQuestion } from "lucide-react";
-import type { SecurityFinding, SecurityObligation, SecurityReleaseDecision, SecurityRunDetail } from "@cybercheck/contracts";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { CircleCheck, CircleDashed, CircleX, RefreshCw, ShieldQuestion, Square } from "lucide-react";
+import type { FindingHumanReview, SecurityFinding, SecurityObligation, SecurityReleaseDecision, SecurityRunDetail, TestingRepair } from "@cybercheck/contracts";
 import { Card, CardTitle, EmptyState } from "@/components/app/ui";
+import { RunHeader, LivePhases } from "@/components/app/run-chrome";
 import { Badge, Mono } from "@/components/architecture/parts";
 import { CodeViewerProvider, EvidenceLink } from "@/components/architecture/code-viewer";
 import { Tabs, TabPanel, useViewParams, type TabItem } from "@/components/testing/run-tabs";
-import { duration, RunStatusBadge, SEVERITY_TONE } from "@/components/testing/run-parts";
+import { SEVERITY_TONE } from "@/components/testing/run-parts";
 import { ACTIVE_RUN } from "@/components/testing/use-testing";
-import { buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { Alert, Spinner } from "@/components/ui/form";
 import { cn } from "@/lib/cn";
-import { useSecurityRun } from "./use-security";
+import { SecurityRepairControls } from "./security-repair-controls";
+import { cancelSecurity, rerunMissingSecurity, useSecurityRepairs, useSecurityReviews, useSecurityRun } from "./use-security";
 
 const DECISION: Record<SecurityReleaseDecision, { label: string; tone: "good" | "bad" | "warn" }> = {
   ready_with_evidence: { label: "Ready, with evidence", tone: "good" },
@@ -53,10 +56,16 @@ const PHASES = [
 type Tab = "summary" | "confirmed" | "suspected" | "coverage" | "untested" | "environment";
 
 export function SecurityRunView({ projectId, runId }: { projectId: string; runId: string }) {
-  const { run, events, error } = useSecurityRun(runId);
+  const router = useRouter();
+  const { run, events, error, reload } = useSecurityRun(runId);
+  const finished = Boolean(run && !ACTIVE_RUN.has(run.status));
+  const reviewState = useSecurityReviews(runId, finished);
+  const repairState = useSecurityRepairs(runId, finished);
+  const [action, setAction] = useState<"cancel" | "rerun" | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const view = useViewParams();
   const tab = (view.get("tab") as Tab | null) ?? "summary";
-  if (error && !run) return <Alert>{error.message} {error.fix}</Alert>;
+  if (error && !run) return <Alert tone="error">{error.message} {error.fix} <Button type="button" variant="outline" size="sm" shape="pill" className="ml-2" onClick={reload}>Try again</Button></Alert>;
   if (!run)
     return (
       <p className="flex items-center gap-2 py-10 text-fg-muted">
@@ -67,6 +76,38 @@ export function SecurityRunView({ projectId, runId }: { projectId: string; runId
   const confirmed = run.findings.filter((f) => f.status === "confirmed");
   const suspected = run.findings.filter((f) => f.status === "suspected" || f.status === "inconclusive");
   const untested = run.obligations.filter((o) => ["unsupported", "inconclusive", "blocked"].includes(o.status));
+  const latestReview = (findingId: string): FindingHumanReview | null => reviewState.reviews.filter((r) => r.findingId === findingId).at(-1) ?? null;
+  const repairOf = (findingId: string): TestingRepair | null => repairState.repairs.find((r) => r.findingId === findingId) ?? null;
+  const refreshActions = () => {
+    reviewState.refresh();
+    repairState.refresh();
+  };
+
+  async function stop() {
+    setAction("cancel");
+    setActionError(null);
+    try {
+      await cancelSecurity(runId);
+      reload();
+    } catch (cause) {
+      setActionError(cause instanceof Error ? cause.message : "The check could not be cancelled.");
+    } finally {
+      setAction(null);
+    }
+  }
+
+  async function rerunMissing() {
+    setAction("rerun");
+    setActionError(null);
+    try {
+      const result = await rerunMissingSecurity(runId);
+      setAction(null);
+      router.push(`/app/projects/${projectId}/security/${result.run.id}`);
+    } catch (cause) {
+      setActionError(cause instanceof Error ? cause.message : "The focused rerun could not start.");
+      setAction(null);
+    }
+  }
   const items: TabItem<Tab>[] = [
     { id: "summary", label: "Decision summary" },
     { id: "confirmed", label: "Confirmed findings", count: confirmed.length, tone: confirmed.length ? "bad" : "muted" },
@@ -79,27 +120,29 @@ export function SecurityRunView({ projectId, runId }: { projectId: string; runId
   return (
     <CodeViewerProvider snapshotId={run.snapshotId}>
       <div className="space-y-6">
-        <Link href={`/app/checks/security?project=${projectId}`} className="inline-flex min-h-11 items-center gap-1.5 text-sm font-medium text-accent hover:underline">
-          <ArrowLeft className="size-4" aria-hidden="true" /> Security
-        </Link>
-        <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-2xl font-semibold text-fg">Security check</h1>
-          <RunStatusBadge status={run.status} />
-          <span className="text-sm text-fg-muted">{duration(run.startedAt, run.finishedAt) ?? ""}</span>
-          {!active && run.report && (
-            <div className="ml-auto flex flex-wrap gap-2">
-              <a href={`/v1/security-runs/${run.id}/export?format=md`} download className={buttonVariants({ variant: "outline", shape: "pill", size: "sm" })}>
-                <Download aria-hidden="true" /> Markdown
-              </a>
-              <a href={`/v1/security-runs/${run.id}/export?format=json`} download className={buttonVariants({ variant: "outline", shape: "pill", size: "sm" })}>
-                <Download aria-hidden="true" /> JSON
-              </a>
-            </div>
-          )}
-        </div>
+        <RunHeader
+          check="security"
+          projectId={projectId}
+          status={run.status}
+          startedAt={run.startedAt}
+          finishedAt={run.finishedAt}
+          exportBase={run.report ? `/v1/security-runs/${run.id}/export` : null}
+          actions={active ? (
+            <Button type="button" variant="outline" shape="pill" size="sm" disabled={action != null} onClick={() => void stop()}>
+              {action === "cancel" ? <Spinner /> : <Square aria-hidden="true" />} Cancel check
+            </Button>
+          ) : run.report && untested.length > 0 ? (
+            <Button type="button" variant="outline" shape="pill" size="sm" disabled={action != null} onClick={() => void rerunMissing()}>
+              {action === "rerun" ? <Spinner /> : <RefreshCw aria-hidden="true" />} Rerun missing checks
+            </Button>
+          ) : null}
+        />
+
+        {error && run && <Alert tone="error">Live updates paused: {error.message} {error.fix} <Button type="button" variant="outline" size="sm" shape="pill" className="ml-2" onClick={reload}>Reconnect</Button></Alert>}
+        {actionError && <Alert tone="error">{actionError}</Alert>}
 
         {active ? (
-          <LiveProgress run={run} events={events} />
+          <LivePhases phases={PHASES} currentPhase={run.phase} events={events} />
         ) : !run.report ? (
           <Alert>{run.error ?? "This run has no report."}</Alert>
         ) : (
@@ -107,8 +150,8 @@ export function SecurityRunView({ projectId, runId }: { projectId: string; runId
             <Tabs items={items} value={tab} onChange={(id) => view.set({ tab: id === "summary" ? null : id })} label="Security results" idPrefix="sec" />
             <TabPanel idPrefix="sec" value={tab}>
               {tab === "summary" && <Summary run={run} />}
-              {tab === "confirmed" && <FindingList findings={confirmed} empty="No finding was confirmed. Suspected risks and untested checks are listed in their own tabs." />}
-              {tab === "suspected" && <FindingList findings={suspected} empty="No suspected risk." />}
+              {tab === "confirmed" && <FindingList run={run} findings={confirmed} empty="No finding was confirmed. Suspected risks and untested checks are listed in their own tabs." latestReview={latestReview} repairOf={repairOf} canReview={reviewState.canReview} onChange={refreshActions} />}
+              {tab === "suspected" && <FindingList run={run} findings={suspected} empty="No suspected risk." latestReview={latestReview} repairOf={repairOf} canReview={reviewState.canReview} onChange={refreshActions} />}
               {tab === "coverage" && <Coverage obligations={run.obligations} />}
               {tab === "untested" && <Untested obligations={untested} />}
               {tab === "environment" && <Environment run={run} />}
@@ -117,34 +160,6 @@ export function SecurityRunView({ projectId, runId }: { projectId: string; runId
         )}
       </div>
     </CodeViewerProvider>
-  );
-}
-
-function LiveProgress({ run, events }: { run: SecurityRunDetail; events: Array<{ seq: number; type: string; message: string }> }) {
-  const at = PHASES.findIndex((p) => p.id === run.phase);
-  return (
-    <Card>
-      <CardTitle>In progress</CardTitle>
-      <ol className="mt-4 flex flex-wrap gap-2" aria-label="Phases">
-        {PHASES.map((p, i) => (
-          <li key={p.id} aria-current={i === at ? "step" : undefined} className={cn("rounded-full px-3 py-1 text-xs font-medium", i < at ? "bg-success/10 text-success" : i === at ? "bg-accent/10 text-accent" : "bg-surface-2 text-fg-muted")}>
-            {p.label}
-          </li>
-        ))}
-      </ol>
-      <ul className="mt-5 space-y-2 text-sm" role="log" aria-live="polite">
-        {events.filter((e) => !e.type.startsWith("phase:")).slice(-12).map((e) => (
-          <li key={e.seq} className="text-fg">
-            {e.message}
-          </li>
-        ))}
-        {!events.length && (
-          <li className="flex items-center gap-2 text-fg-muted">
-            <Spinner /> {run.status === "queued" ? "Waiting for a worker" : "Starting"}
-          </li>
-        )}
-      </ul>
-    </Card>
   );
 }
 
@@ -214,7 +229,7 @@ function Summary({ run }: { run: SecurityRunDetail }) {
   );
 }
 
-function FindingList({ findings, empty }: { findings: SecurityFinding[]; empty: string }) {
+function FindingList({ run, findings, empty, latestReview, repairOf, canReview, onChange }: { run: SecurityRunDetail; findings: SecurityFinding[]; empty: string; latestReview: (findingId: string) => FindingHumanReview | null; repairOf: (findingId: string) => TestingRepair | null; canReview: boolean; onChange: () => void }) {
   if (!findings.length) return <EmptyState icon={CircleCheck} title="Nothing here" body={empty} />;
   const rank = { critical: 0, high: 1, medium: 2, low: 3, info: 4 };
   return (
@@ -266,6 +281,9 @@ function FindingList({ findings, empty }: { findings: SecurityFinding[]; empty: 
                 </>
               )}
             </dl>
+            <div className="mt-4 border-t border-border pt-4">
+              <SecurityRepairControls runId={run.id} projectId={run.projectId} finding={f} review={latestReview(f.id)} repair={repairOf(f.id)} canReview={canReview} onChange={onChange} />
+            </div>
           </Card>
         </li>
       ))}
@@ -367,7 +385,15 @@ function Environment({ run }: { run: SecurityRunDetail }) {
             {r.critic && (
               <>
                 <dt className="text-fg-muted">AI critic</dt>
-                <dd className="text-fg">{r.critic.ran ? `ran: ${r.critic.accepted} of ${r.critic.proposals} hypotheses passed the compiler` : r.critic.reason}</dd>
+                <dd className="text-fg">{r.critic.ran ? `reviewed ${r.critic.accepted} of ${r.critic.proposals} submitted claim(s); ${r.critic.reviews?.filter((x) => x.verdict === "challenge").length ?? 0} challenged` : r.critic.reason}</dd>
+              </>
+            )}
+            {r.proofRuntime && (
+              <>
+                <dt className="text-fg-muted">Proof preparation</dt>
+                <dd className="text-fg"><span className="font-medium">{r.proofRuntime.stage.replace(/_/g, " ")}</span>: {r.proofRuntime.reason}</dd>
+                <dt className="text-fg-muted">Proof execution</dt>
+                <dd className="text-fg tabular-nums">{r.proofRuntime.executed} of {r.proofRuntime.compiled} compiled; {r.proofRuntime.identities} synthetic identit{r.proofRuntime.identities === 1 ? "y" : "ies"}; {r.proofRuntime.rejected} rejected by the safety compiler</dd>
               </>
             )}
             {r.proofs && (

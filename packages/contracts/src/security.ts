@@ -260,6 +260,20 @@ export const SecurityEnvironment = z.object({
 });
 export type SecurityEnvironment = z.infer<typeof SecurityEnvironment>;
 
+/** What happened between compiling runtime proofs and receiving their evidence. */
+export const SecurityProofRuntime = z.object({
+  stage: z.enum(["not_attempted", "no_startable_app", "no_compiled_proofs", "preparation_failed", "boot_failed", "completed", "error"]),
+  attempted: z.boolean(),
+  appBooted: z.boolean(),
+  compiled: z.number(),
+  rejected: z.number(),
+  executed: z.number(),
+  identities: z.number(),
+  reason: z.string(),
+  executionIds: z.array(z.string()),
+});
+export type SecurityProofRuntime = z.infer<typeof SecurityProofRuntime>;
+
 export const SecurityReport = z.object({
   /** 1: Round 1 (static only). 2: Round 2 (runtime proofs). 3: adds execution-environment diagnostics. All are read. */
   schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3)]),
@@ -286,9 +300,18 @@ export const SecurityReport = z.object({
       rows: z.array(z.object({ endpoint: z.string(), cells: z.record(z.string(), z.object({ outcome: z.enum(["allowed", "denied", "not_tested", "inconclusive"]), expected: z.enum(["allowed", "denied", "unknown"]), proofId: z.string().nullable() })) })),
     })
     .optional(),
-  critic: z.object({ ran: z.boolean(), reason: z.string(), proposals: z.number(), accepted: z.number() }).optional(),
+  critic: z.object({
+    ran: z.boolean(),
+    reason: z.string(),
+    proposals: z.number(),
+    accepted: z.number(),
+    model: z.string().nullable().optional(),
+    reviews: z.array(z.object({ findingId: z.string(), verdict: z.enum(["supported", "challenge"]), reason: z.string() })).optional(),
+  }).optional(),
   // Version 3 only.
   environment: SecurityEnvironment.optional(),
+  /** Preparation/boot diagnostics exist even when zero proofs could run. */
+  proofRuntime: SecurityProofRuntime.optional(),
 });
 export type SecurityReport = z.infer<typeof SecurityReport>;
 

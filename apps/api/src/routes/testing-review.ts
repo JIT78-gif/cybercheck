@@ -2,7 +2,7 @@ import { randomUUID, createHash } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import { ApproveRepairInput, FindingKind, type ApiError, ReviewFindingInput, TargetedRunInput, TestingPolicyInput, type FindingHumanReview, type Obligation, type TestFinding, type TestingRepair, type TestingReport } from "@cybercheck/contracts";
-import { notAuthorized, notFound, projectAuthority, requireSession, sendError } from "../access.ts";
+import { notAuthorized, notFound, projectAuthority, requireSession, sendError, snapshotForUser } from "../access.ts";
 import { db } from "../db/client.ts";
 import { auditLog, findingReview, idempotencyKey, project, snapshot, testFinding, testingRepair, testingRun, testObligation, user } from "../db/schema.ts";
 import { env, providers } from "../env.ts";
@@ -234,7 +234,7 @@ export async function testingReviewRoutes(app: FastifyInstance) {
     const session = await requireSession(request, reply);
     if (!session) return;
     const [row] = await db.select().from(testingRepair).where(eq(testingRepair.id, request.params.repairId));
-    if (!row || !(await runForUser(session.user.id, row.runId))) return sendError(reply, 404, notFound("repair"));
+    if (!row || !(await snapshotForUser(session.user.id, row.snapshotId))) return sendError(reply, 404, notFound("repair"));
     return { repair: asRepair(row) };
   });
 
@@ -243,7 +243,7 @@ export async function testingReviewRoutes(app: FastifyInstance) {
     const session = await requireSession(request, reply);
     if (!session) return;
     const [row] = await db.select().from(testingRepair).where(eq(testingRepair.id, request.params.repairId));
-    if (!row || !(await runForUser(session.user.id, row.runId))) return sendError(reply, 404, notFound("repair"));
+    if (!row || !(await snapshotForUser(session.user.id, row.snapshotId))) return sendError(reply, 404, notFound("repair"));
     if (!(await projectAuthority(session.user.id, row.projectId))) return sendError(reply, 403, notAuthorized("cancel repairs"));
     if (row.status === "awaiting_approval") await db.update(testingRepair).set({ status: "cancelled", cancelRequested: true, updatedAt: new Date() }).where(eq(testingRepair.id, row.id));
     else if (row.status === "running") {

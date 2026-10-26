@@ -1,11 +1,13 @@
 import { createHash, randomUUID } from "node:crypto";
+import { posix } from "node:path";
 import { Readable } from "node:stream";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
-import { FindingKind, RepairEdit, type Obligation, type RepairAttempt, type TestFinding, type TestingRepair } from "@cybercheck/contracts";
+import { FindingKind, RepairEdit, type Obligation, type RepairAttempt, type SecurityFinding, type SecurityObligation, type TestFinding, type TestingRepair } from "@cybercheck/contracts";
 import { db } from "../db/client.ts";
 import { snapshot, testFinding, testingRepair, testingRun, testObligation } from "../db/schema.ts";
 import type { ObjectStore } from "../storage/object-store.ts";
+import { redactText } from "../ai-evaluator/redact.ts";
 import { BudgetExceededError, type AiSession } from "../understanding/ai/gateway.ts";
 import { getSnapshotSource, type SnapshotSource } from "../understanding/source.ts";
 import type { SandboxProvider } from "./sandbox/provider.ts";
@@ -53,13 +55,112 @@ export function repairScope(finding: TestFinding, obligations: Obligation[], max
   };
 }
 
+/** Security findings share the same approval and repair ledger, but their obligation contract is security-specific. */
+export function securityRepairScope(finding: SecurityFinding, obligations: SecurityObligation[], maxAttempts = DEFAULT_ATTEMPTS): TestingRepair["scope"] {
+  const mine = obligations.filter((o) => finding.obligationIds.includes(o.id));
+  const files = [
+    finding.location?.path,
+    ...finding.evidence.map((e) => e.path),
+    ...mine.flatMap((o) => o.applicabilityEvidence.map((e) => e.path)),
+  ];
+  const editable = [...new Set(files.filter((p): p is string => Boolean(p)))]
+    .filter((p) => SOURCE_FILE.test(p) && !TEST_FILE.test(p) && !CONFIG_FILE.test(p))
+    .slice(0, 12);
+  const assets = new Set(mine.map((o) => o.asset.ref));
+  const regression = obligations
+    .filter((o) => !finding.obligationIds.includes(o.id) && o.status === "passed" && assets.has(o.asset.ref))
+    .map((o) => o.id)
+    .slice(0, 80);
+  return {
+    files: editable,
+    reproduction: finding.obligationIds,
+    regression,
+    maxAttempts,
+    estimate: { minutes: [4, 10 * maxAttempts], costUsd: [0.03, round2(0.25 * maxAttempts)] },
+  };
+}
+
 const round2 = (n: number) => Math.round(n * 100) / 100;
+
+/** Shared across every check's scope builder: keep only editable source files (never tests, config or lockfiles), at
+ *  most twelve (the proposal format allows twelve edits). */
+export const editableSourceFiles = (paths: Array<string | null | undefined>): string[] =>
+  [...new Set(paths.filter((p): p is string => Boolean(p)))].filter((p) => SOURCE_FILE.test(p) && !TEST_FILE.test(p) && !CONFIG_FILE.test(p)).slice(0, 12);
+
+const JS_IMPORT = /(?:\brequire\(\s*|\bimport\s*\(\s*|\bfrom\s+|^\s*import\s+)["'](\.{1,2}\/[^"']+)["']/gm;
+const PY_IMPORT = /^\s*from\s+(\.+)([\w.]*)\s+import\s+([\w, ]+)/gm;
+const JS_EXT = ["", ".js", ".ts", ".mjs", ".cjs", ".jsx", ".tsx", "/index.js", "/index.ts"];
+
+/** The project's own modules one file imports directly. */
+function localImportsOf(f: string, src: SnapshotSource): string[] {
+  const text = src.files.get(f)?.text;
+  if (!text) return [];
+  const out: string[] = [];
+  const dir = posix.dirname(f);
+  for (const m of text.matchAll(JS_IMPORT)) {
+    const base = posix.normalize(posix.join(dir, m[1]!));
+    const hit = JS_EXT.map((x) => base + x).find((p) => src.files.has(p));
+    if (hit) out.push(hit);
+  }
+  if (f.endsWith(".py")) {
+    for (const m of text.matchAll(PY_IMPORT)) {
+      const up = posix.join(dir, ...Array(m[1]!.length - 1).fill(".."));
+      const names = m[2] ? [m[2].replace(/\./g, "/")] : m[3]!.split(",").map((n) => n.trim()).filter(Boolean);
+      for (const n of names) for (const p of [posix.join(up, `${n}.py`), posix.join(up, n, "__init__.py")]) if (src.files.has(p)) out.push(p);
+    }
+  }
+  return out;
+}
+
+const MAX_IMPORTERS = 4;
+
+/**
+ * The evidence files plus their direct neighbours in the project's own import graph (one hop each way). A defect is
+ * often reached through the file the evidence points at but lives next to it: in a helper it imports (token checks in
+ * an auth module, a tenant filter in a retrieval module) or in the route that imports it and hands its data out (a
+ * shared history served to every user). A model that cannot see that file can only patch around it. At most four
+ * importers are added, the result is still limited to editable source, and it is shown to the reviewer before approval.
+ */
+export function withLocalImports(files: string[], src: SnapshotSource): string[] {
+  const out = [...files, ...files.flatMap((f) => localImportsOf(f, src))];
+  const wanted = new Set(files);
+  const importers = [...src.files.keys()].filter((p) => !wanted.has(p) && editableSourceFiles([p]).length === 1 && localImportsOf(p, src).some((x) => wanted.has(x)));
+  return editableSourceFiles([...out, ...importers.slice(0, MAX_IMPORTERS)]);
+}
+
+/** The shared time/cost estimate shown before approval, scaled by the chosen attempt count. */
+export const repairEstimate = (maxAttempts: number): TestingRepair["scope"]["estimate"] => ({ minutes: [4, 10 * maxAttempts], costUsd: [0.03, round2(0.25 * maxAttempts)] });
 
 // ---------------------------------------------------------------- patch safety
 
 const SUPPRESS = /eslint-disable|@ts-ignore|@ts-nocheck|@ts-expect-error|#\s*type:\s*ignore|#\s*noqa|pytest\.mark\.skip|\.skip\(|xit\(|xdescribe\(|istanbul ignore/;
-const GUARD = /require_\w+|Depends\(|login_required|permission|isAdmin|is_admin|authorize|authenticate|\brole\b|guard|requireAuth|requireRole|verify_token|current_user/i;
+// Access-control vocabulary. Covers decorator/dependency styles (login_required, Depends(...), @UseGuards) and the common
+// Express/Fastify middleware names (requireAdmin, requireUser, isAuthenticated, ensureLoggedIn, adminOnly, hasRole...).
+const GUARD = /require_\w+|\brequire[A-Z]\w*|Depends\(|login_required|permission|isAdmin|is_admin|authorize|authenticate|\bisAuthenticated\b|\bensure(?:Auth\w*|LoggedIn)\b|\badminOnly\b|\b(?:has|check)Role\b|\brole\b|guard|verify_token|current_user/i;
+const GUARD_ALL = new RegExp(GUARD.source, "gi");
+const guardTokens = (s: string) => (s.match(GUARD_ALL) ?? []).map((t) => t.toLowerCase());
 const A11Y = /aria-[\w-]+=|\balt=|<label\b|htmlFor=|\brole="/g;
+
+// The placeholders the model sees in place of secrets, tokens and canaries (see redactForModel).
+const PLACEHOLDER = /\[(?:redacted|hidden|token|canary(?::[A-Z]+)?)\]/;
+const escapeRe = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/**
+ * The model never sees secret values, so a line holding one reaches it with a placeholder and it can only quote that
+ * line as it saw it. Such a "find" is matched back to the real file: each placeholder stands for one hidden value on
+ * the same line, the match must be unique, and redacting the real text must give exactly what the model quoted. The
+ * secret itself never leaves the server. Finds that already match literally are left alone.
+ */
+export function resolveRedactedFinds(edits: RepairEdit[], files: Map<string, string>): RepairEdit[] {
+  return edits.map((e) => {
+    const text = files.get(e.path);
+    if (text == null || text.includes(e.find) || !PLACEHOLDER.test(e.find)) return e;
+    const parts = e.find.split(new RegExp(PLACEHOLDER.source, "g"));
+    const re = new RegExp(parts.map(escapeRe).join("([^\n]+?)"), "g");
+    const hits = [...text.matchAll(re)].filter((m) => redactForModel(m[0]) === e.find);
+    return hits.length === 1 ? { ...e, find: hits[0]![0], resolvedFromRedacted: true } : e;
+  });
+}
 
 /** Reasons a proposed patch is refused before it runs. Empty means it may be validated. */
 export function reviewEdits(edits: RepairEdit[], allowed: string[], files: Map<string, string>): string[] {
@@ -76,14 +177,27 @@ export function reviewEdits(edits: RepairEdit[], allowed: string[], files: Map<s
     }
     const count = text.split(e.find).length - 1;
     if (count !== 1) problems.push(`${e.path}: the text to replace appears ${count} times; it must appear exactly once.`);
+    // A resolved hidden value may be removed or moved to configuration, never written back as a placeholder.
+    if ((e as RepairEdit & { resolvedFromRedacted?: boolean }).resolvedFromRedacted && PLACEHOLDER.test(e.replace)) problems.push(`${e.path}: writes a hidden-value placeholder into the code; read the value from configuration instead.`);
     if (SUPPRESS.test(e.replace) && !SUPPRESS.test(e.find)) problems.push(`${e.path}: adds a suppression (skip, ignore or disable), which hides a problem instead of fixing it.`);
-    const removedGuards = e.find.split("\n").filter((l) => GUARD.test(l) && !e.replace.includes(l.trim()));
-    if (removedGuards.length) problems.push(`${e.path}: removes or changes an access check (${removedGuards[0]!.trim().slice(0, 80)}); a repair may not weaken authorization.`);
+    // Token-level: every access-check token in the original text must still be present (as many times) after the edit.
+    // This catches a dropped middleware (e.g. requireAdmin) and does not flag a guard that was kept on a changed line.
+    const before = guardTokens(e.find);
+    const after = guardTokens(e.replace);
+    const dropped = [...new Set(before)].filter((t) => after.filter((x) => x === t).length < before.filter((x) => x === t).length);
+    if (dropped.length) {
+      const line = e.find.split("\n").find((l) => l.toLowerCase().includes(dropped[0]!)) ?? dropped[0]!;
+      problems.push(`${e.path}: removes or changes an access check (${line.trim().slice(0, 80)}); a repair may not weaken authorization.`);
+    }
     if ((e.replace.match(A11Y) ?? []).length < (e.find.match(A11Y) ?? []).length) problems.push(`${e.path}: removes accessibility attributes (labels, alt text or ARIA).`);
     if (e.replace.trim() === "" && e.find.trim().split("\n").length > 3) problems.push(`${e.path}: deletes a block of code instead of fixing it.`);
   }
   return [...new Set(problems)];
 }
+
+/** An earlier attempt whose identical patch already ran and failed validation, if any. */
+export const repeatOfFailedAttempt = (attempts: RepairAttempt[], current: RepairAttempt): RepairAttempt | undefined =>
+  attempts.find((a) => a.n !== current.n && a.validationRunId != null && a.status !== "verified" && a.patchDigest != null && a.patchDigest === current.patchDigest);
 
 /** Applies exact replacements; returns the patched files and a unified diff of the change. */
 export function applyEdits(files: Map<string, string>, edits: RepairEdit[]): { patched: Map<string, string>; diff: string; changed: string[] } {
@@ -147,7 +261,8 @@ export function judgeAttempt(scope: TestingRepair["scope"], before: Map<string, 
 
 const ProposalOut = z.object({ summary: z.string(), edits: z.array(RepairEdit).max(12) });
 export type Proposal = z.infer<typeof ProposalOut>;
-export type ProposalInput = { finding: TestFinding; files: Array<{ path: string; text: string }>; targets?: Array<{ id: string; objective: string; reason: string | null; evidence: Array<{ path: string; line: number | null }> }>; feedback: string | null };
+export type RepairFindingInput = Pick<TestFinding, "title" | "expected" | "actual" | "rootCause" | "location" | "reproduction" | "obligationIds">;
+export type ProposalInput = { finding: RepairFindingInput; files: Array<{ path: string; text: string }>; targets?: Array<{ id: string; objective: string; reason: string | null; evidence: Array<{ path: string; line: number | null }> }>; feedback: string | null };
 
 const REPAIR_PATCH_SYSTEM = `You fix ONE confirmed defect in a project with the smallest safe change.
 Reply with JSON: {"summary":"one or two sentences: what was wrong and what you changed","edits":[{"path":"...","find":"exact text copied from the file","replace":"the new text"}]}.
@@ -155,14 +270,27 @@ Rules:
 - Edit only the files shown, and only source code. Never edit tests, configuration, dependency files, lint or type settings.
 - "find" must be copied exactly from the file (including indentation) and must appear exactly once; keep it short but unique.
 - Fix the cause shown by the evidence. Do not hide the failure: no skip, ignore, eslint-disable, @ts-ignore, noqa; do not delete checks.
+- When a reproduction lists several steps, every step that crossed a boundary is part of the defect: a route that hands
+  out another user's data in an early step may need the same fix as the route the defect is named after.
 - When the defect is reported on several reproduction targets, repair EVERY listed occurrence in one proposal. A fix
   for only the first screen, endpoint or module is incomplete.
 - Never weaken authorization (sign-in, role or permission checks) or accessibility (labels, alt text, ARIA).
 - Keep every other behaviour the same; the project's own tests and the checks of the same endpoint must keep passing.`;
 
+// Synthetic markers the checks plant (adversarial canaries, the agent fixture secret, planted prompt markers, approval
+// tokens, the browser XSS nonce). They prove a leak in a report but must never be sent to a model.
+const CANARY_MARKERS = /CCADVMARK-[\w-]+|sk-agentmart-FIXTURE[\w-]*|CC_SYS_PROMPT_[\w-]+|cc-approval-(?:valid|expired|replayed)[\w-]*|CCXSS[\w-]+/g;
+
+/** Everything sent to a repair model is redacted first: credentials, tokens, JWTs, secret-looking literals and every
+ *  canary value. Source files are not truncated (a large limit), so the model can still copy exact text to replace;
+ *  a line that contained a secret simply cannot be matched, and that patch is refused rather than leaking the value. */
+export function redactForModel(text: string): string {
+  return redactText(text, [], 1_000_000).replace(CANARY_MARKERS, "[canary]");
+}
+
 export async function proposePatch(session: AiSession, input: ProposalInput): Promise<Proposal> {
   const f = input.finding;
-  const user = [
+  const user = redactForModel([
     `Defect: ${f.title}`,
     `Expected: ${f.expected}`,
     `Actual: ${f.actual}`,
@@ -177,7 +305,7 @@ export async function proposePatch(session: AiSession, input: ProposalInput): Pr
     ...input.files.map((x) => `<project_data file="${x.path}">\n${x.text.split("\n").map((l, i) => `${i + 1}: ${l}`).join("\n").slice(0, 24_000)}\n</project_data>\nThe line numbers are for reference only; never copy them into "find".`),
   ]
     .filter(Boolean)
-    .join("\n\n");
+    .join("\n\n"));
   const req = { purpose: "sandbox repair", system: REPAIR_PATCH_SYSTEM, user, schema: ProposalOut, maxTokens: 10000 };
   try {
     return await session.json("author", req);
@@ -234,8 +362,9 @@ export async function processRepair(repairId: string, deps: Deps): Promise<Testi
     await save(repairId, { status: "failed_validation", error: "The run, snapshot or finding of this repair no longer exists." });
     return asRepair((await db.select().from(testingRepair).where(eq(testingRepair.id, repairId)))[0]!);
   }
-  const finding = { ...(fRow.data as TestFinding), kind: FindingKind.parse((fRow.data as TestFinding).kind) } as TestFinding;
-  const before = new Map((await db.select().from(testObligation).where(eq(testObligation.runId, parent.id))).map((o) => [o.id, o.data as Obligation]));
+  const adapter = repairAdapterFor(parent.check);
+  const finding: RepairFindingInput = adapter.finding(fRow.data);
+  const before = await adapter.results(parent.id, fRow.data);
   const src: SnapshotSource = await getSnapshotSource(deps.objects, snap.archiveObjectKey);
   const files = new Map(repair.scope.files.filter((p) => src.files.has(p)).map((p) => [p, src.files.get(p)!.text]));
   const attempts: RepairAttempt[] = [...repair.attempts];
@@ -285,6 +414,7 @@ export async function processRepair(repairId: string, deps: Deps): Promise<Testi
       continue;
     }
     attempt.summary = proposal.summary.slice(0, 600);
+    proposal = { ...proposal, edits: resolveRedactedFinds(proposal.edits, files) };
     const problems = reviewEdits(proposal.edits, repair.scope.files, files);
     if (problems.length) {
       Object.assign(attempt, { status: "rejected_patch", rejectedBecause: problems, costUsd: round4((deps.session?.spentUsd ?? 0) - spentBefore), finishedAt: new Date().toISOString() });
@@ -294,6 +424,15 @@ export async function processRepair(repairId: string, deps: Deps): Promise<Testi
     }
     const { patched, diff, changed } = applyEdits(files, proposal.edits);
     Object.assign(attempt, { diff: diff.slice(0, 60_000), patchDigest: createHash("sha256").update(diff).digest("hex"), filesChanged: changed });
+    // The same patch already failed validation: refuse it without spending a sandbox run on a known outcome.
+    const repeated = repeatOfFailedAttempt(attempts, attempt);
+    if (repeated) {
+      const why = `This is the same patch as attempt ${repeated.n}, which already failed validation.`;
+      Object.assign(attempt, { status: "rejected_patch", rejectedBecause: [why], costUsd: round4((deps.session?.spentUsd ?? 0) - spentBefore), finishedAt: new Date().toISOString() });
+      await save(repairId, { attempts });
+      feedback = `${why} Find what else makes the reproduction succeed and change that instead.\n${feedback ?? ""}`;
+      continue;
+    }
     // The patched files are stored as cybercheck objects; the snapshot archive is never touched.
     const overlay: Array<{ path: string; key: string }> = [];
     for (const [path, text] of patched) {
@@ -303,12 +442,24 @@ export async function processRepair(repairId: string, deps: Deps): Promise<Testi
     }
     // Validation: a targeted run of the reproduction and regression checks, in fresh sandboxes, with the patch mounted.
     const validationId = randomUUID();
-    const policy = { ...(parent.policy as Record<string, unknown>), rerun: { parentRunId: parent.id, obligationIds: [...repair.scope.reproduction, ...repair.scope.regression] }, repair: { repairId, attempt: n, files: overlay } };
-    await db.insert(testingRun).values({ id: validationId, snapshotId: parent.snapshotId, projectId: parent.projectId, understandingRunId: parent.understandingRunId, requestedBy: repair.approvedBy ?? repair.requestedBy, policy, status: "running", generation: 1, startedAt: new Date(), heartbeatAt: new Date() });
+    const rerun = adapter.rerun(repair.scope, parent.id) as Record<string, unknown>;
+    if (parent.check === "adversarial") {
+      const frozen = (parent.plan as { campaignPlan?: { key: string; digest: string } } | null)?.campaignPlan;
+      if (!frozen) throw new Error("This adversarial run has no frozen campaign plan; run a new full check before repairing it.");
+      rerun.planKey = frozen.key;
+      rerun.planDigest = frozen.digest;
+    }
+    const policy = {
+      ...(parent.policy as Record<string, unknown>),
+      ...adapter.extraPolicy(),
+      rerun,
+      repair: { repairId, attempt: n, files: overlay },
+    };
+    await db.insert(testingRun).values({ id: validationId, check: parent.check, snapshotId: parent.snapshotId, projectId: parent.projectId, understandingRunId: parent.understandingRunId, requestedBy: repair.approvedBy ?? repair.requestedBy, policy, status: "running", generation: 1, startedAt: new Date(), heartbeatAt: new Date() });
     attempt.validationRunId = validationId;
     await save(repairId, { attempts });
     await deps.runValidation(validationId);
-    const after = new Map((await db.select().from(testObligation).where(eq(testObligation.runId, validationId))).map((o) => [o.id, o.data as Obligation]));
+    const after = await adapter.results(validationId, fRow.data);
     const judged = judgeAttempt(repair.scope, before, after);
     Object.assign(attempt, judged, { costUsd: round4((deps.session?.spentUsd ?? 0) - spentBefore), finishedAt: new Date().toISOString() });
     await save(repairId, { attempts });
@@ -321,6 +472,8 @@ export async function processRepair(repairId: string, deps: Deps): Promise<Testi
             .filter((c) => c.role === "reproduction" && c.after !== "passed" && c.targetResolved !== true)
             .map((c) => `${c.obligationId}: ${after.get(c.obligationId)?.reason ?? c.after}`)
             .join("; ")}.`;
+    // Show the patch that did not work, so the next attempt tries something different instead of repeating it.
+    if (judged.status !== "regression_introduced" && attempt.diff) feedback += `\nThe patch you proposed was:\n${attempt.diff.slice(0, 4000)}\nIt did not remove the problem. Do not propose the same change again; the reproduction still succeeds through another path.`;
   }
   if (await cancelled(repairId)) final = "cancelled";
   if (final === "failed_validation" && attempts.every((a) => a.status === "rejected_patch")) error ="Every proposed patch was refused as unsafe or invalid before running; see the reasons per attempt.";
@@ -329,3 +482,79 @@ export async function processRepair(repairId: string, deps: Deps): Promise<Testi
 }
 
 const round4 = (n: number) => Math.round(n * 10000) / 10000;
+
+function securityFindingForRepair(f: SecurityFinding): RepairFindingInput {
+  return {
+    title: f.title,
+    expected: f.expected,
+    actual: f.observed,
+    rootCause: f.rootCause,
+    location: f.location,
+    reproduction: `${f.confirmation}\nObserved: ${f.observed}\nRecommended control: ${f.remediation}`,
+    obligationIds: f.obligationIds,
+  };
+}
+
+// ---------------------------------------------------------------- per-check repair adapters
+// The repair engine is shared by every check owner. Each owner differs only in: how its finding maps to the shared
+// prompt input, which run units (obligations / cases / campaigns) form the before/after the judge compares, the shape
+// of the focused-rerun policy its validation run understands, and any policy it must force. Testing and Security are
+// defined here; AI Evaluator and AI Adversarial register their adapters from their own modules (see registerRepairAdapter).
+
+export type RepairAdapter = {
+  /** Map the stored finding JSON to the shared prompt input. */
+  finding: (data: unknown) => RepairFindingInput;
+  /** The reproduction/regression units of a run, keyed by id, in the shared Obligation shape the judge compares. The
+   *  repaired finding is passed so a unit shared by several defects can be judged for this defect alone. */
+  results: (runId: string, finding: unknown) => Promise<Map<string, Obligation>>;
+  /** The policy.rerun object the owner's validation run reads to run only the focused subset. */
+  rerun: (scope: TestingRepair["scope"], parentRunId: string) => Record<string, unknown>;
+  /** Extra policy the owner's validation run must carry (e.g. forcing a runtime, turning an optional critic off). */
+  extraPolicy: () => Record<string, unknown>;
+};
+
+const obligationResults = (map: (o: unknown) => Obligation) => async (runId: string) =>
+  new Map((await db.select().from(testObligation).where(eq(testObligation.runId, runId))).map((o) => [o.id, map(o.data)] as const));
+const obligationRerun = (scope: TestingRepair["scope"], parentRunId: string) => ({ parentRunId, obligationIds: [...scope.reproduction, ...scope.regression] });
+
+const REPAIR_ADAPTERS: Record<string, RepairAdapter> = {
+  testing: {
+    finding: (d) => ({ ...(d as TestFinding), kind: FindingKind.parse((d as TestFinding).kind) }) as TestFinding,
+    results: obligationResults((o) => o as Obligation),
+    rerun: obligationRerun,
+    extraPolicy: () => ({}),
+  },
+  security: {
+    finding: (d) => securityFindingForRepair(d as SecurityFinding),
+    results: obligationResults((o) => securityObligationForRepair(o as SecurityObligation)),
+    rerun: obligationRerun,
+    extraPolicy: () => ({ runtime: "auto", aiCritic: "off" }),
+  },
+};
+
+/** AI Evaluator and AI Adversarial register their adapters at import time to avoid an import cycle with their engines. */
+export function registerRepairAdapter(check: string, adapter: RepairAdapter) {
+  REPAIR_ADAPTERS[check] = adapter;
+}
+export function repairAdapterFor(check: string): RepairAdapter {
+  return REPAIR_ADAPTERS[check] ?? REPAIR_ADAPTERS.testing!;
+}
+
+/** Adapt only the fields used by the shared repair judge; the stored Security obligation remains unchanged. */
+function securityObligationForRepair(o: SecurityObligation): Obligation {
+  const kind: Obligation["asset"]["kind"] = o.asset.kind === "endpoint" ? "endpoint" : o.asset.kind === "entity" ? "entity" : o.asset.kind === "repository" ? "project" : "module";
+  return {
+    id: o.id,
+    layer: o.proofStrategy === "browser_proof" ? "ui" : o.proofStrategy === "runtime_proof" ? "api" : "deployment",
+    asset: { kind, ref: o.asset.ref, label: o.asset.label },
+    objective: o.requirement,
+    priority: o.priority,
+    oracle: { source: "policy", expected: o.expectedControl, evidence: o.applicabilityEvidence },
+    status: o.status,
+    reason: o.reason,
+    origin: "dossier",
+    executionIds: o.executionIds,
+    findingIds: o.findingIds,
+    reachedTarget: ["passed", "failed"].includes(o.status),
+  };
+}

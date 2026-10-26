@@ -6,7 +6,7 @@ import type { AdversarialRunDetail, SnapshotSummary } from "@cybercheck/contract
 import { buildApp } from "../src/app.ts";
 import { auth } from "../src/auth/auth.ts";
 import { db, pool } from "../src/db/client.ts";
-import { testingRun, user } from "../src/db/schema.ts";
+import { adversarialCampaign, testingRun, user } from "../src/db/schema.ts";
 import { providers } from "../src/env.ts";
 import { processRun } from "../src/testing/worker.ts";
 import { BENCH, projectFiles } from "./ai-helpers.ts";
@@ -50,7 +50,10 @@ async function upload(a: Account): Promise<SnapshotSummary & { projectId: string
 
 const H = (a: Account, extra: Record<string, string> = {}) => ({ cookie: a.cookie, "content-type": "application/json", ...extra });
 async function start(a: Account, snapId: string, body: Record<string, unknown> = {}, key = randomUUID()) {
-  return app.inject({ method: "POST", url: `/v1/snapshots/${snapId}/checks/adversarial`, headers: H(a, { "idempotency-key": key }), payload: body });
+  // Keep the lifecycle hermetic: the non-AI control now applies to the general attacker track, so without pinning the
+  // runtime the engine would try to boot it in a real sandbox. Requesting Nebius with none configured resolves to no
+  // runtime (analysis only) deterministically, independent of whether local Docker happens to be present.
+  return app.inject({ method: "POST", url: `/v1/snapshots/${snapId}/checks/adversarial`, headers: H(a, { "idempotency-key": key }), payload: { runtime: "nebius", ...body } });
 }
 /** Emulate a worker claim (generation 1) and run the engine to completion. */
 async function process(runId: string) {
@@ -100,12 +103,13 @@ describe("AI Adversarial API lifecycle", () => {
     const runId = latest!.id;
     await process(runId);
 
-    // The uploaded control has no AI component, so the readiness gate decides not_applicable.
+    // The uploaded control is a non-AI web app, so it now applies to the general attacker track. This run was started
+    // analysis-only (runtime "static"), so the engine applies but reports the environment as blocked without executing.
     const detail = (await app.inject({ method: "GET", url: `/v1/adversarial-runs/${runId}`, headers: { cookie: owner.cookie } })).json().run as AdversarialRunDetail;
     expect(detail.status).toBe("completed");
-    expect(detail.decision).toBe("not_applicable");
-    expect(detail.report?.decision).toBe("not_applicable");
-    expect(detail.headline).toMatch(/no AI component/i);
+    expect(detail.decision).toBe("not_ready_environment_blocked");
+    expect(detail.report?.decision).toBe("not_ready_environment_blocked");
+    expect(detail.headline).toMatch(/analysis only|no code was executed/i);
     expect(detail.policy.profile).toBe("standard");
     expect(detail.campaigns).toEqual([]);
 
@@ -145,5 +149,23 @@ describe("AI Adversarial API lifecycle", () => {
     const stranger = await account("stranger");
     const res = await app.inject({ method: "GET", url: `/v1/adversarial-runs/${latest!.id}`, headers: { cookie: stranger.cookie } });
     expect(res.statusCode).toBe(404);
+  });
+
+  it("creates an exact targeted rerun only when every selected id exists in the frozen plan", async () => {
+    const [parent] = await db.select().from(testingRun).where(eq(testingRun.check, "adversarial")).orderBy(desc(testingRun.createdAt)).limit(1);
+    await db.update(testingRun).set({ status: "completed", plan: { campaignPlan: { key: `adversarial/${parent!.id}/campaign-plan.json`, digest: "a".repeat(64), campaignIds: ["stable-campaign"] } } }).where(eq(testingRun.id, parent!.id));
+    const data = { id: "stable-campaign", seq: 1, lane: "broken_access", techniqueId: "function-authz", priority: "high", title: "Stable", target: { componentId: "app", endpoint: "GET /admin" }, attacker: "user", resetStrategy: "fresh_app", steps: [], status: "blocked", reason: "setup", executionIds: [], findingIds: [], limitations: ["setup"], source: "catalogue" } as never;
+    await db.insert(adversarialCampaign).values({ runId: parent!.id, id: "stable-campaign", seq: 1, lane: "broken_access", techniqueId: "function-authz", status: "blocked", data });
+
+    const unknown = await app.inject({ method: "POST", url: `/v1/adversarial-runs/${parent!.id}/rerun`, headers: H(owner, { "idempotency-key": randomUUID() }), payload: { scope: "campaigns", campaignIds: ["stable-campaign", "missing"] } });
+    expect(unknown.statusCode).toBe(409);
+    expect(unknown.json().code).toBe("campaigns_not_resolved");
+
+    const exact = await app.inject({ method: "POST", url: `/v1/adversarial-runs/${parent!.id}/rerun`, headers: H(owner, { "idempotency-key": randomUUID() }), payload: { scope: "campaigns", campaignIds: ["stable-campaign"] } });
+    expect(exact.statusCode).toBe(201);
+    const childId = exact.json().run.id as string;
+    const [child] = await db.select().from(testingRun).where(eq(testingRun.id, childId));
+    expect((child!.policy as { rerun: unknown }).rerun).toEqual({ parentRunId: parent!.id, campaignIds: ["stable-campaign"], planKey: `adversarial/${parent!.id}/campaign-plan.json`, planDigest: "a".repeat(64) });
+    await db.update(testingRun).set({ status: "cancelled", phase: "done", finishedAt: new Date() }).where(eq(testingRun.id, childId));
   });
 });

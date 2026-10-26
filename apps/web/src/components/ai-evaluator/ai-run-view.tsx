@@ -1,17 +1,19 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, CircleCheck, CircleDashed, CircleX, Download, RotateCcw, ShieldQuestion } from "lucide-react";
-import type { AiCaseCategory, AiCategoryResult, AiEvaluationCase, AiEvaluationDecision, AiEvaluationFinding, AiEvaluationRunDetail, AiLaneObligation } from "@cybercheck/contracts";
+import { CircleCheck, CircleDashed, CircleX, RotateCcw, ShieldQuestion } from "lucide-react";
+import type { AiCaseCategory, AiCategoryResult, AiEvaluationCase, AiEvaluationDecision, AiEvaluationFinding, AiEvaluationRunDetail, AiLaneObligation, FindingHumanReview, TestingRepair } from "@cybercheck/contracts";
 import { Card, CardTitle, EmptyState } from "@/components/app/ui";
+import { RunHeader, LivePhases } from "@/components/app/run-chrome";
+import { FindingReviewRepair } from "@/components/app/finding-review-repair";
+import { latestReviewOf, repairOf, useCheckRepairs, useCheckReviews } from "@/components/app/use-check-repairs";
 import { Badge, Mono } from "@/components/architecture/parts";
 import { CodeViewerProvider, EvidenceLink } from "@/components/architecture/code-viewer";
 import { Tabs, TabPanel, useViewParams, type TabItem } from "@/components/testing/run-tabs";
-import { duration, RunStatusBadge, SEVERITY_TONE } from "@/components/testing/run-parts";
+import { SEVERITY_TONE } from "@/components/testing/run-parts";
 import { ACTIVE_RUN } from "@/components/testing/use-testing";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { Alert, Spinner } from "@/components/ui/form";
 import { ApiError } from "@/lib/api";
 import { cn } from "@/lib/cn";
@@ -79,6 +81,11 @@ const pct = (n: number | null) => (n == null ? "n/a" : `${Math.round(n * 100)}%`
 
 export function AiRunView({ projectId, runId }: { projectId: string; runId: string }) {
   const { run, events, error, reload } = useAiRun(runId);
+  // Human review + sandbox repair load once the run has finished with a report (hooks run before any early return).
+  const finished = Boolean(run && !ACTIVE_RUN.has(run.status) && run.report);
+  const reviewState = useCheckReviews("ai-evaluation-runs", runId, finished);
+  const repairState = useCheckRepairs("ai-evaluation-runs", runId, finished);
+  const refreshActions = () => { reviewState.refresh(); repairState.refresh(); };
   const view = useViewParams();
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -120,45 +127,24 @@ export function AiRunView({ projectId, runId }: { projectId: string; runId: stri
   return (
     <CodeViewerProvider snapshotId={run.snapshotId}>
       <div className="space-y-6">
-        <Link href={`/app/checks/ai-evaluator?project=${projectId}`} className="inline-flex min-h-11 items-center gap-1.5 text-sm font-medium text-accent hover:underline">
-          <ArrowLeft className="size-4" aria-hidden="true" /> AI Evaluator
-        </Link>
-        <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-2xl font-semibold text-fg">AI Evaluator check</h1>
-          <RunStatusBadge status={run.status} />
-          <span className="text-sm text-fg-muted">{duration(run.startedAt, run.finishedAt) ?? ""}</span>
-          {run.parentRunId && (
-            <Link href={`/app/projects/${projectId}/ai-evaluator/${run.parentRunId}`} className="text-sm text-accent hover:underline">
-              Rerun of an earlier run
-            </Link>
-          )}
-          <div className="ml-auto flex flex-wrap gap-2">
-            {active && (
-              <Button type="button" variant="outline" shape="pill" size="sm" disabled={busy} onClick={() => void act(() => cancelAiEvaluation(run.id), false)}>
-                Cancel
-              </Button>
-            )}
-            {!active && run.report && undecided.length > 0 && run.report.decision !== "not_applicable" && (
-              <Button type="button" variant="outline" shape="pill" size="sm" disabled={busy} onClick={() => void act(() => rerunAiEvaluation(run.id, "missing"), true)}>
-                <RotateCcw aria-hidden="true" /> Rerun {undecided.length} undecided
-              </Button>
-            )}
-            {!active && run.report && (
-              <>
-                <a href={`/v1/ai-evaluation-runs/${run.id}/export?format=md`} download className={buttonVariants({ variant: "outline", shape: "pill", size: "sm" })}>
-                  <Download aria-hidden="true" /> Markdown
-                </a>
-                <a href={`/v1/ai-evaluation-runs/${run.id}/export?format=json`} download className={buttonVariants({ variant: "outline", shape: "pill", size: "sm" })}>
-                  <Download aria-hidden="true" /> JSON
-                </a>
-              </>
-            )}
-          </div>
-        </div>
+        <RunHeader
+          check="ai-evaluator"
+          projectId={projectId}
+          status={run.status}
+          startedAt={run.startedAt}
+          finishedAt={run.finishedAt}
+          parentRunId={run.parentRunId}
+          exportBase={run.report ? `/v1/ai-evaluation-runs/${run.id}/export` : null}
+          actions={active ? (
+            <Button type="button" variant="outline" shape="pill" size="sm" disabled={busy} onClick={() => void act(() => cancelAiEvaluation(run.id), false)}>Cancel</Button>
+          ) : run.report && undecided.length > 0 && run.report.decision !== "not_applicable" ? (
+            <Button type="button" variant="outline" shape="pill" size="sm" disabled={busy} onClick={() => void act(() => rerunAiEvaluation(run.id, "missing"), true)}><RotateCcw aria-hidden="true" /> Rerun {undecided.length} undecided</Button>
+          ) : null}
+        />
         {actionError && <Alert>{actionError}</Alert>}
 
         {active ? (
-          <LiveProgress run={run} events={events} />
+          <LivePhases phases={PHASES} currentPhase={run.phase} events={events} />
         ) : !run.report ? (
           <Alert>{run.error ?? "This run has no report."}</Alert>
         ) : (
@@ -166,7 +152,7 @@ export function AiRunView({ projectId, runId }: { projectId: string; runId: stri
             <Tabs items={items} value={tab} onChange={(id) => view.set({ tab: id === "summary" ? null : id, sub: null })} label="AI Evaluator results" idPrefix="ai" />
             <TabPanel idPrefix="ai" value={tab}>
               {tab === "summary" && <Summary run={run} />}
-              {tab === "findings" && <Findings findings={run.findings} />}
+              {tab === "findings" && <Findings findings={run.findings} runId={run.id} projectId={projectId} reviews={reviewState.reviews} repairs={repairState.repairs} canReview={reviewState.canReview} onChange={refreshActions} />}
               {tab === "cases" && <CaseExplorer cases={run.cases} onRerun={(id) => void act(() => rerunAiEvaluation(run.id, "cases", [id]), true)} busy={busy} />}
               {tab === "categories" && <Categories run={run} />}
               {tab === "performance" && <Performance run={run} />}
@@ -177,37 +163,6 @@ export function AiRunView({ projectId, runId }: { projectId: string; runId: stri
         )}
       </div>
     </CodeViewerProvider>
-  );
-}
-
-function LiveProgress({ run, events }: { run: AiEvaluationRunDetail; events: Array<{ seq: number; type: string; message: string }> }) {
-  const at = PHASES.findIndex((p) => p.id === run.phase);
-  return (
-    <Card>
-      <CardTitle>In progress</CardTitle>
-      <ol className="mt-4 flex flex-wrap gap-2" aria-label="Phases">
-        {PHASES.map((p, i) => (
-          <li key={p.id} aria-current={i === at ? "step" : undefined} className={cn("rounded-full px-3 py-1 text-xs font-medium", i < at ? "bg-success/10 text-success" : i === at ? "bg-accent/10 text-accent" : "bg-surface-2 text-fg-muted")}>
-            {p.label}
-          </li>
-        ))}
-      </ol>
-      <ul className="mt-5 space-y-2 text-sm" role="log" aria-live="polite">
-        {events
-          .filter((e) => !e.type.startsWith("phase:"))
-          .slice(-12)
-          .map((e) => (
-            <li key={e.seq} className="text-fg">
-              {e.message}
-            </li>
-          ))}
-        {!events.length && (
-          <li className="flex items-center gap-2 text-fg-muted">
-            <Spinner /> {run.status === "queued" ? "Waiting for a worker" : "Starting"}
-          </li>
-        )}
-      </ul>
-    </Card>
   );
 }
 
@@ -341,7 +296,7 @@ function LaneObligations({ obligations, coverage }: { obligations: AiLaneObligat
   );
 }
 
-function Findings({ findings }: { findings: AiEvaluationFinding[] }) {
+function Findings({ findings, runId, projectId, reviews, repairs, canReview, onChange }: { findings: AiEvaluationFinding[]; runId: string; projectId: string; reviews: FindingHumanReview[]; repairs: TestingRepair[]; canReview: boolean; onChange: () => void }) {
   if (!findings.length) return <EmptyState icon={CircleCheck} title="No AI findings" body="No case failed a hard check and no reply failed a hygiene check. Undecided and untested cases are listed in their own tab." />;
   return (
     <ul className="space-y-4">
@@ -365,7 +320,7 @@ function Findings({ findings }: { findings: AiEvaluationFinding[] }) {
               <dd className="text-fg">{f.impact}</dd>
               <dt className="text-fg-muted">Confirmation</dt>
               <dd className="text-fg">{f.confirmation}</dd>
-              <dt className="text-fg-muted">Fix</dt>
+              <dt className="text-fg-muted">Recommended fix</dt>
               <dd className="text-fg">{f.remediation}</dd>
               <dt className="text-fg-muted">Route</dt>
               <dd>
@@ -396,6 +351,9 @@ function Findings({ findings }: { findings: AiEvaluationFinding[] }) {
                 </>
               )}
             </dl>
+            <div className="mt-4">
+              <FindingReviewRepair check="ai-evaluator" runId={runId} projectId={projectId} findingId={f.id} machineConfirmed={f.status === "confirmed"} review={latestReviewOf(reviews, f.id)} repair={repairOf(repairs, f.id)} canReview={canReview} onChange={onChange} />
+            </div>
           </Card>
         </li>
       ))}

@@ -23,10 +23,11 @@ const LANES = ["prompt", "leakage", "rag_memory", "tools_approval", "identity_te
 const SEVERITIES = ["low", "medium", "high", "critical"];
 
 describe("AI Adversarial scope and existing-defect freeze", () => {
-  it("declares AI-centric applicability, with not_applicable and insufficient-evidence rules", () => {
+  it("declares two-track applicability (general + AI), with not_applicable and insufficient-evidence rules", () => {
     expect(frozen.scope.owner).toBe("adversarial");
     expect(frozen.scope.appliesTo).toMatch(/AI|agent|RAG|chatbot/i);
-    expect(frozen.scope.notApplicable).toMatch(/no AI component/i);
+    expect(frozen.scope.appliesTo).toMatch(/general track|HTTP surface|reachable HTTP/i);
+    expect(frozen.scope.notApplicable).toMatch(/neither a reachable HTTP endpoint nor an AI component/i);
     expect(frozen.scope.insufficientEvidence).toMatch(/insufficient|no reachable target/i);
   });
 

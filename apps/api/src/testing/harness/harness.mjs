@@ -173,7 +173,31 @@ if (h.boot.ok) {
     }
     const vars = { ...graph.vars, $uid: newUid() };
     const turns = [];
-    for (const raw of c.turns) {
+    for (let turnIndex = 0; turnIndex < c.turns.length; turnIndex++) {
+      const raw = c.turns[turnIndex];
+      // A bounded parallel group is used only by deterministic concurrency campaigns. All requests are prepared from
+      // the same fixture state and released together; model replay and captures remain sequential-only.
+      if (raw.parallelGroup && raw.replay == null && !raw.capture) {
+        const group = [];
+        for (let j = turnIndex; j < c.turns.length && c.turns[j].parallelGroup === raw.parallelGroup; j++) group.push(c.turns[j]);
+        const prepared = group.map((item) => ({ raw: item, step: fill({ method: item.method, path: item.path, json: item.json, timeoutMs: item.timeoutMs }, vars, env) }));
+        const missing = prepared.map((x) => unfilled(x.step)).find(Boolean);
+        if (missing) {
+          for (const _ of group) turns.push({ status: null, ms: 0, body: "", contentType: null, error: `not sent: {{${missing}}} was not returned by an earlier turn`, model: [] });
+          break;
+        }
+        const logFrom = logSize(logPath);
+        const answers = await Promise.all(prepared.map((x) => request(x.step, x.raw.as ? graph.auths[x.raw.as] : null)));
+        await sleep(60);
+        for (let k = 0; k < prepared.length; k++) {
+          const item = prepared[k];
+          const r = answers[k];
+          turns.push({ status: r.status, ms: r.ms, body: mask((r.text ?? "").slice(0, 20000)), contentType: r.contentType ?? null, error: r.error ?? null, model: [], logFrom, logTo: logSize(logPath) });
+          emit({ k: "req", method: item.step.method, path: String(item.step.path).slice(0, 160), status: r.status ?? null, ms: r.ms ?? null, ok: r.status != null && r.status < 500, as: item.raw.as ?? null, check: c.id });
+        }
+        turnIndex += group.length - 1;
+        continue;
+      }
       const step = fill({ method: raw.method, path: raw.path, json: raw.json, timeoutMs: raw.timeoutMs }, vars, env);
       const missing = unfilled(step);
       if (missing) {

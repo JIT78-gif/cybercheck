@@ -86,6 +86,13 @@ describe("AI Adversarial readiness gate", () => {
     expect(lane(r, "multi_stage").available).toBe(false);
   });
 
+  it("treats a message-driven sensitive operation as a tool even without an SDK tool schema", () => {
+    const local = comp({ tools: [], messageTriggers: [{ pattern: "\\[\\[TOOL:read_file\\s+([^\\]]+)", sink: "file", evidence: ev("src/agent.js", 2) }] });
+    const r = assessReadiness({ applicability: applicable(local, target()), src: bareSrc, target: target(), ...ready });
+    expect(r.surface.hasTools).toBe(true);
+    expect(lane(r, "tools_approval").available).toBe(true);
+  });
+
   it("blocks every lane when no runtime or app is available, without changing applicability", () => {
     const noRuntime = assessReadiness({ applicability: applicable(richComp, richTarget), src: richSrc, target: richTarget, runtimeAvailable: false, appStartable: true });
     expect(noRuntime.status).toBe("ready");

@@ -92,6 +92,7 @@ describe("request values in the harness", () => {
     expect(fillPath("/api/files/{{name}}?q={{q}}", { name: "a/b c", q: "x&y=#1" }, {})).toBe("/api/files/a%2Fb%20c?q=x%26y%3D%231");
     expect(fillPath("/api/search?q=<script>{x}:y</script>", {}, {})).toBe("/api/search?q=<script>{x}:y</script>");
     expect(fillPath("/api/u/{{$uid}}", { $uid: "123456" }, {})).toBe("/api/u/123456");
+    expect(fillPath("/api/u/{{customer-2.id}}", { "customer-2.id": "u/2" }, {})).toBe("/api/u/u%2F2");
     expect(fillPath("/api/{{missing}}", {}, {})).toBe("/api/{{missing}}");
     // Only a request's path is encoded; body fields named "path" keep their value.
     expect(fill({ method: "POST", path: "/x/{{id}}", json: { path: "{{dir}}/file" } }, { id: "1/2", dir: "a/b" }, {})).toEqual({ method: "POST", path: "/x/1%2F2", json: { path: "a/b/file" } });

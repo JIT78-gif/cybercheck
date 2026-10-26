@@ -5,7 +5,6 @@ import { RerunSecurityInput, SecurityPolicyInput, type SecurityFinding, type Sec
 import { isMember, notFound, projectForUser, requireSession, sendError, snapshotForUser } from "../access.ts";
 import { db } from "../db/client.ts";
 import { idempotencyKey, project, securityProof, snapshot, testExecution, testFinding, testingRun, testObligation, testRunEvent } from "../db/schema.ts";
-import { providers } from "../env.ts";
 import { securityRunToMarkdown } from "../security/export.ts";
 import { SECURITY_ENGINE } from "../security/orchestrator.ts";
 import { selectSecurityRuntime } from "../security/runtime.ts";
@@ -110,10 +109,9 @@ export async function securityRoutes(app: FastifyInstance) {
     const [latest] = await db.select().from(snapshot).where(eq(snapshot.projectId, s.projectId)).orderBy(desc(snapshot.createdAt)).limit(1);
     if (latest?.id !== s.id) return sendError(reply, 409, { code: "snapshot_not_latest", message: "Only the project's latest snapshot can be checked.", fix: "Open the project again and start the check from there." });
     if ((await analysisOf(s)).stage !== "ready") return sendError(reply, 409, { code: "project_not_ready", message: "This project is still being analysed.", fix: "Start the Security check once the project shows Ready." });
-    if (!providers.sandbox) return sendError(reply, 503, { code: "sandbox_not_configured", message: "Security needs Nebius Sandboxes, which isn't configured on this server.", fix: "Set NEBIUS_API_KEY and NEBIUS_PROJECT_ID in .env and restart the worker." });
     const parsed = SecurityPolicyInput.omit({ engine: true }).safeParse(request.body ?? {});
     if (!parsed.success) return sendError(reply, 400, { code: "bad_request", message: "The Security options are not valid.", fix: "Start the check again from the app." });
-    const policy = { engine: SECURITY_ENGINE, aiCritic: parsed.data.aiCritic };
+    const policy = { engine: SECURITY_ENGINE, aiCritic: parsed.data.aiCritic, runtime: parsed.data.runtime };
     const route = "checks/security";
     // The options are part of the request: the same key with different options is a different request.
     const requestHash = createHash("sha256").update(`${s.id}:${JSON.stringify(policy)}`).digest("hex");
@@ -219,7 +217,6 @@ export async function securityRoutes(app: FastifyInstance) {
       ? obs.filter((o) => !DECISIVE.has(o.status)).map((o) => o.id)
       : (parsed.data.obligationIds ?? []).filter((id) => obs.some((o) => o.id === id));
     if (!ids.length) return sendError(reply, 409, { code: "nothing_to_rerun", message: parsed.data.scope === "missing" ? "Every obligation in that run already has a decisive result." : "None of those obligations belong to this run.", fix: "Choose obligations from this report, or rerun the whole check." });
-    if (!providers.sandbox) return sendError(reply, 503, { code: "sandbox_not_configured", message: "Security needs a sandbox, which isn't configured on this server.", fix: "Configure a runtime and restart the worker." });
     const policy = { ...((parent.policy ?? {}) as Record<string, unknown>), engine: SECURITY_ENGINE, rerun: { parentRunId: parent.id, obligationIds: ids } };
     const route = "checks/security/rerun";
     const requestHash = createHash("sha256").update(`${parent.id}:${ids.slice().sort().join(",")}`).digest("hex");

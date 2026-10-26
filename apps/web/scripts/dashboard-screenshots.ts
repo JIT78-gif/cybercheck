@@ -44,10 +44,10 @@ try {
   await shot(page, "02-testing-empty");
   await page.getByRole("button", { name: "Add new project" }).click();
   await shot(page, "03-add-project-source");
-  await page.getByRole("button", { name: /Upload an archive/ }).click();
+  await page.getByRole("button", { name: /Upload from your computer/ }).click();
   await shot(page, "04-add-project-file");
   const zip = makeZip(Object.entries(demoProject).map(([name, data]) => ({ name: `acme-storefront/${name}`, data, deflate: true })));
-  await page.locator('input[type="file"]').setInputFiles({ name: "acme-storefront.zip", mimeType: "application/zip", buffer: zip });
+  await page.getByTestId("archive-input").setInputFiles({ name: "acme-storefront.zip", mimeType: "application/zip", buffer: zip });
   await page.getByRole("checkbox").check();
   await shot(page, "05-add-project-details");
   await page.getByRole("button", { name: "Create project and upload" }).click();

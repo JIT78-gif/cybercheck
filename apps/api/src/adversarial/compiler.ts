@@ -32,7 +32,7 @@ export function externalUrls(value: unknown): string[] {
   return bad;
 }
 
-export const ENDPOINT_OPS = new Set<AttackOperation>(["send_message", "send_indirect_content", "upload_synthetic_document", "retrieve_synthetic_document", "inspect_known_state", "compare_identity_response", "reset_state"]);
+export const ENDPOINT_OPS = new Set<AttackOperation>(["send_message", "send_indirect_content", "upload_synthetic_document", "retrieve_synthetic_document", "inspect_known_state", "compare_identity_response", "reset_state", "send_request"]);
 export const ANONYMOUS = "anonymous";
 
 export type PlannedStep = {
@@ -48,6 +48,11 @@ export type PlannedStep = {
   filePath?: string;
   repeat?: number;
   parallel?: number;
+  // General attacker track (send_request / capture).
+  body?: Record<string, unknown>;
+  query?: Record<string, string>;
+  /** For `capture`: read a value from the previous response into a named symbol the next step can use. */
+  capture?: { name: string; path: string };
 };
 export type PlannedCampaign = {
   id: string;
@@ -59,6 +64,9 @@ export type PlannedCampaign = {
   attacker: AdversarialAttacker;
   resetStrategy: "none" | "db_rollback" | "db_reseed" | "new_conversation" | "memory_cleanup" | "file_overlay" | "fresh_app" | "fresh_browser";
   steps: PlannedStep[];
+  track?: "general" | "ai";
+  /** Setup/identity graph nodes that must pass before an attack request can be sent. */
+  fixtureDependencies?: string[];
   source: "catalogue" | "attacker_model" | "attack_pack";
 };
 export type CompileContext = {
@@ -103,7 +111,7 @@ export function clampRules(requested: Partial<RulesOfEngagement> | null, profile
   };
 }
 
-const text = (s: PlannedStep) => [s.message ?? "", s.content ?? "", s.toolArgs ? JSON.stringify(s.toolArgs) : "", s.url ?? "", s.filePath ?? ""].join(" ");
+const text = (s: PlannedStep) => [s.message ?? "", s.content ?? "", s.toolArgs ? JSON.stringify(s.toolArgs) : "", s.url ?? "", s.filePath ?? "", s.body ? JSON.stringify(s.body) : "", s.query ? JSON.stringify(s.query) : ""].join(" ");
 
 /** Reasons a campaign is rejected (empty = allowed). */
 export function validateCampaign(c: PlannedCampaign, ctx: CompileContext): string[] {
@@ -148,7 +156,7 @@ export function validateCampaign(c: PlannedCampaign, ctx: CompileContext): strin
       else if (s.parallel > ctx.roe.limits.concurrency) reasons.push(`a parallel run of ${s.parallel} exceeds the allowed concurrency`);
     }
     const t = text(s);
-    const ext = externalUrls({ m: s.message, c: s.content, a: s.toolArgs, u: s.url });
+    const ext = externalUrls({ m: s.message, c: s.content, a: s.toolArgs, u: s.url, b: s.body, q: s.query });
     if (ext.length) reasons.push(`a payload reaches outside the sandbox: ${ext.slice(0, 2).join(", ")}`);
     if (CLOUD_META.test(t)) reasons.push("a payload targets a cloud metadata service");
     if (SHELL.test(t)) reasons.push("a payload contains a shell command");

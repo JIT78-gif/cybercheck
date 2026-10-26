@@ -142,15 +142,15 @@ export function fillPath(path, vars, env) {
   const enc = (x) => encodeURIComponent(String(x));
   return String(path)
     .replace(/\$\{ENV:([A-Z0-9_]+)\}/g, (m, n) => (env?.[n] != null ? enc(env[n]) : m))
-    .replace(/\{\{(\$?[\w.]+)\}\}/g, (m, n) => (n === "$uid" ? vars.$uid : usable(vars[n]) ? enc(vars[n]) : m));
+    .replace(/\{\{(\$?[\w.-]+)\}\}/g, (m, n) => (n === "$uid" ? vars.$uid : usable(vars[n]) ? enc(vars[n]) : m));
 }
 
 /** Fills {{name}}, {{$uid}} and ${ENV:NAME}. "{{id}}" on its own keeps the captured value's type; a request's path is encoded. */
 export function fill(v, vars, env) {
   if (typeof v === "string") {
-    const whole = v.match(/^\{\{([\w.]+)\}\}$/);
+    const whole = v.match(/^\{\{([\w.-]+)\}\}$/);
     if (whole && usable(vars[whole[1]])) return vars[whole[1]];
-    return subEnv(v, env).replace(/\{\{(\$?[\w.]+)\}\}/g, (_m, n) => (n === "$uid" ? vars.$uid : usable(vars[n]) ? String(vars[n]) : `{{${n}}}`));
+    return subEnv(v, env).replace(/\{\{(\$?[\w.-]+)\}\}/g, (_m, n) => (n === "$uid" ? vars.$uid : usable(vars[n]) ? String(vars[n]) : `{{${n}}}`));
   }
   if (Array.isArray(v)) return v.map((x) => fill(x, vars, env));
   if (v && typeof v === "object") {
@@ -200,7 +200,7 @@ export const missingText = (missing) => (missing.startsWith("ENV:") ? `the setti
 export const unfilled = (step) => {
   const text = JSON.stringify([step.path, step.json ?? null, step.form ?? null, step.headers ?? null, step.raw ?? null]);
   const env = text.match(/\$\{ENV:([A-Z0-9_]+)\}/);
-  return text.match(/\{\{(\$?[\w.]+)\}\}/)?.[1] ?? (env ? `ENV:${env[1]}` : null);
+  return text.match(/\{\{(\$?[\w.-]+)\}\}/)?.[1] ?? (env ? `ENV:${env[1]}` : null);
 };
 
 const SECRETISH = /(SECRET|TOKEN|PASSWORD|PASSWD|API_?KEY|PRIVATE|CREDENTIAL|AUTH|_KEY)$/i;
@@ -547,11 +547,15 @@ export async function runGraph(nodes, ctx) {
         if (!good) note += `; response: ${(r.text ?? "").slice(0, 300)}`;
       }
     }
-    // A sign-in is trusted only after a protected request accepts it.
+    // A sign-in is trusted only after a protected request accepts the session. A 401 means the session was not
+    // accepted (sign-in failed). A 403 means it WAS accepted but this route needs more privilege (e.g. a member
+    // identity verifying against a route the analyzer could not tell apart from an admin-only one) - the session still
+    // works, so that counts as verified; otherwise every non-admin identity would be wrongly failed.
     if (good && n.verify) {
       const r = await request(fill({ method: n.verify.method ?? "GET", path: n.verify.path }, local, env), a);
-      const accepted = r.status != null && r.status !== 401 && r.status !== 403 && r.status < 500;
-      note = `${note ? `${note}; ` : ""}${n.verify.method ?? "GET"} ${n.verify.path} with it answered ${r.status ?? r.error}`;
+      const accepted = r.status != null && r.status !== 401 && r.status < 500;
+      const forbidden = r.status === 403;
+      note = `${note ? `${note}; ` : ""}${n.verify.method ?? "GET"} ${n.verify.path} with it answered ${r.status ?? r.error}${forbidden ? " (authenticated but not authorized for this route; session accepted)" : ""}`;
       if (!accepted) {
         good = false;
         note += `: still refused; response: ${(r.text ?? "").slice(0, 300)}${loginAnswer ? `; the sign-in answered: ${loginAnswer}` : ""}`;

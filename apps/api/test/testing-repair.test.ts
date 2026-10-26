@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { Obligation, TestFinding } from "@cybercheck/contracts";
-import { applyEdits, judgeAttempt, repairScope, reviewEdits } from "../src/testing/repair.ts";
+import type { Obligation, SecurityFinding, SecurityObligation, TestFinding } from "@cybercheck/contracts";
+import { applyEdits, judgeAttempt, repairScope, reviewEdits, securityRepairScope } from "../src/testing/repair.ts";
 
 const files = new Map([
   ["app/routers/admin.py", 'from app.auth import require_admin\n\n@router.get("/feedback")\ndef feedback(period: str, user=Depends(require_admin)):\n    return list_feedback(period)\n'],
@@ -75,5 +75,37 @@ describe("judging an attempt", () => {
     expect(a11yScope.targetFailure?.marker).toBe("button-name");
     expect(result.status).toBe("verified");
     expect(result.checks.find((c) => c.obligationId === "a11y:/menu:wcag")?.targetResolved).toBe(true);
+  });
+});
+
+describe("Security repair scope", () => {
+  it("allows only cited application source and keeps passed checks of the same asset as regressions", () => {
+    const finding = {
+      id: "S1",
+      location: { path: "src/routes/orders.ts", line: 12 },
+      evidence: [{ path: "src/routes/orders.ts", line: 12 }, { path: "tests/orders.test.ts", line: 4 }],
+      obligationIds: ["sec:orders:injection"],
+    } as unknown as SecurityFinding;
+    const obligation = (id: string, status: SecurityObligation["status"], ref = "POST /orders"): SecurityObligation => ({
+      id,
+      lane: "injection",
+      category: "injection",
+      asset: { kind: "endpoint", ref, label: ref },
+      requirement: id,
+      expectedControl: "parameterized input",
+      applicabilityEvidence: [{ path: "src/routes/orders.ts", line: 12 }],
+      standards: ["CWE-89"],
+      priority: "high",
+      proofStrategy: "runtime_proof",
+      dependencies: [],
+      status,
+      reason: null,
+      executionIds: [],
+      findingIds: [],
+    });
+    const scope = securityRepairScope(finding, [obligation("sec:orders:injection", "failed"), obligation("sec:orders:auth", "passed"), obligation("sec:other", "passed", "GET /other")]);
+    expect(scope.files).toEqual(["src/routes/orders.ts"]);
+    expect(scope.reproduction).toEqual(["sec:orders:injection"]);
+    expect(scope.regression).toEqual(["sec:orders:auth"]);
   });
 });

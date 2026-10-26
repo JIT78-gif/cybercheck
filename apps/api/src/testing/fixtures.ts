@@ -139,26 +139,61 @@ export function credentialFromTests(src: SnapshotSource, account: string): strin
   return found.size === 1 ? [...found][0]! : null;
 }
 
+const TEST_FILE = /(\.|\/)(test|spec)\.[cm]?[jt]sx?$|(^|\/)(tests?|__tests__|spec)\/|(^|\/)(test_\w+|\w+_test|conftest)\.py$/i;
+// A test that sends the account to an app route that creates it (activation, registration, invitation, a users
+// endpoint): the account exists only in that test's own database.
+const CREATED_BY_REQUEST = /\b(?:post|put|request|fetch|send)\s*\(\s*["'`][^"'`]*\b(?:register|sign-?up|activate|activation|invite|invitations?|users|accounts|members|staff)\b[^"'`]*["'`]/i;
+// A test that expects the credential to be refused, or is named for a refusal.
+const REFUSAL_ASSERT = /status(?:_code|Code)?\)?\s*(?:==|===|\.toBe\(|\.toEqual\(|,)\s*4\d\d\b|\.expect\(\s*4\d\d\b|assert_status\(\s*\w*\s*,?\s*4\d\d/i;
+const NEGATIVE_TEST = /\b(?:def\s+test_\w*|it\(\s*["'`][^"'`]*|test\(\s*["'`][^"'`]*)(?:invalid|wrong|bad|reject|fail|denied|unauthori[sz]ed|forbidden|incorrect|negative|mismatch)/i;
+
+/** In a test file: whether the account near `start` is created by the test through the app, or meant to be refused. */
+function testOnlyAccount(text: string, start: number, end: number): boolean {
+  const before = text.slice(0, start).split("\n").slice(-6).join("\n");
+  const near = `${before}${text.slice(start, end).split("\n").slice(0, 8).join("\n")}`;
+  if (CREATED_BY_REQUEST.test(near)) return true;
+  const after = text.slice(start, Math.min(text.length, end + 400)).split("\n").slice(0, 10).join("\n");
+  const title = text.slice(0, start).split("\n").slice(-12).reverse().find((l) => /\bdef\s+test_|\bit\(|\btest\(/.test(l)) ?? "";
+  return REFUSAL_ASSERT.test(after) || NEGATIVE_TEST.test(title);
+}
+
 export type SeededAccount = { account: string; accountField: string; password: string; passwordField: string; role: string | null; at: { path: string; line: number } };
 
 /**
  * Accounts the project itself defines with a password: a seed record in its code or tests on one line, such as
  * { id: "u2", email: "bob@example.test", password: "BobPass123!", role: "customer" }. Documentation does not count,
- * and a value that is a setting reference (process.env.X) is not a password.
+ * and a value that is a setting reference (process.env.X) is not a password. In a test file, an account the test
+ * creates through the app (activation, registration, a users endpoint) or expects to be refused is not one: it does
+ * not exist when the app starts.
  */
 export function seededAccounts(src: SnapshotSource): SeededAccount[] {
   const out: SeededAccount[] = [];
+  const testOnly = new Set<string>();
   for (const [path, f] of src.files) {
     if (DOC_FILE.test(path) || path.includes("node_modules/") || !/\.(c|m)?[jt]sx?$|\.py$|\.json$|\.sql$/.test(path)) continue;
-    f.text.split("\n").forEach((l, i) => {
-      const acc = l.match(/["']?(email|username|user_name|login)["']?\s*[:=]\s*["'`]([^"'`\s]{3,80})["'`]/i);
-      const pw = l.match(/["']?(password|passwd|pass|pwd)["']?\s*[:=]\s*["'`]([^"'`\s]{6,64})["'`]/i);
-      if (!acc || !pw || out.some((a) => a.account === acc[2])) return;
-      const role = l.match(/["']?role["']?\s*[:=]\s*["'`]([\w-]{2,30})["'`]/i)?.[1] ?? null;
-      out.push({ account: acc[2]!, accountField: acc[1]!, password: pw[2]!, passwordField: pw[1]!, role, at: { path, line: i + 1 } });
-    });
+    const accountRe = /["']?(email|username|user_name|login)["']?\s*[:=]\s*["'`]([^"'`\s]{3,80})["'`]/gi;
+    const matches = [...f.text.matchAll(accountRe)];
+    for (let i = 0; i < matches.length; i++) {
+      const acc = matches[i]!;
+      if (out.some((a) => a.account === acc[2])) continue;
+      const start = acc.index ?? 0;
+      // Stop before the next account so credentials from adjacent seed records can never be paired.
+      const end = Math.min(matches[i + 1]?.index ?? f.text.length, start + 1200);
+      const record = f.text.slice(start, end);
+      const pw = record.match(/["']?((?:hashed_)?password(?:_hash)?|passwd|pass|pwd)["']?\s*[:=]\s*(?:(?:hash_password|hash|pwd_context\.hash)\s*\(\s*)?["'`]([^"'`\s]{6,64})["'`]/i);
+      if (!pw) continue;
+      // Only accounts that exist when the app starts: not one a test creates through the app, nor a refused credential.
+      if (TEST_FILE.test(path) && testOnlyAccount(f.text, start, end)) {
+        testOnly.add(acc[2]!);
+        continue;
+      }
+      const role = record.match(/["']?role["']?\s*[:=]\s*["'`]([\w-]{2,30})["'`]/i)?.[1] ?? null;
+      const line = f.text.slice(0, start).split("\n").length;
+      out.push({ account: acc[2]!, accountField: acc[1]!, password: pw[2]!, passwordField: /pass|pwd/i.test(pw[1]!) ? "password" : pw[1]!, role, at: { path, line } });
+    }
   }
-  return out;
+  // A test that creates or refuses the account anywhere means its other test-file mentions are that same test-only account.
+  return out.filter((a) => !(testOnly.has(a.account) && TEST_FILE.test(a.at.path)));
 }
 
 /**

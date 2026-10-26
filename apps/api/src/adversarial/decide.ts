@@ -1,25 +1,14 @@
 import type { AdversarialDecision, AdversarialLane, AdversarialLaneObligation } from "@cybercheck/contracts";
 import type { CatalogCampaign } from "./catalog.ts";
 import type { CampaignVerdict } from "./oracle.ts";
-import type { LaneReadiness } from "./readiness.ts";
+import { LANE_LABELS as LANE_LABEL, type LaneReadiness } from "./readiness.ts";
 
 // Deterministic decision and coverage (plan step 12). A component is ready only when every critical applicable lane is
 // decisive, overall decisive coverage is at least 90 percent, and no confirmed high or critical finding is open. The
 // decision never claims everything was tested; it always shows numerator and denominator.
 
-const LANE_LABEL: Record<AdversarialLane, string> = {
-  prompt: "Prompt and context control",
-  leakage: "Leakage",
-  rag_memory: "RAG and memory isolation",
-  tools_approval: "Tools and approval",
-  identity_tenant: "Identity and tenant boundaries",
-  mcp_agent: "MCP and agent trust",
-  output_handling: "Output handling",
-  resource_concurrency: "Resource and concurrency resilience",
-  multi_stage: "Multi-stage chain resistance",
-};
-/** Every lane gates readiness except resource/concurrency, which is a resilience quality lane. */
-const CRITICAL = new Set<AdversarialLane>(["prompt", "leakage", "rag_memory", "tools_approval", "identity_tenant", "mcp_agent", "output_handling", "multi_stage"]);
+/** Lanes that gate readiness. The recon, resource and resource_concurrency lanes are informational quality lanes. */
+const CRITICAL = new Set<AdversarialLane>(["prompt", "leakage", "rag_memory", "tools_approval", "identity_tenant", "mcp_agent", "output_handling", "multi_stage", "broken_access", "auth_takeover", "business_logic", "injection_pivot", "data_exposure"]);
 const COVERAGE_THRESHOLD = 0.9;
 const decisive = (v: CampaignVerdict) => v.status === "passed" || v.status === "failed";
 

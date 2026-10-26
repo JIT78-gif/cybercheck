@@ -9,7 +9,7 @@ import { ANALYZER_VERSION, analyzeSource } from "./analyze.ts";
 import { getSnapshotSource } from "./source.ts";
 import { env, providers } from "../env.ts";
 import { buildAiDiagrams } from "./ai/diagrams.ts";
-import { AiSession } from "./ai/gateway.ts";
+import { addAttemptUsage, configuredUnderstandingProviderNames, createUnderstandingProvider, understandingModels, understandingProviderUnavailable } from "./ai/provider.ts";
 import { emptyInsights, synthesize } from "./ai/synthesize.ts";
 
 /** Live progress of runs being worked on right now (kept in memory; a restart re-runs them anyway). */
@@ -72,9 +72,9 @@ async function execute(runId: string) {
 
 // ---------------------------------------------------------------- AI step (separate queue)
 
-const MODELS = () => ({ fast: env.NEBIUS_MODEL_FAST, strong: env.NEBIUS_MODEL_STRONG, critic: env.NEBIUS_MODEL_CRITIC });
 const aiEnabled = () => providers.ai && env.NODE_ENV !== "test";
-const runningInsights = () => ({ ...emptyInsights(MODELS()), status: "running" as const });
+const preferredModels = () => understandingModels(configuredUnderstandingProviderNames()[0] ?? "nebius");
+const runningInsights = () => ({ ...emptyInsights(preferredModels()), status: "running" as const });
 
 // The AI step is slow (minutes) and network-bound, so it never blocks the code analysis queue.
 let aiBusy = false;
@@ -122,10 +122,22 @@ async function executeAi(runId: string) {
   }
 
   const src = await getSnapshotSource(objectStore, snap.archiveObjectKey);
-  const session = new AiSession({ apiKey: env.NEBIUS_API_KEY!, baseUrl: env.NEBIUS_BASE_URL, models: MODELS(), budgetUsd: env.AI_RUN_BUDGET_USD });
   live.set(runId, { step: "Starting the AI explanation", progress: 0 });
   try {
-    const ai = await synthesize(dossier, src, { session, models: MODELS(), onProgress: (step, progress) => live.set(runId, { step, progress }) });
+    const names = configuredUnderstandingProviderNames();
+    const attempts = [];
+    let ai = dossier.ai;
+    for (const [index, name] of names.entries()) {
+      const provider = createUnderstandingProvider(name);
+      live.set(runId, { step: `Starting the AI explanation with ${name === "nebius" ? "Nebius" : "Gemini"}`, progress: 0 });
+      const result = await synthesize(dossier, src, { session: provider.session, models: provider.models, onProgress: (step, progress) => live.set(runId, { step, progress }) });
+      attempts.push(result);
+      ai = result;
+      const next = names[index + 1];
+      if (!next || !understandingProviderUnavailable(result.error)) break;
+      live.set(runId, { step: `Nebius is unavailable; retrying the AI explanation with ${next === "gemini" ? "Gemini" : "the fallback provider"}`, progress: 0 });
+    }
+    ai = addAttemptUsage(ai!, attempts);
     const next: ProjectDossier = { ...dossier, ai, diagrams: { ...dossier.diagrams, ...buildAiDiagrams(ai, dossier) } };
     await db.update(understandingRun).set({ dossier: next }).where(eq(understandingRun.id, runId));
     console.log(`[understanding] AI step for run ${runId}: ${ai.status}, $${ai.usage.costUsd.toFixed(4)}, ${ai.verification.verified}/${ai.verification.claims} claims verified`);

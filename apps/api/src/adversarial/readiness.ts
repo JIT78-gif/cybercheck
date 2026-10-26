@@ -14,13 +14,22 @@ const LANE_LABEL: Record<AdversarialLane, string> = {
   leakage: "Leakage",
   rag_memory: "RAG and memory isolation",
   tools_approval: "Tools and approval",
-  identity_tenant: "Identity and tenant boundaries",
   mcp_agent: "MCP and agent trust",
   output_handling: "Output handling",
+  recon: "Reconnaissance",
+  broken_access: "Broken access control",
+  auth_takeover: "Authentication takeover",
+  business_logic: "Business logic abuse",
+  injection_pivot: "Injection and pivot",
+  resource_abuse: "Resource abuse",
+  data_exposure: "Data exposure",
+  identity_tenant: "Identity and tenant boundaries",
   resource_concurrency: "Resource and concurrency resilience",
   multi_stage: "Multi-stage chain resistance",
 };
-const LANES = Object.keys(LANE_LABEL) as AdversarialLane[];
+/** The lanes the AI attacker track gates. The general attacker track gates its own lanes (see general-readiness). */
+const LANES: AdversarialLane[] = ["prompt", "leakage", "rag_memory", "tools_approval", "mcp_agent", "output_handling", "identity_tenant", "resource_concurrency", "multi_stage"];
+export const LANE_LABELS = LANE_LABEL;
 
 export type AdversarialSurface = {
   hasRag: boolean;
@@ -54,6 +63,10 @@ function toAdversarialApplicability(a: AiApplicability): AdversarialApplicabilit
   return {
     status: status as AdversarialApplicability["status"],
     reason: a.reason,
+    // The orchestrator overrides tracks/entryPoints with the authoritative general+AI assessment; this AI-only mapping
+    // defaults them (the AI track applies when a target is bound).
+    tracks: a.status === "applicable" ? (["ai"] as const).slice() : [],
+    entryPoints: 0,
     components: a.components,
     targets: a.targets.map((t) => ({ target: t.target, boundBy: t.boundBy, auxiliary: (t.auxiliary ?? {}) as Record<string, unknown> })),
     unbound: a.unbound.map((u) => ({ componentId: u.componentId, reason: u.reason })),
@@ -74,7 +87,10 @@ export function detectSurface(a: AiApplicability, src: SnapshotSource, target: A
   return {
     hasRag: Boolean(comp && comp.retrieval.length > 0),
     hasMemory: Boolean(bound?.historyPath || aux.historyPath || /\b(memory|remember|recall|conversation\s*history|long[-\s]?term)\b/i.test(text)),
-    hasTools: Boolean(comp && comp.tools.length > 0),
+    // Custom/local agents often implement a message protocol that dispatches directly to a sensitive operation
+    // instead of declaring provider-SDK tools.  Those message-triggered capabilities are still tools from an
+    // attacker's perspective and must not make the tools lane look not-applicable.
+    hasTools: Boolean(comp && (comp.tools.length > 0 || comp.messageTriggers.length > 0)),
     hasMcp: Boolean(comp && comp.tools.length > 0 && /description\s*[:=]|mcp|modelcontextprotocol/i.test(text)),
     rendersHtml,
     sinks: comp ? [...new Set(comp.messageTriggers.map((t) => t.sink))] : [],
@@ -143,4 +159,23 @@ export function assessReadiness(input: ReadinessInput): AdversarialReadiness {
   for (const l of lanes) if (!l.available) notes.push(`${l.label}: ${l.reason}`);
   const runnable = lanes.filter((l) => l.available).length;
   return { status: "ready", reason: `${runnable} of ${lanes.length} lanes can be attacked; ${surface.identities} identities, surface [${[surface.hasRag && "rag", surface.hasMemory && "memory", surface.hasTools && "tools", surface.hasMcp && "mcp", surface.rendersHtml && "render-sink"].filter(Boolean).join(", ") || "none"}].`, applicability, surface, lanes, notes };
+}
+
+/** The lanes the general attacker track gates. data_exposure is folded into broken access control; recon is an
+ *  always-on informational pass and never gates readiness. */
+const GENERAL_LANES: AdversarialLane[] = ["broken_access", "auth_takeover", "business_logic", "injection_pivot", "resource_abuse", "data_exposure", "multi_stage"];
+
+/** Lane readiness for the general attacker track, derived from the campaigns the general catalogue actually built:
+ *  a lane is available (and thus required) exactly when a reachable campaign targets it. */
+export function generalLaneReadiness(campaigns: Array<{ lane: AdversarialLane }>, runtimeAvailable: boolean, appStartable: boolean): LaneReadiness[] {
+  const counts = new Map<AdversarialLane, number>();
+  for (const c of campaigns) counts.set(c.lane, (counts.get(c.lane) ?? 0) + 1);
+  return GENERAL_LANES.map((lane) => {
+    const n = counts.get(lane) ?? 0;
+    const label = LANE_LABEL[lane];
+    if (!runtimeAvailable) return { lane, label, available: false, reason: "No sandbox runtime is available to execute campaigns." };
+    if (!appStartable) return { lane, label, available: false, reason: "The app could not be started in the sandbox." };
+    if (!n) return { lane, label, available: false, reason: lane === "data_exposure" ? "Cross-record data exposure is exercised within broken access control for this project." : "No reachable surface was found for this lane in this project." };
+    return { lane, label, available: true, reason: `${n} general attacker campaign(s) target this lane.` };
+  });
 }

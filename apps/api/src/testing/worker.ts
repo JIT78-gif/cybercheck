@@ -9,6 +9,9 @@ import { AiSession } from "../understanding/ai/gateway.ts";
 import { runSecurity } from "../security/orchestrator.ts";
 import { runAiEvaluation } from "../ai-evaluator/orchestrator.ts";
 import { runAdversarial } from "../adversarial/orchestrator.ts";
+// Side-effect imports: register the AI Adversarial and AI Evaluator repair adapters before any repair is processed.
+import "../adversarial/repair.ts";
+import "../ai-evaluator/repair.ts";
 import { runTesting } from "./orchestrator.ts";
 import { processRepair } from "./repair.ts";
 import { NebiusSandboxProvider } from "./sandbox/nebius.ts";
@@ -83,13 +86,18 @@ export async function processRun(claim: { id: string; generation: number }, deps
       await runAdversarial(store, { provider: deps.provider, session: deps.session, objects: objectStore, signal: controller.signal }, deps.onProgress ?? (() => {}));
       return;
     }
+    // Security performs its own live runtime selection: Nebius, local Docker, then an honest analysis-only report.
+    // A missing Nebius provider must not stop the worker before that fallback can run.
+    if (check === "security") {
+      await runSecurity(store, { provider: deps.provider as SandboxProvider, session: deps.session, objects: objectStore, signal: controller.signal }, deps.onProgress ?? (() => {}));
+      return;
+    }
     if (!deps.provider) {
       await store.finish("failed", { error: `${check === "security" ? "Security" : "Testing"} needs Nebius Sandboxes. Set NEBIUS_API_KEY and NEBIUS_PROJECT_ID in .env.` });
       return;
     }
     const engineDeps = { provider: deps.provider, session: deps.session, objects: objectStore, signal: controller.signal };
-    if (check === "security") await runSecurity(store, engineDeps, deps.onProgress ?? (() => {}));
-    else if (check === "testing") await runTesting(store, engineDeps, deps.onProgress ?? (() => {}));
+    if (check === "testing") await runTesting(store, engineDeps, deps.onProgress ?? (() => {}));
     else await store.finish("failed", { error: `No engine exists for the "${check}" check.` });
   } catch (err) {
     if (err instanceof FencedError) return;

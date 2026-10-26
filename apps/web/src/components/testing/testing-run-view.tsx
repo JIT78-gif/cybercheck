@@ -2,15 +2,15 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { ArrowLeft, ArrowRight, Ban, Bug, Download, FlaskConical, ListChecks, ShieldQuestion, Wrench } from "lucide-react";
+import { ArrowLeft, ArrowRight, Ban, Bug, FlaskConical, ListChecks, ShieldQuestion, Wrench } from "lucide-react";
 import type { ObligationStatus, ReviewedReport, TestingRepair, TestingRunDetail } from "@cybercheck/contracts";
 import { Card, CardTitle } from "@/components/app/ui";
+import { RunHeader } from "@/components/app/run-chrome";
 import { CodeViewerProvider } from "@/components/architecture/code-viewer";
 import { Badge } from "@/components/architecture/parts";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { Alert, Spinner } from "@/components/ui/form";
 import { cn } from "@/lib/cn";
-import { timeAgo } from "@/lib/format";
 import { BreakpointCard, LayerBars, LoadCharts, LoadTimeline, ProblemBars, ResultsDonut } from "./charts";
 import { EvidencePanel, RequirementsList } from "./evidence-panel";
 import { LiveView } from "./live/live-view";
@@ -18,7 +18,7 @@ import { ProblemsTab, problemGroups } from "./problems-tab";
 import { CapabilityMatrix, LAYER_NAME, LayerMatrix, ProvenPanel, ReleaseDecisionCard } from "./release-panels";
 import { RepairBox } from "./repair-box";
 import { AssessmentCompare } from "./review-panel";
-import { EnvironmentAndAudit, ExecutionRow, Fixtures, LegacySummary, Ledger, LoadResults, Phases, RunStatusBadge, STATUS_STYLE, Suites, duration } from "./run-parts";
+import { EnvironmentAndAudit, ExecutionRow, Fixtures, LegacySummary, Ledger, LoadResults, Phases, STATUS_STYLE, Suites } from "./run-parts";
 import { TabPanel, Tabs, useViewParams, type TabItem } from "./run-tabs";
 import { ACTIVE_RUN, useRepairs, useReviewedReport, useTestingRun } from "./use-testing";
 
@@ -85,46 +85,18 @@ export function TestingRunView({ projectId, runId }: { projectId: string; runId:
     view.set(next.tab ? { tab: next.tab, sub: next.sub ?? null, f: next.f ?? null } : { ...("sub" in next ? { sub: next.sub ?? null } : {}), ...("f" in next ? { f: next.f ?? null } : {}) });
 
   const header = (
-    <div className="flex flex-wrap items-end justify-between gap-4">
-      <div className="min-w-0">
-        {back}
-        <div className="mt-1 flex flex-wrap items-center gap-3">
-          <h1 className="text-3xl font-semibold tracking-tight text-fg sm:text-4xl">Testing run</h1>
-          <RunStatusBadge status={run.status} />
-        </div>
-        <p className="mt-1 text-sm text-fg-muted">
-          Started {timeAgo(run.createdAt)}
-          {run.startedAt && ` · ${active ? "running for" : "took"} ${duration(run.startedAt, run.finishedAt)}`}
-          {` · ${run.obligations.length} planned checks`}
-          {run.parentRunId && (
-            <>
-              {" · rerun of "}
-              <Link href={`/app/projects/${projectId}/testing/${run.parentRunId}`} className="text-accent hover:underline">
-                an earlier run
-              </Link>
-            </>
-          )}
-        </p>
-      </div>
-      {active && (
-        <Button
-          variant="outline"
-          shape="pill"
-          size="sm"
-          disabled={cancelling}
-          onClick={async () => {
-            setCancelling(true);
-            try {
-              await cancel();
-            } finally {
-              setCancelling(false);
-            }
-          }}
-        >
-          <Ban aria-hidden="true" /> Cancel run
-        </Button>
-      )}
-    </div>
+    <RunHeader
+      check="testing"
+      projectId={projectId}
+      status={run.status}
+      startedAt={run.startedAt}
+      finishedAt={run.finishedAt}
+      parentRunId={run.parentRunId}
+      exportBase={r ? `/v1/testing-runs/${run.id}/export` : null}
+      actions={active ? (
+        <Button variant="outline" shape="pill" size="sm" disabled={cancelling} onClick={async () => { setCancelling(true); try { await cancel(); } finally { setCancelling(false); } }}><Ban aria-hidden="true" /> Cancel run</Button>
+      ) : null}
+    />
   );
 
   return (
@@ -224,16 +196,6 @@ export function TestingRunView({ projectId, runId }: { projectId: string; runId:
 
             {tab === "details" && (
               <>
-                {r && (
-                  <div className="flex flex-wrap items-center gap-2" aria-label="Download the report">
-                    <a href={`/v1/testing-runs/${run.id}/export?format=md`} download className={buttonVariants({ variant: "outline", shape: "pill", size: "sm" })}>
-                      <Download aria-hidden="true" /> Report (Markdown)
-                    </a>
-                    <a href={`/v1/testing-runs/${run.id}/export?format=json`} download className={buttonVariants({ variant: "outline", shape: "pill", size: "sm" })}>
-                      <Download aria-hidden="true" /> Full data (JSON)
-                    </a>
-                  </div>
-                )}
                 {r && r.suites.length > 0 && (
                   <Card>
                     <Suites report={r} />

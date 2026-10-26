@@ -2,7 +2,7 @@
 
 import { useState, useSyncExternalStore } from "react";
 import Link from "next/link";
-import { ArrowRight, CircleCheck, Plus, X } from "lucide-react";
+import { ArrowRight, CircleCheck, FolderKanban, Plus, ScanSearch, Sparkles, X, type LucideIcon } from "lucide-react";
 import { useAppData } from "./app-data";
 import { AddProjectDialog } from "@/components/intake/add-project";
 import { useAddFromQuery } from "@/components/intake/use-add-from-query";
@@ -24,24 +24,35 @@ const readDismissed = () => {
   }
 };
 
-function Stat({ label, value, of, note }: { label: string; value: number | null; of?: number | null; note: string }) {
-  const pct = of ? Math.min(1, (value ?? 0) / of) : 0;
+function Stat({
+  icon: Icon,
+  label,
+  value,
+  note,
+  progress,
+}: {
+  icon: LucideIcon;
+  label: string;
+  value: React.ReactNode;
+  note: string;
+  progress?: number;
+}) {
   return (
-    <div>
-      <div className="flex items-baseline justify-between gap-4">
-        <p className="text-fg-muted">{label}</p>
-        <p className="font-mono text-fg tabular-nums">
-          {value ?? "..."}
-          {of != null && <span className="text-fg-muted"> / {of}</span>}
-        </p>
+    <div className="rounded-2xl border border-white/10 bg-white/[0.045] p-5 backdrop-blur-sm">
+      <div className="flex items-center gap-2 text-sm font-medium text-fg-muted">
+        <Icon className="size-4 text-accent" aria-hidden="true" />
+        <span>{label}</span>
       </div>
-      {/* A bar only when the number is a fraction of something. */}
-      <div className={cn("mt-2 h-1.5 overflow-hidden rounded-full", of != null ? "bg-white/10" : "bg-transparent")} aria-hidden="true">
-        {of != null && (
-          <div className="h-full origin-left rounded-full bg-accent transition-transform duration-700" style={{ transform: `scaleX(${pct})` }} />
-        )}
-      </div>
-      <p className="mt-1.5 text-xs text-fg-muted">{note}</p>
+      <p className="mt-3 font-mono text-3xl font-medium leading-none text-fg tabular-nums">{value}</p>
+      {progress != null && (
+        <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-white/10" aria-hidden="true">
+          <div
+            className="h-full origin-left rounded-full bg-accent transition-transform duration-700"
+            style={{ transform: `scaleX(${Math.max(0, Math.min(1, progress))})` }}
+          />
+        </div>
+      )}
+      <p className={cn("text-xs leading-relaxed text-fg-muted", progress == null ? "mt-4" : "mt-2.5")}>{note}</p>
     </div>
   );
 }
@@ -107,11 +118,35 @@ export function Overview() {
               <Plus aria-hidden="true" /> Add project
             </Button>
           </div>
-          <h2 className="mt-4 text-4xl font-semibold tracking-tight sm:text-5xl">{workspace?.name ?? " "}</h2>
-          <div className="mt-8 grid gap-6 sm:grid-cols-3">
-            <Stat label="Projects" value={total} note="Saved once, shared by all four checks" />
-            <Stat label="Ready for checks" value={ready} of={total} note="Projects with a baselined snapshot" />
-            <Stat label="Checks run" value={0} note="Check engines arrive in the next step" />
+          <h2 className="mt-5 text-4xl font-semibold tracking-tight sm:text-5xl">{workspace?.name ?? " "}</h2>
+          <p className="mt-3 max-w-2xl text-sm leading-relaxed text-fg-muted sm:text-base">
+            Add a project once, then run Testing, Security, AI Evaluator and Adversarial checks on the same frozen snapshot.
+          </p>
+          <div className="mt-8 grid gap-3 sm:grid-cols-3">
+            <Stat
+              icon={FolderKanban}
+              label="Projects"
+              value={total ?? <span aria-label="Loading">...</span>}
+              note={total === 1 ? "One project saved in this workspace" : `${total ?? 0} projects saved in this workspace`}
+            />
+            <Stat
+              icon={Sparkles}
+              label="Ready to check"
+              value={
+                <>
+                  {ready ?? "..."}
+                  {total != null && <span className="text-base text-fg-muted"> of {total}</span>}
+                </>
+              }
+              progress={total ? (ready ?? 0) / total : 0}
+              note="Analysis is complete and checks can start"
+            />
+            <Stat
+              icon={ScanSearch}
+              label="Check types"
+              value={4}
+              note="Testing, Security, AI Evaluator and Adversarial"
+            />
           </div>
         </div>
       </section>

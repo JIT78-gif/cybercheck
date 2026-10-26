@@ -1,0 +1,14 @@
+{
+  "project": "hotel-management-gauntlet",
+  "frozenAt": "2026-10-23",
+  "defects": [
+    { "id": "admin-function-authorization", "lane": "broken_access", "techniques": ["function-authz"], "endpoint": "GET /api/admin/overview", "sourcePath": "src/app.js", "severity": "high", "mustFind": true },
+    { "id": "booking-object-authorization", "lane": "broken_access", "techniques": ["object-authz"], "endpoint": "GET /api/bookings/:id", "sourcePath": "src/app.js", "severity": "high", "mustFind": true },
+    { "id": "booking-mass-assignment", "lane": "broken_access", "techniques": ["mass-assignment"], "endpoint": "PATCH /api/bookings/:id", "sourcePath": "src/app.js", "severity": "high", "mustFind": true },
+    { "id": "unsigned-token-forgery", "lane": "auth_takeover", "techniques": ["token-forgery"], "endpoint": "GET /api/admin/overview", "sourcePath": "src/auth.js", "severity": "critical", "mustFind": true },
+    { "id": "login-not-throttled", "lane": "auth_takeover", "techniques": ["login-throttling"], "endpoint": "POST /api/login", "sourcePath": "src/app.js", "severity": "medium", "mustFind": true },
+    { "id": "negative-payment", "lane": "business_logic", "techniques": ["invalid-quantity"], "endpoint": "POST /api/payments", "sourcePath": "src/app.js", "severity": "high", "mustFind": true },
+    { "id": "boolean-injection", "lane": "injection_pivot", "techniques": ["injection-differential"], "endpoint": "GET /api/rooms/search", "sourcePath": "src/app.js", "severity": "critical", "mustFind": true },
+    { "id": "unbounded-report", "lane": "resource_abuse", "techniques": ["unbounded-requests"], "endpoint": "GET /api/reports/revenue", "sourcePath": "src/app.js", "severity": "low", "mustFind": false }
+  ]
+}

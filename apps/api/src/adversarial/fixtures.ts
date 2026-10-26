@@ -70,7 +70,16 @@ export function resetStrategyFor(lane: AdversarialLane): "none" | "db_rollback" 
     case "tools_approval":
     case "resource_concurrency":
     case "multi_stage":
+    case "broken_access":
+    case "business_logic":
+    case "injection_pivot":
+    case "resource_abuse":
       return "db_reseed";
+    case "auth_takeover":
+      return "fresh_app";
+    case "recon":
+    case "data_exposure":
+      return "none";
     case "output_handling":
       return "fresh_browser";
   }
@@ -97,6 +106,16 @@ export function requiredFixtures(lane: AdversarialLane): Array<"identity" | "sec
       return ["identity"];
     case "multi_stage":
       return ["identity", "second_identity"];
+    case "recon":
+      return [];
+    case "broken_access":
+    case "data_exposure":
+      return ["identity", "second_identity"];
+    case "auth_takeover":
+    case "business_logic":
+    case "injection_pivot":
+    case "resource_abuse":
+      return ["identity"];
   }
 }
 

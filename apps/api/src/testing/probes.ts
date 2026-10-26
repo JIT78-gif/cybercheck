@@ -44,7 +44,7 @@ export type HarnessAiTurn = { status: number | null; ms: number; body: string; c
 export type HarnessAiCase = { id: string; blocked?: { node: string; note: string }; turns: HarnessAiTurn[]; alive: boolean | null; appExited: boolean };
 /** What an AI Evaluator run adds to the harness spec. */
 export type HarnessAiSpec = {
-  aiCases: Array<{ id: string; needs: string[]; alivePath: string; turns: Array<{ method: string; path: string; json?: Record<string, unknown>; as: string | null; replay: unknown[] | null; timeoutMs: number; capture?: { name: string; path: string } }> }>;
+  aiCases: Array<{ id: string; needs: string[]; alivePath: string; turns: Array<{ method: string; path: string; json?: Record<string, unknown>; as: string | null; replay: unknown[] | null; timeoutMs: number; capture?: { name: string; path: string }; parallelGroup?: string }> }>;
   replay: { port: number } | null;
   timeoutSec: number;
   /** Wall-clock budget for the AI cases; once reached, no new case is started. */

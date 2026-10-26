@@ -52,4 +52,13 @@ describe("deterministic attack catalogue", () => {
     expect(t.has("cross-tenant-memory-leak")).toBe(false); // no memory/second identity
     expect(t.has("unsafe-output-rendering")).toBe(false); // no render sink
   });
+
+  it("compiles a custom message-triggered file tool using its scalar protocol", () => {
+    const local = { ...comp, tools: [], messageTriggers: [{ pattern: "\\[\\[TOOL:read_file\\s+([^\\]]+)", sink: "file" as const, evidence: ev("src/agent.js", 17) }] };
+    const built = buildCampaigns({ ...richInput, component: local, surface: { ...richInput.surface, hasTools: true, hasMcp: false, sinks: ["file"] } });
+    const file = built.find((c) => c.techniqueId === "tool-path-escape")!;
+    expect(file.steps[0]!.target).toBe("read_file");
+    expect(file.steps[0]!.message).toMatch(/^\[\[TOOL:read_file \.\.\//);
+    expect(file.steps[0]!.message).not.toContain("filePath");
+  });
 });

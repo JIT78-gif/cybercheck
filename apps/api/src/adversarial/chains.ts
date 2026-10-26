@@ -8,12 +8,20 @@ import type { CampaignVerdict } from "./oracle.ts";
 // required link was disproved (the defence held) the chain is rejected.
 
 /** A capstone campaign's single-stage prerequisites (correlated by the weaknesses the chain composes). */
-const CHAIN_DEPS: Record<string, string[]> = {};
+const CHAIN_DEPS: Record<string, string[]> = {
+  // General track: reaching a privileged state change is only a real chain when the function-authz foothold was proven too.
+  "escalate-to-admin-action": ["function-authz"],
+};
 
 /** Composite chains that are not one campaign but a correlation of several confirmed single-stage weaknesses. */
 const COMPOSITE_CHAINS: Array<{ id: string; title: string; requires: string[]; boundary: string; asset: string; impact: string }> = [
+  // AI track.
   { id: "chain-doc-poison-to-leak", title: "Poisoned document to prompt disclosure", requires: ["indirect-rag-injection"], boundary: "instruction/data then confidentiality", asset: "the system prompt and secret", impact: "A planted document makes the assistant disclose its instructions and secret." },
   { id: "chain-ssrf-to-internal", title: "Tool SSRF to internal service", requires: ["tool-ssrf-local"], boundary: "network", asset: "a sandbox-local service", impact: "A tool fetch reaches a service the user should not." },
+  // General track.
+  { id: "chain-idor-data-exfil", title: "Broken object authorization to data exfiltration", requires: ["object-authz"], boundary: "object authorization", asset: "other users' records", impact: "An attacker reads records belonging to other users through a broken object-level authorization check." },
+  { id: "chain-injection-db", title: "Injection to database read", requires: ["injection-differential"], boundary: "injection", asset: "the database", impact: "Unparameterised input lets an attacker change the query and read data from the database." },
+  { id: "chain-authz-to-money", title: "Function authorization to business-logic abuse", requires: ["function-authz", "invalid-quantity"], boundary: "function authorization then business logic", asset: "money or inventory state", impact: "An attacker reaches a privileged flow and abuses a business rule to change money or inventory state." },
 ];
 
 type Entry = { campaign: CatalogCampaign; verdict: CampaignVerdict };

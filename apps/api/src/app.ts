@@ -12,8 +12,11 @@ import { projectRoutes } from "./routes/projects.ts";
 import { testingRoutes } from "./routes/testing.ts";
 import { testingReviewRoutes } from "./routes/testing-review.ts";
 import { securityRoutes } from "./routes/security.ts";
+import { securityReviewRoutes } from "./routes/security-review.ts";
 import { aiEvaluatorRoutes } from "./routes/ai-evaluator.ts";
+import { aiEvaluatorReviewRoutes } from "./routes/ai-evaluator-review.ts";
 import { adversarialRoutes } from "./routes/adversarial.ts";
+import { adversarialReviewRoutes } from "./routes/adversarial-review.ts";
 import { understandingRoutes } from "./routes/understanding.ts";
 
 export async function buildApp() {
@@ -84,7 +87,10 @@ export async function buildApp() {
   await app.register(testingRoutes);
   await app.register(testingReviewRoutes);
   await app.register(securityRoutes);
+  await app.register(securityReviewRoutes);
   await app.register(aiEvaluatorRoutes);
+  await app.register(aiEvaluatorReviewRoutes);
   await app.register(adversarialRoutes);
+  await app.register(adversarialReviewRoutes);
   return app;
 }

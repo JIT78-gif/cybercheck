@@ -14,6 +14,9 @@ const load = (name: string) => JSON.parse(readFileSync(resolve(__dirname, "fixtu
 
 async function mockRun(page: import("@playwright/test").Page, run: AiEvaluationRunDetail) {
   await page.route(`**/v1/ai-evaluation-runs/${run.id}/events**`, (r) => json(r, { events: [] }));
+  // The Findings tab also loads human reviews and sandbox repairs for each finding.
+  await page.route(`**/v1/ai-evaluation-runs/${run.id}/reviews`, (r) => json(r, { reviews: [], canReview: false }));
+  await page.route(`**/v1/ai-evaluation-runs/${run.id}/repairs`, (r) => json(r, { repairs: [] }));
   await page.route(`**/v1/ai-evaluation-runs/${run.id}`, (r) => json(r, { run }));
 }
 
@@ -22,10 +25,10 @@ test("a run with findings shows the decision, the confirmed findings and redacte
   const run = load("ai-run-gauntlet.json");
   await mockRun(page, run);
   await page.goto(`/app/projects/${run.projectId}/ai-evaluator/${run.id}`);
-  await expect(page.getByRole("heading", { name: "AI Evaluator check" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "AI Evaluator results" })).toBeVisible();
   await expect(page.getByText("Not ready: AI findings")).toBeVisible();
   await expect(page.getByRole("tablist", { name: "AI Evaluator results" })).toBeVisible();
-  await expect(page.getByRole("link", { name: /Markdown/ })).toHaveAttribute("href", `/v1/ai-evaluation-runs/${run.id}/export?format=md`);
+  await expect(page.getByRole("link", { name: "Report" })).toHaveAttribute("href", `/v1/ai-evaluation-runs/${run.id}/export?format=md`);
 
   await page.getByRole("tab", { name: /Findings/ }).click();
   await expect(page.getByRole("heading", { name: "AI replies expose credential-like values" })).toBeVisible();

@@ -23,6 +23,7 @@ describe("applicability", () => {
     expect(c.provider.family).toBe("none");
     expect(c.provider.interceptable).toBe(false);
     expect(c.endpoints).toEqual(expect.arrayContaining(["POST /api/assistant", "GET /api/assistant/history"]));
+    expect(c.retrieval).toEqual([expect.objectContaining({ path: "src/ai.js", line: 7 })]);
     expect(c.messageTriggers).toEqual([expect.objectContaining({ sink: "file", evidence: { path: "src/ai.js", line: 17 } })]);
     const t = a.targets[0]!;
     expect(t.boundBy).toBe("single_route");

@@ -31,7 +31,8 @@ type RunRow = typeof testingRun.$inferSelect;
 const ADV = eq(testingRun.check, "adversarial");
 const emptyUsage: TestingUsage = { aiCalls: 0, inputTokens: 0, outputTokens: 0, costUsd: 0, sandboxOperations: 0, sandboxCpuSeconds: 0, models: {} };
 
-type StoredPolicy = AdversarialPolicyInput & { engine: string; catalogue: string; compiler: string; rerun?: { parentRunId: string; campaignIds: string[] } };
+type StoredPolicy = AdversarialPolicyInput & { engine: string; catalogue: string; compiler: string; rerun?: { parentRunId: string; campaignIds: string[]; planKey: string; planDigest: string } };
+type StoredPlan = { campaignPlan?: { key: string; digest: string; campaignIds: string[] } };
 const idemKey = (h: unknown) => (typeof h === "string" && h.length >= 8 && h.length <= 200 ? h : null);
 const missingKey = { code: "bad_request", message: "Missing Idempotency-Key header.", fix: "Retry from the app; it sends one automatically." };
 
@@ -77,7 +78,7 @@ export async function adversarialSummaries(rows: RunRow[]): Promise<AdversarialR
       headline: report?.headline ?? (r.status === "blocked" || r.status === "failed" ? r.error : null),
       decision: report?.decision ?? null,
       profile: policy.profile ?? "standard",
-      counts: { campaigns: c?.total ?? 0, decisive: decided, chains: chains.find((x) => x.runId === r.id)?.total ?? 0, confirmed: f?.confirmed ?? 0, suspected: f?.suspected ?? 0, blocked: c?.blocked ?? 0 },
+      counts: { campaigns: report?.accounting?.selected ?? c?.total ?? 0, decisive: report?.accounting?.decisive ?? decided, chains: chains.find((x) => x.runId === r.id)?.total ?? 0, confirmed: f?.confirmed ?? 0, suspected: f?.suspected ?? 0, blocked: report?.accounting?.blocked ?? c?.blocked ?? 0 },
       parentRunId: policy.rerun?.parentRunId ?? null,
       error: r.error,
       createdAt: r.createdAt.toISOString(),
@@ -96,6 +97,13 @@ export async function adversarialDetail(r: RunRow): Promise<AdversarialRunDetail
   ]);
   const [summary] = await adversarialSummaries([r]);
   const { engine: _e, catalogue: _c, compiler: _co, rerun: _r, ...policy } = (r.policy ?? {}) as StoredPolicy;
+  const rawReport = (r.report as AdversarialReport | null) ?? null;
+  const report = rawReport ? {
+    ...rawReport,
+    setup: rawReport.setup ?? [],
+    accounting: rawReport.accounting ?? { selected: campaigns.length, compiled: campaigns.length, attempted: campaigns.filter((c) => c.status !== "blocked").length, decisive: rawReport.coverage.decisive, blocked: campaigns.filter((c) => c.status === "blocked").length, compilerRejected: 0 },
+    versions: { ...rawReport.versions, campaignPlanDigest: rawReport.versions?.campaignPlanDigest ?? null },
+  } : null;
   return {
     ...summary!,
     policy: AdversarialPolicyInput.parse(policy),
@@ -103,7 +111,7 @@ export async function adversarialDetail(r: RunRow): Promise<AdversarialRunDetail
     chains: chains.map((c) => c.data as AttackChain),
     findings: finds.map((f) => f.data as AdversarialFinding),
     executions: execs.map((e) => e.data as TestExecution),
-    report: (r.report as AdversarialReport | null) ?? null,
+    report,
     usage: (r.usage as TestingUsage | null) ?? emptyUsage,
   };
 }
@@ -210,13 +218,20 @@ export async function adversarialRoutes(app: FastifyInstance) {
     const parsed = RerunAdversarialInput.safeParse(request.body ?? {});
     if (!parsed.success) return sendError(reply, 400, { code: "bad_request", message: "Say which campaigns to re-run.", fix: "Choose 'failed', 'inconclusive', 'blocked', or a set of campaign ids." });
     const rows = await db.select().from(adversarialCampaign).where(eq(adversarialCampaign.runId, parent.id)).orderBy(asc(adversarialCampaign.seq));
-    const ids = parsed.data.scope === "campaigns" ? (parsed.data.campaignIds ?? []).filter((id) => rows.some((c) => c.id === id)) : rows.filter((c) => c.status === parsed.data.scope).map((c) => c.id);
+    const requested = [...new Set(parsed.data.campaignIds ?? [])];
+    const unknown = parsed.data.scope === "campaigns" ? requested.filter((id) => !rows.some((c) => c.id === id)) : [];
+    if (unknown.length) return sendError(reply, 409, { code: "campaigns_not_resolved", message: `${unknown.length} selected campaign(s) do not belong to this run: ${unknown.join(", ")}.`, fix: "Choose campaign ids shown in this report; no selected campaign can be silently dropped." });
+    const ids = parsed.data.scope === "campaigns" ? requested : rows.filter((c) => c.status === parsed.data.scope).map((c) => c.id);
     if (!ids.length) return sendError(reply, 409, { code: "nothing_to_rerun", message: parsed.data.scope === "campaigns" ? "None of those campaigns belong to this run." : `That run has no ${parsed.data.scope} campaign.`, fix: "Choose campaigns from this report, or run the whole check again." });
+    const frozen = (parent.plan as StoredPlan | null)?.campaignPlan;
+    if (!frozen) return sendError(reply, 409, { code: "legacy_plan_not_frozen", message: "This older run did not preserve its private executable campaign plan, so an exact targeted rerun is not possible.", fix: "Run a new full AI Adversarial check; new runs freeze exact campaign definitions for reruns." });
+    const missing = ids.filter((id) => !frozen.campaignIds.includes(id));
+    if (missing.length) return sendError(reply, 409, { code: "frozen_campaign_missing", message: `${missing.length} selected campaign(s) are missing from the frozen plan: ${missing.join(", ")}.`, fix: "Run a new full AI Adversarial check instead of a partial rerun." });
     const [latest] = await db.select().from(snapshot).where(eq(snapshot.projectId, parent.projectId)).orderBy(desc(snapshot.createdAt)).limit(1);
     if (latest?.id !== parent.snapshotId) return sendError(reply, 409, { code: "snapshot_not_latest", message: "The project has a newer snapshot; this run's campaigns belong to the old one.", fix: "Run AI Adversarial on the latest snapshot instead." });
-    const policy: StoredPolicy = { ...((parent.policy ?? {}) as StoredPolicy), engine: AD_ENGINE_VERSION, catalogue: AD_CATALOGUE_VERSION, compiler: AD_COMPILER_VERSION, rerun: { parentRunId: parent.id, campaignIds: ids } };
+    const policy: StoredPolicy = { ...((parent.policy ?? {}) as StoredPolicy), engine: AD_ENGINE_VERSION, catalogue: AD_CATALOGUE_VERSION, compiler: AD_COMPILER_VERSION, rerun: { parentRunId: parent.id, campaignIds: ids, planKey: frozen.key, planDigest: frozen.digest } };
     const route = "checks/adversarial/rerun";
-    const requestHash = createHash("sha256").update(`${parent.id}:${ids.slice().sort().join(",")}`).digest("hex");
+    const requestHash = createHash("sha256").update(`${parent.id}:${frozen.digest}:${ids.slice().sort().join(",")}`).digest("hex");
     const result = await db.transaction(async (tx) => {
       const [existing] = await tx.select().from(idempotencyKey).where(and(eq(idempotencyKey.userId, session.user.id), eq(idempotencyKey.route, route), eq(idempotencyKey.key, key))).for("update");
       if (existing) return existing.requestHash === requestHash ? ({ kind: "replay", runId: (existing.response as { runId: string }).runId } as const) : ({ kind: "conflict" } as const);

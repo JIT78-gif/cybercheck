@@ -66,3 +66,15 @@ export const CHECK_INFO: Record<CheckId, CheckInfo> = {
 };
 
 export const CHECK_ORDER: CheckId[] = ["testing", "security", "ai-evaluator", "adversarial"];
+
+/** The API path segment for a check differs from its route/id only for the AI Evaluator (ai-evaluation). Used to build
+ *  the per-project run list (`/v1/projects/:id/${slug}-runs`) and cross-project status (`/v1/workspaces/:wid/${slug}-status`). */
+export const CHECK_API_SLUG: Record<CheckId, string> = {
+  testing: "testing",
+  security: "security",
+  "ai-evaluator": "ai-evaluation",
+  adversarial: "adversarial",
+};
+
+/** The web route for one finished (or running) check run. The route segment is the check id itself. */
+export const runHref = (check: CheckId, projectId: string, runId: string) => `/app/projects/${projectId}/${check}/${runId}`;

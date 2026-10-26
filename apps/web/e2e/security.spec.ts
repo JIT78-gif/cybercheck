@@ -112,16 +112,18 @@ function run(status: SecurityRunDetail["status"]): SecurityRunDetail {
 test("a finished Security run shows the decision, confirmed and suspected findings, coverage, untested checks and tools", async ({ page }) => {
   await signedInUser(page, "Security Tester");
   await page.route("**/v1/security-runs/sec-1/events**", (r) => json(r, { events: [{ seq: 1, type: "phase:done", message: "Done", at: new Date().toISOString() }] }));
+  await page.route("**/v1/security-runs/sec-1/reviews", (r) => json(r, { reviews: [], canReview: true }));
+  await page.route("**/v1/security-runs/sec-1/repairs", (r) => json(r, { repairs: [] }));
   await page.route("**/v1/security-runs/sec-1", (r) => json(r, { run: run("completed") }));
   await page.goto("/app/projects/proj-1/security/sec-1");
 
-  await expect(page.getByRole("heading", { name: "Security check", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Security results", level: 1 })).toBeVisible();
   await expect(page.getByText("Not ready: confirmed security findings", { exact: true })).toBeVisible();
   await expect(page.getByText(/3 of 5 applicable obligations produced decisive evidence/).first()).toBeVisible();
   await expect(page.getByText("not a promise that the app cannot be attacked", { exact: false })).toBeVisible();
   await expect(page.getByText("What the check did not trust in the analysis")).toBeVisible();
-  await expect(page.getByRole("link", { name: "Markdown" })).toHaveAttribute("href", "/v1/security-runs/sec-1/export?format=md");
-  await expect(page.getByRole("link", { name: "JSON" })).toHaveAttribute("href", "/v1/security-runs/sec-1/export?format=json");
+  await expect(page.getByRole("link", { name: "Report" })).toHaveAttribute("href", "/v1/security-runs/sec-1/export?format=md");
+  await expect(page.getByRole("link", { name: "Data (JSON)" })).toHaveAttribute("href", "/v1/security-runs/sec-1/export?format=json");
 
   const sections = page.getByRole("tablist", { name: "Security results" });
   await sections.getByRole("tab", { name: /Confirmed findings/ }).click();
@@ -146,6 +148,113 @@ test("a finished Security run shows the decision, confirmed and suspected findin
   await expect(page.getByText("AI threat modelling and triage", { exact: false })).toBeVisible();
 });
 
+test("a reviewer must confirm a Security finding before an explicitly approved sandbox repair can run", async ({ page }) => {
+  await signedInUser(page, "Security Repair Tester");
+  const now = new Date().toISOString();
+  const review = {
+    id: "review-security-1",
+    findingId: "S1",
+    runId: "sec-1",
+    projectId: "proj-1",
+    snapshotId: "snap-1",
+    reviewerUserId: "user-1",
+    reviewerName: "Security Repair Tester",
+    reviewerRole: "owner",
+    decision: "confirmed",
+    reason: "Verified against the captured source evidence",
+    createdAt: now,
+    supersedesReviewId: null,
+  };
+  const scope = {
+    files: ["src/keys.js"],
+    reproduction: ["sec:secrets:repository"],
+    regression: ["sec:sast:sql"],
+    maxAttempts: 2,
+    estimate: { minutes: [4, 20], costUsd: [0.03, 0.5] },
+  };
+  let reviewed = false;
+  let repair: Record<string, unknown> | null = null;
+  let approved = false;
+  const completedRepair = () => ({
+    ...repair!,
+    status: "verified",
+    attempts: [
+      {
+        n: 1,
+        status: "verified",
+        summary: "Moved the credential to an environment variable and preserved the existing checks.",
+        diff: "--- a/src/keys.js\n+++ b/src/keys.js\n@@ -1,1 +1,1 @@\n-export const key = 'sk_live_redacted';\n+export const key = process.env.STRIPE_KEY;",
+        patchDigest: "0123456789abcdef",
+        filesChanged: ["src/keys.js"],
+        rejectedBecause: [],
+        validationRunId: "sec-validation-1",
+        checks: [
+          { obligationId: "sec:secrets:repository", label: "No credential or key is committed", role: "reproduction", before: "failed", after: "passed" },
+          { obligationId: "sec:sast:sql", label: "Existing SQL safety check", role: "regression", before: "passed", after: "passed" },
+        ],
+        regressions: [],
+        costUsd: 0.04,
+        startedAt: now,
+        finishedAt: now,
+      },
+    ],
+  });
+
+  await page.route("**/v1/security-runs/sec-1/events**", (r) => json(r, { events: [] }));
+  await page.route("**/v1/security-runs/sec-1/reviews", (r) => json(r, { reviews: reviewed ? [review] : [], canReview: true }));
+  await page.route("**/v1/security-runs/sec-1/findings/S1/reviews", (r) => {
+    expect(r.request().headers()["idempotency-key"]).toBeTruthy();
+    expect(r.request().postDataJSON()).toMatchObject({ decision: "confirmed" });
+    reviewed = true;
+    return json(r, { review }, 201);
+  });
+  await page.route("**/v1/security-runs/sec-1/repairs", (r) => json(r, { repairs: repair ? [approved ? completedRepair() : repair] : [] }));
+  await page.route("**/v1/security-runs/sec-1/findings/S1/repairs", (r) => {
+    expect(reviewed).toBe(true);
+    repair = {
+      id: "security-repair-1",
+      runId: "sec-1",
+      findingId: "S1",
+      projectId: "proj-1",
+      snapshotId: "snap-1",
+      status: "awaiting_approval",
+      requestedBy: "user-1",
+      approvedBy: null,
+      scope,
+      attempts: [],
+      error: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+    return json(r, { repair }, 201);
+  });
+  await page.route("**/v1/security-runs/sec-1/findings/S1/repair-approvals", (r) => {
+    expect(r.request().headers()["idempotency-key"]).toBeTruthy();
+    expect(r.request().postDataJSON()).toMatchObject({ repairId: "security-repair-1" });
+    approved = true;
+    return json(r, { repair: { ...repair!, status: "running", approvedBy: "user-1" } }, 202);
+  });
+  await page.route("**/v1/security-runs/sec-1", (r) => json(r, { run: run("completed") }));
+  await page.goto("/app/projects/proj-1/security/sec-1");
+
+  await page.getByRole("tablist", { name: "Security results" }).getByRole("tab", { name: /Confirmed findings/ }).click();
+  const controls = page.getByLabel("Review and repair S1");
+  await expect(controls.getByText(/Sandbox repair becomes available after a reviewer confirms/)).toBeVisible();
+  await controls.getByPlaceholder("For example: reproduced with the proof shown above").fill(review.reason);
+  await controls.getByRole("group", { name: "Security finding decision" }).getByRole("button", { name: /Confirm/ }).click();
+  await expect(controls.getByText("Confirmed by reviewer")).toBeVisible();
+  await controls.getByRole("button", { name: "Try repair in sandbox" }).click();
+
+  const box = controls.getByLabel("Sandbox repair");
+  await expect(box.getByText("Waiting for your approval")).toBeVisible();
+  await expect(box.getByText("src/keys.js")).toBeVisible();
+  expect(approved).toBe(false);
+  await box.getByRole("button", { name: "Approve repair" }).click();
+  await expect(box.getByText("Repair verified")).toBeVisible();
+  await expect(box.getByText("+export const key = process.env.STRIPE_KEY;")).toBeVisible();
+  await expect(box.getByText(/Nothing was applied to your project/)).toBeVisible();
+});
+
 test("a running Security run shows its phase and live events", async ({ page }) => {
   await signedInUser(page, "Security Tester");
   await page.route("**/v1/security-runs/sec-1/events**", (r) => json(r, { events: [{ seq: 1, type: "scanning", message: "Running gitleaks, semgrep, osv-scanner and trivy with the network off", at: new Date().toISOString() }] }));
@@ -155,5 +264,5 @@ test("a running Security run shows its phase and live events", async ({ page }) 
   await expect(page.getByText("In progress")).toBeVisible();
   await expect(page.getByRole("list", { name: "Phases" }).locator("[aria-current=step]")).toHaveText("Scan");
   await expect(page.getByText("Running gitleaks, semgrep, osv-scanner and trivy with the network off")).toBeVisible();
-  await expect(page.getByRole("link", { name: "Markdown" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Report" })).toHaveCount(0);
 });

@@ -38,7 +38,7 @@ export function baseReport(input: {
   audit?: Array<{ check: string; ok: boolean; detail: string }>;
 }): AdversarialReport {
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     engine: AD_ENGINE_VERSION,
     catalogueVersion: AD_CATALOGUE_VERSION,
     compilerVersion: AD_COMPILER_VERSION,
@@ -52,15 +52,18 @@ export function baseReport(input: {
     obligations: [],
     obligationCoverage: { decisive: 0, required: 0, criticalDecisive: 0, criticalRequired: 0 },
     coverage: { decisive: 0, applicable: 0 },
+    accounting: { selected: 0, compiled: 0, attempted: 0, decisive: 0, blocked: 0, compilerRejected: 0 },
     chains: [],
     findings: { confirmed: 0, suspected: 0, rejected: 0, inconclusive: 0, blocked: 0, confirmedCriticalHigh: 0 },
     rejectedHypotheses: [],
+    reusedSecurity: null,
+    setup: [],
     untested: input.untested ?? [],
     attacker: { status: "off", provider: null, model: null, hypotheses: 0, uniqueFindings: 0, reason: "The attacker model is not used in this decision." },
     critic: { status: "off", provider: null, model: null, lowered: 0, reason: "The critic is not used in this decision." },
     usage: { modelRequests: 0, tokensIn: 0, tokensOut: 0, costUsd: null, durationMs: null },
     audit: input.audit ?? [],
-    versions: { engine: AD_ENGINE_VERSION, catalogue: AD_CATALOGUE_VERSION, compiler: AD_COMPILER_VERSION, snapshotDigest: input.snapshotDigest, attackPackDigests: [], runtimeImage: null, provider: null, model: null },
+    versions: { engine: AD_ENGINE_VERSION, catalogue: AD_CATALOGUE_VERSION, compiler: AD_COMPILER_VERSION, snapshotDigest: input.snapshotDigest, campaignPlanDigest: null, attackPackDigests: [], runtimeImage: null, provider: null, model: null },
     limitations: input.limitations ?? [],
   };
 }
@@ -86,6 +89,14 @@ export function buildAdversarialReport(input: {
   aiUsage?: { modelRequests: number; tokensIn: number; tokensOut: number; costUsd: number };
   limitations?: string[];
   untested?: Array<{ what: string; reason: string }>;
+  reusedSecurity?: AdversarialReport["reusedSecurity"];
+  setup?: AdversarialReport["setup"];
+  accounting?: AdversarialReport["accounting"];
+  campaignPlanDigest?: string | null;
+  /** Phase 2 AI attacker: hypotheses it proposed, confirmed findings from its campaigns, and its own rationale. */
+  attackerHypotheses?: number;
+  attackerUniqueFindings?: number;
+  attackerPlanReason?: string;
   durationMs?: number | null;
 }): AdversarialReport {
   const decision = decideAdversarial({ lanes: input.lanes, campaigns: input.catalogue, verdicts: input.verdicts, environmentBlocked: input.environment.selected === "none" || input.environment.selected === "static" ? input.environment.fallbackReason ?? "No runtime was available." : null });
@@ -98,19 +109,29 @@ export function buildAdversarialReport(input: {
   const unique = new Set(ids).size === ids.length;
   const raw = JSON.stringify({ campaigns: input.campaigns, findings: input.findings, chains: input.chains });
   const redacted = !/sk-agentmart-FIXTURE-DO-NOT-USE|CCADVMARK-|CC_SYS_PROMPT_|cc-approval-(valid|expired|replayed)/.test(raw);
+  const accounting = input.accounting ?? {
+    selected: input.catalogue.length,
+    compiled: input.catalogue.length,
+    attempted: input.campaigns.filter((c) => c.status !== "blocked" && c.status !== "planned" && c.status !== "running").length,
+    decisive: input.campaigns.filter((c) => c.status === "passed" || c.status === "failed").length,
+    blocked: input.campaigns.filter((c) => c.status === "blocked").length,
+    compilerRejected: 0,
+  };
+  const fullyAccounted = accounting.selected === accounting.compiled + accounting.compilerRejected && accounting.compiled === input.campaigns.length;
   const audit = [
     { check: "campaign ids unique", ok: unique, detail: unique ? "Every persisted campaign id is unique in this run." : "Duplicate campaign ids were persisted." },
     { check: "confirmed evidence owned", ok: owned, detail: owned ? "Every confirmed finding cites an execution owned by this run." : "A confirmed finding cites missing or foreign execution evidence." },
     { check: "confirmed source and campaign evidence", ok: evidenced, detail: evidenced ? "Every confirmed finding cites its campaign and snapshot source evidence." : "A confirmed finding lacks campaign or source evidence." },
     { check: "confirmed chains causal", ok: causal, detail: causal ? "Every confirmed chain link carries trusted causal evidence." : "A confirmed chain has an unproven or evidence-free link." },
     { check: "sensitive markers redacted", ok: redacted, detail: redacted ? "No raw credential or canary marker appears in persisted report records." : "A raw synthetic secret or canary appears in persisted records." },
+    { check: "selected campaigns accounted for", ok: fullyAccounted, detail: fullyAccounted ? `All ${accounting.selected} selected campaigns are compiled or explicitly rejected, and every compiled campaign has a record.` : `Selected ${accounting.selected}, compiled ${accounting.compiled}, recorded ${input.campaigns.length}, compiler-rejected ${accounting.compilerRejected}.` },
   ];
   const cleanAudit = audit.every((a) => a.ok);
   const finalDecision = cleanAudit ? decision.decision : "not_ready_insufficient_evidence";
   const headline = cleanAudit ? decision.headline : `The evidence audit failed: ${audit.filter((a) => !a.ok).map((a) => a.check).join(", ")}.`;
   const count = (status: AdversarialFinding["status"]) => input.findings.filter((f) => f.status === status).length;
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     engine: AD_ENGINE_VERSION,
     catalogueVersion: AD_CATALOGUE_VERSION,
     compilerVersion: AD_COMPILER_VERSION,
@@ -124,15 +145,18 @@ export function buildAdversarialReport(input: {
     obligations: decision.obligations,
     obligationCoverage: decision.obligationCoverage,
     coverage: decision.coverage,
+    accounting,
     chains: input.chains,
     findings: { confirmed: count("confirmed"), suspected: count("suspected"), rejected: count("rejected"), inconclusive: count("inconclusive"), blocked: count("blocked"), confirmedCriticalHigh: confirmed.filter((f) => f.severity === "critical" || f.severity === "high").length },
     rejectedHypotheses: input.campaigns.filter((c) => c.status === "passed").map((c) => ({ id: c.id, lane: c.lane, title: c.title, reason: c.reason })),
+    reusedSecurity: input.reusedSecurity ?? null,
+    setup: input.setup ?? [],
     untested: input.untested ?? [],
-    attacker: input.attackerReview ? { status: input.attackerReview.status === "ran" ? "ran" : input.attackerReview.status, provider: input.attackerReview.status === "ran" ? "configured AI gateway" : null, model: input.attackerReview.model, hypotheses: input.attackerReview.campaignIds.length, uniqueFindings: 0, reason: input.attackerReview.reason } : input.aiAttacker === "off" ? { status: "off", provider: null, model: null, hypotheses: 0, uniqueFindings: 0, reason: "The optional AI attacker was disabled; deterministic campaigns still ran." } : { status: "deterministic_only", provider: null, model: null, hypotheses: 0, uniqueFindings: 0, reason: "No attacker-model execution was needed for the deterministic catalogue." },
+    attacker: input.attackerReview ? { status: input.attackerReview.status === "ran" ? "ran" : input.attackerReview.status, provider: input.attackerReview.status === "ran" ? "configured AI gateway" : null, model: input.attackerReview.model, hypotheses: input.attackerHypotheses ?? input.attackerReview.campaignIds.length, uniqueFindings: input.attackerUniqueFindings ?? 0, reason: input.attackerPlanReason ?? input.attackerReview.reason } : input.aiAttacker === "off" ? { status: "off", provider: null, model: null, hypotheses: 0, uniqueFindings: 0, reason: "The optional AI attacker was disabled; deterministic campaigns still ran." } : { status: "deterministic_only", provider: null, model: null, hypotheses: 0, uniqueFindings: 0, reason: "No attacker-model execution was needed for the deterministic catalogue." },
     critic: input.criticReview ? { status: input.criticReview.status, provider: input.criticReview.status === "ran" ? "configured AI gateway" : null, model: input.criticReview.model, lowered: input.criticReview.challenged.length, reason: input.criticReview.reason } : input.aiCritic === "off" ? { status: "off", provider: null, model: null, lowered: 0, reason: "The optional AI critic was disabled; deterministic evidence audits still ran." } : { status: "unavailable", provider: null, model: null, lowered: 0, reason: "The optional AI critic was unavailable; it did not block deterministic results." },
     usage: { modelRequests: input.aiUsage?.modelRequests ?? 0, tokensIn: input.aiUsage?.tokensIn ?? 0, tokensOut: input.aiUsage?.tokensOut ?? 0, costUsd: input.aiUsage?.costUsd ?? 0, durationMs: input.durationMs ?? null },
     audit,
-    versions: { engine: AD_ENGINE_VERSION, catalogue: AD_CATALOGUE_VERSION, compiler: AD_COMPILER_VERSION, snapshotDigest: input.snapshotDigest, attackPackDigests: [], runtimeImage: null, provider: input.environment.provider, model: input.criticReview?.model ?? input.attackerReview?.model ?? null },
+    versions: { engine: AD_ENGINE_VERSION, catalogue: AD_CATALOGUE_VERSION, compiler: AD_COMPILER_VERSION, snapshotDigest: input.snapshotDigest, campaignPlanDigest: input.campaignPlanDigest ?? null, attackPackDigests: [], runtimeImage: null, provider: input.environment.provider, model: input.criticReview?.model ?? input.attackerReview?.model ?? null },
     limitations: input.limitations ?? [],
   };
 }

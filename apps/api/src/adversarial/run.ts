@@ -1,17 +1,32 @@
 import { AD_PROFILE_LIMITS, type AdversarialCampaign, type AiComponentInventory, type AiEvaluationTarget, type Evidence, type ProjectDossier, type RulesOfEngagement } from "@cybercheck/contracts";
-import { prepareApp, buildIdentities } from "../security/proofs/run.ts";
+import { prepareApp } from "../security/proofs/run.ts";
 import { CANARY } from "../security/proofs/catalog.ts";
 import { planWorkspaces } from "../testing/adapters.ts";
-import { bootGraph, planBoot } from "../testing/agents.ts";
-import { seededAccounts, verifyTarget } from "../testing/fixtures.ts";
+import { bootGraph, type BootApp } from "../testing/agents.ts";
+import { verifyTarget } from "../testing/fixtures.ts";
 import type { FixtureNode } from "../testing/plan.ts";
 import { runHarness, type HarnessAiCase, type HarnessAiSpec } from "../testing/probes.ts";
 import type { Ctx } from "../testing/runtime.ts";
 import type { SnapshotSource } from "../understanding/source.ts";
+import { redactSecrets } from "../understanding/source.ts";
 import type { CatalogCampaign } from "./catalog.ts";
+import type { PlannedStep } from "./compiler.ts";
 import { judgeCampaign, type CampaignObservation, type CampaignVerdict } from "./oracle.ts";
 
-type RunResult = { records: AdversarialCampaign[]; verdicts: Map<string, CampaignVerdict>; appBooted: boolean; bootNote: string; executionIds: string[] };
+export type SetupResult = { name: string; kind: "identity" | "fixture"; ok: boolean; detail: string };
+export type RunResult = { records: AdversarialCampaign[]; verdicts: Map<string, CampaignVerdict>; appBooted: boolean; bootNote: string; executionIds: string[]; setup: SetupResult[]; attempted: number };
+
+/** The synthetic identity sign-ins the harness attempted, so a blocked campaign can name its real cause. Captured from
+ *  the first run that produced them; the note is sanitized runtime text, never a raw credential. */
+function safeDetail(value: string | null | undefined, fallback: string): string {
+  return redactSecrets(value ?? fallback).text.replace(/\s+/g, " ").slice(0, 300);
+}
+
+function setupFrom(out: { identities?: Array<{ name: string; kind: string; ok: boolean; note: string | null }>; fixtures?: Array<{ id: string; kind: string; ok: boolean; note: string }> } | null | undefined): SetupResult[] {
+  const identities = new Map((out?.identities ?? []).map((i) => [i.name, { name: i.name, kind: "identity" as const, ok: i.ok, detail: safeDetail(i.note, i.ok ? "signed in" : "sign-in failed") }]));
+  const fixtures = (out?.fixtures ?? []).filter((f) => !identities.has(f.id)).map((f) => ({ name: f.id, kind: "fixture" as const, ok: f.ok, detail: safeDetail(f.note, f.ok ? "created" : "setup failed") }));
+  return [...fixtures, ...identities.values()];
+}
 const REPLAY_PORT = 8098;
 const REPLAY_KEY = "cc-adversarial-replay-key";
 
@@ -119,7 +134,7 @@ function toHarnessCase(c: CatalogCampaign, target: AiEvaluationTarget, appReadyP
 
 function observation(c: CatalogCampaign, out: HarnessAiCase | undefined, target: AiEvaluationTarget, executionId: string, evidence: Evidence[], canaryHits: string[], booted: boolean): CampaignObservation {
   const bodies = (out?.turns ?? []).map((t) => parse(t.body));
-  const turns = (out?.turns ?? []).map((t, i) => ({ as: c.steps[Math.min(i, c.steps.length - 1)]?.asIdentity ?? null, status: t.status, reply: replyOf(bodies[i], target), body: bodies[i] }));
+  const turns = (out?.turns ?? []).map((t, i) => ({ as: c.steps[Math.min(i, c.steps.length - 1)]?.asIdentity ?? null, status: t.status, reply: replyOf(bodies[i], target), body: bodies[i], ms: t.ms }));
   const lastAssistant = bodies.findLast((b) => Boolean(at(b, target.responseSelector))) ?? bodies.at(-1);
   const toolRaw = at(lastAssistant, target.toolTraceSelector) ?? at(lastAssistant, "toolCalls");
   const citationRaw = at(lastAssistant, target.citationSelector) ?? at(lastAssistant, "citations");
@@ -137,8 +152,10 @@ function observation(c: CatalogCampaign, out: HarnessAiCase | undefined, target:
   const fixtureReady = uploadIndexes.every((i) => { const s = out?.turns[i]?.status; return s != null && s >= 200 && s < 300; });
   const retrievalReached = Boolean(at(lastAssistant, target.retrievalTraceSelector) ?? at(lastAssistant, "usedDocs") ?? (c.oracle.kind !== "no_cross_tenant_read" && c.oracle.kind !== "citation_grounded"));
   const oracleReady = c.oracle.kind === "state_unchanged" || c.oracle.kind === "no_privileged_action" ? stateAfter[c.oracle.id] != null : c.oracle.kind === "refused_or_owned" ? reached : c.oracle.kind === "citation_grounded" ? answered && Array.isArray(citationRaw) : answered;
+  const fileEscapeMarker = c.oracle.kind === "no_file_escape" ? c.oracle.marker : null;
   return {
     ran: Boolean(out && !out.blocked),
+    blockedReason: out?.blocked ? `${out.blocked.node}: ${safeDetail(out.blocked.note, "required setup failed")}` : null,
     preconditions: { appBooted: booted, targetReached: reached, fixtureReady, oracleReady },
     turns,
     toolCalls,
@@ -147,7 +164,12 @@ function observation(c: CatalogCampaign, out: HarnessAiCase | undefined, target:
     xssExecuted: false,
     xssReflected: false,
     retrievalReached,
-    toolSurfaceReached: reached && (toolCalls.length > 0 || canaryHits.includes("cc-adv-canary") || c.steps.some((s) => (s.operation === "invoke_known_tool" || s.operation === "repeat_bounded") && turns.some((t) => t.reply.toLowerCase().includes(s.target.toLowerCase())))),
+    toolSurfaceReached: reached && (
+      toolCalls.length > 0
+      || canaryHits.includes("cc-adv-canary")
+      || (fileEscapeMarker != null && turns.some((t) => t.reply.includes(fileEscapeMarker)))
+      || c.steps.some((s) => (s.operation === "invoke_known_tool" || s.operation === "repeat_bounded") && turns.some((t) => t.reply.toLowerCase().includes(s.target.toLowerCase())))
+    ),
     responseOwned: null,
     stateAfter,
     reset: true, // each campaign receives a fresh disposable app container from the prepared image
@@ -157,26 +179,187 @@ function observation(c: CatalogCampaign, out: HarnessAiCase | undefined, target:
   };
 }
 
-export async function runAdversarialCampaigns(ctx: Ctx, input: { dossier: ProjectDossier; src: SnapshotSource; archive: Buffer; target: AiEvaluationTarget; component: AiComponentInventory; campaigns: CatalogCampaign[]; endpoints: Set<string>; rules: RulesOfEngagement; profile: keyof typeof AD_PROFILE_LIMITS; onEvent: (message: string) => Promise<void> }): Promise<RunResult> {
-  const providerBacked = input.component.kind !== "local_logic";
-  const replay = providerBacked && input.component.provider.interceptable && input.component.provider.family === "openai_compatible" && input.component.provider.baseUrlEnv.length > 0;
-  if (providerBacked && !replay) return { records: [], verdicts: new Map(), appBooted: false, bootNote: input.component.provider.reason ?? "The model provider cannot be redirected to the sandbox-local replay model, so its campaigns were not executed.", executionIds: [] };
+// The orchestrator supplies the one boot plan chosen for this run. Preparation never rediscovers accounts from test
+// literals, so seed/activation/setup nodes and the identities that depend on them cannot drift between planning and run.
+export type PreparedAttack = { image: string; app: BootApp; graph: FixtureNode[] };
+export type SetupPreflight = { appBooted: boolean; bootNote: string; executionIds: string[]; setup: SetupResult[]; byNode: Map<string, SetupResult> };
+
+export async function prepareAdversarialAttack(ctx: Ctx, input: { dossier: ProjectDossier; src: SnapshotSource; archive: Buffer; app: BootApp; graph?: FixtureNode[] }): Promise<{ ok: true; prepared: PreparedAttack } | { ok: false; note: string }> {
   const workspaces = planWorkspaces(input.dossier, input.src);
-  const boot = await planBoot(null, input.dossier, input.src, workspaces);
-  const app = boot.apps[0];
-  if (!app) return { records: [], verdicts: new Map(), appBooted: false, bootNote: "No startable app was found.", executionIds: [] };
+  const app = input.app;
   const ws = workspaces.find((w) => w.dir === app.workspace);
   const image = await prepareApp(ctx, input.archive, app.prepare.length || ws?.install ? { dir: app.workspace, command: ws?.install?.command ?? "npm install" } : null, undefined, "adversarial_app");
-  if (!image) return { records: [], verdicts: new Map(), appBooted: false, bootNote: "The application could not be prepared in the sandbox.", executionIds: [] };
+  if (!image) return { ok: false, note: "The application could not be prepared in the sandbox." };
+  const graph: FixtureNode[] = input.graph ?? bootGraph(app, (applies) => verifyTarget(input.dossier, applies));
+  return { ok: true, prepared: { image, app, graph } };
+}
 
-  const loginEp = input.dossier.entryPoints.find((e) => /(^|\/)(log-?in|sign-?in|auth\/login|session)(\/|$)/i.test(e.path) && e.method === "POST");
-  const accounts = seededAccounts(input.src);
-  const login = loginEp && accounts.length ? { method: loginEp.method, path: loginEp.path, accountField: accounts[0]!.accountField, passwordField: accounts[0]!.passwordField } : null;
-  const { nodes: idNodes } = login ? buildIdentities(input.src, login, input.dossier) : { nodes: [] };
-  const graph: FixtureNode[] = [...bootGraph(app, (applies) => verifyTarget(input.dossier, applies)), ...idNodes];
+/** Execute and record the setup graph once before any campaign fan-out. Campaign sandboxes still replay this same
+ * validated graph for isolation, but a broken identity or fixture is discovered only once and blocks dependants early. */
+export async function preflightAdversarialSetup(ctx: Ctx, prepared: PreparedAttack, timeoutSec: number): Promise<SetupPreflight> {
+  const r = await runHarness(ctx, prepared.image, prepared.app, prepared.graph, [], "Adversarial test setup preflight", null, {}, [], CANARY.port, undefined, "adversarial_fixture");
+  const setup = setupFrom(r.out);
+  const appBooted = Boolean(r.out?.boot.ok);
+  const bootNote = safeDetail(r.out?.boot.reason, appBooted ? "The application started and the setup graph was checked." : "The application did not start during setup preflight.");
+  void timeoutSec;
+  const byNode = new Map(setup.map((s) => [s.name, s]));
+  // Captured symbols are aliases for their producing setup node, so a campaign that uses {{order_id}} is blocked when
+  // the order fixture failed and is allowed when that exact real id was captured.
+  for (const node of prepared.graph) {
+    const result = byNode.get(node.id);
+    if (!result) continue;
+    for (const name of [...(node.exports ?? []), ...(node.steps ?? []).flatMap((s) => s.capture ? [s.capture.name] : [])]) byNode.set(name, result);
+  }
+  return { appBooted, bootNote, executionIds: [r.exec.id], setup, byNode };
+}
+
+export function campaignFixtureDependencies(c: CatalogCampaign): string[] {
+  const deps = new Set(c.fixtureDependencies ?? []);
+  const local = new Set(c.steps.flatMap((s) => s.capture ? [s.capture.name] : []));
+  for (const s of c.steps) {
+    const identity = s.asIdentity?.replace(/#(?:forged|tampered)$/, "");
+    if (identity && identity !== "anonymous") deps.add(identity);
+    for (const m of JSON.stringify({ target: s.target, body: s.body, query: s.query, toolArgs: s.toolArgs }).matchAll(/\{\{([\w.-]+)\}\}/g)) {
+      const name = m[1]!;
+      if (name === "$uid" || local.has(name)) continue;
+      deps.add(name.includes(".") ? name.split(".")[0]! : name);
+    }
+  }
+  return [...deps];
+}
+
+function blockedObservation(c: CatalogCampaign, preflight: SetupPreflight, evidence: Evidence[], reason?: string): CampaignObservation {
+  const failed = campaignFixtureDependencies(c).map((id) => preflight.byNode.get(id)).find((x) => !x?.ok);
+  const detail = reason ?? (failed ? `${failed.name}: ${failed.detail}` : !preflight.appBooted ? preflight.bootNote : "The campaign could not establish its required setup.");
+  return { ran: false, blockedReason: detail, preconditions: { appBooted: preflight.appBooted, targetReached: false, fixtureReady: false, oracleReady: false }, turns: [], toolCalls: [], citations: [], canaryHits: 0, xssExecuted: false, xssReflected: false, retrievalReached: false, toolSurfaceReached: false, responseOwned: null, stateAfter: {}, reset: false, resetRequired: c.resetStrategy !== "none", executionIds: preflight.executionIds, evidence };
+}
+
+function dependencyFailure(c: CatalogCampaign, preflight: SetupPreflight): SetupResult | null {
+  if (!preflight.appBooted) return { name: "application boot", kind: "fixture", ok: false, detail: preflight.bootNote };
+  for (const id of campaignFixtureDependencies(c)) {
+    const result = preflight.byNode.get(id);
+    if (!result?.ok) return result ?? { name: id, kind: "fixture", ok: false, detail: `Required setup node "${id}" was not produced by the boot plan.` };
+  }
+  return null;
+}
+
+// How many HTTP turns a bounded repeat/parallel step expands into. The harness runs aiCase turns sequentially (it has
+// no concurrency primitive), so a race / parallel campaign is approximated as a bounded burst; the rate-limit and
+// logic oracles read the burst's statuses. Kept small to stay inside the sandbox and the run's time budget.
+const burstOf = (s: PlannedStep) => Math.min(Math.max(s.operation === "run_parallel_bounded" ? (s.parallel ?? 4) : (s.repeat ?? 8), 2), 20);
+
+/** Translate a general (non-AI) campaign into plain HTTP harness turns: method+path+body as an identity, with capture
+ *  wiring. No model target, no replay. `{{name}}` is filled from an identity's own id or an earlier turn's capture. */
+function toGeneralCase(c: CatalogCampaign, appReadyPath: string): HarnessAiSpec["aiCases"][number] | null {
+  const turns: HarnessAiSpec["aiCases"][number]["turns"] = [];
+  const turnFor = (s: PlannedStep, parallelGroup?: string) => {
+    const who = !s.asIdentity || s.asIdentity === "anonymous" ? null : s.asIdentity;
+    const e = endpoint(s.target);
+    return { method: e.method, path: e.path, json: s.body, as: who, replay: null, timeoutMs: 15_000, ...(s.capture ? { capture: s.capture } : {}), ...(parallelGroup ? { parallelGroup } : {}) };
+  };
+  for (const s of c.steps) {
+    if (s.operation === "send_request" || s.operation === "capture") turns.push(turnFor(s));
+    else if (s.operation === "repeat_bounded" || s.operation === "run_parallel_bounded") for (let i = 0; i < burstOf(s); i++) turns.push(turnFor(s, s.operation === "run_parallel_bounded" ? `parallel-${c.id}` : undefined));
+  }
+  if (!turns.length) return null;
+  // Sign in every identity a turn acts as, plus every identity whose own id is templated as {{name.id}} (an IDOR read
+  // uses another user's captured id), so the harness has that value to fill. An undefined identity blocks the case.
+  const ids = new Set<string>();
+  const scan = (s: string) => { for (const m of s.matchAll(/\{\{([\w-]+)\.id\}\}/g)) ids.add(m[1]!); };
+  for (const t of turns) { scan(t.path); if (t.json) scan(JSON.stringify(t.json)); }
+  const needs = [...new Set([...turns.map((t) => t.as).filter((x): x is string => Boolean(x)), ...ids])];
+  return { id: c.id, needs, alivePath: appReadyPath, turns };
+}
+
+/** Map harness turns (a burst step produces several) back to their source step, for per-turn identity attribution. */
+function stepIndexForTurns(c: CatalogCampaign): number[] {
+  const out: number[] = [];
+  c.steps.forEach((s, si) => {
+    const n = s.operation === "repeat_bounded" || s.operation === "run_parallel_bounded" ? burstOf(s) : s.operation === "send_request" || s.operation === "capture" ? 1 : 0;
+    for (let k = 0; k < n; k++) out.push(si);
+  });
+  return out;
+}
+
+function generalObservation(c: CatalogCampaign, out: HarnessAiCase | undefined, executionId: string, evidence: Evidence[], canaryHits: string[], booted: boolean): CampaignObservation {
+  const raw = out?.turns ?? [];
+  const idx = stepIndexForTurns(c);
+  const turns = raw.map((t, i) => {
+    const body = parse(t.body);
+    return { as: c.steps[idx[i] ?? Math.min(i, c.steps.length - 1)]?.asIdentity ?? null, status: t.status, reply: typeof body === "string" ? body : JSON.stringify(body ?? ""), body, ms: t.ms };
+  });
+  const statuses = turns.map((t) => t.status).filter((s): s is number => s != null);
+  const reached = Boolean(out && !out.blocked && statuses.length > 0);
+  // A single response decides access_denied, logic_rejected and field_unchanged: a refusal (401/403/404) is as decisive
+  // as a 2xx (the privileged field was simply not accepted). Only the differential oracles need two responses.
+  const oracleReady = c.oracle.kind === "rate_limited" || c.oracle.kind === "injection_inert" ? statuses.length >= 2 : reached;
+  return {
+    ran: Boolean(out && !out.blocked),
+    blockedReason: out?.blocked ? `${out.blocked.node}: ${safeDetail(out.blocked.note, "required setup failed")}` : null,
+    preconditions: { appBooted: booted, targetReached: reached, fixtureReady: true, oracleReady },
+    turns,
+    toolCalls: [],
+    citations: [],
+    canaryHits: canaryHits.includes("cc-adv-canary") ? 1 : 0,
+    xssExecuted: false,
+    xssReflected: false,
+    retrievalReached: false,
+    toolSurfaceReached: canaryHits.includes("cc-adv-canary"),
+    responseOwned: null,
+    stateAfter: {},
+    reset: true, // each campaign receives a fresh disposable app container from the prepared image
+    resetRequired: !["none", "new_conversation", "fresh_browser"].includes(c.resetStrategy),
+    executionIds: [executionId],
+    evidence,
+  };
+}
+
+export async function runGeneralCampaigns(ctx: Ctx, input: { prepared: PreparedAttack; preflight: SetupPreflight; campaigns: CatalogCampaign[]; rules: RulesOfEngagement; profile: keyof typeof AD_PROFILE_LIMITS; evidence: Evidence[]; onEvent: (message: string) => Promise<void> }): Promise<RunResult> {
+  const { image, app, graph } = input.prepared;
   const records: AdversarialCampaign[] = [];
   const verdicts = new Map<string, CampaignVerdict>();
-  const executionIds: string[] = [];
+  const executionIds: string[] = [...input.preflight.executionIds];
+  let attempted = 0;
+  let seq = 0;
+  for (const c of input.campaigns) {
+    const dependency = dependencyFailure(c, input.preflight);
+    if (dependency) {
+      const verdict = judgeCampaign(c, blockedObservation(c, input.preflight, input.evidence.slice(0, 4), `${dependency.name}: ${dependency.detail}`));
+      verdicts.set(c.id, verdict);
+      records.push(campaignRecord(c, verdict, ++seq));
+      await input.onEvent(`${c.title}: blocked by ${dependency.name} (${dependency.detail})`);
+      continue;
+    }
+    const specCase = toGeneralCase(c, app.readyPath ?? "/");
+    if (!specCase) {
+      const verdict = judgeCampaign(c, blockedObservation(c, input.preflight, input.evidence.slice(0, 4), "The campaign has no executable HTTP turn after compilation."));
+      verdicts.set(c.id, verdict);
+      records.push(campaignRecord(c, verdict, ++seq));
+      continue;
+    }
+    await input.onEvent(`Running ${c.title} in a fresh isolated application`);
+    const ai: HarnessAiSpec = { aiCases: [specCase], replay: null, timeoutSec: Math.min(180, input.rules.limits.timeoutSec), deadlineMs: Math.min(180_000, input.rules.limits.timeoutSec * 1000), maxModelRequests: Math.max(1, input.rules.limits.toolCalls) };
+    const r = await runHarness(ctx, image, app, graph, [], `Adversarial campaign: ${c.title}`, null, {}, [], CANARY.port, ai, "adversarial_campaign");
+    executionIds.push(r.exec.id);
+    const campaignOut = r.out?.aiCases?.find((x) => x.id === c.id);
+    if (campaignOut && !campaignOut.blocked && campaignOut.turns.length) attempted++;
+    const obs = generalObservation(c, campaignOut, r.exec.id, input.evidence.slice(0, 4), r.out?.canaryHits ?? [], Boolean(r.out?.boot.ok));
+    const verdict = judgeCampaign(c, obs);
+    verdicts.set(c.id, verdict);
+    records.push(campaignRecord(c, verdict, ++seq));
+  }
+  return { records, verdicts, appBooted: input.preflight.appBooted, bootNote: attempted ? `${attempted} campaign(s) sent attack requests in isolated application instances.` : input.preflight.bootNote, executionIds, setup: input.preflight.setup, attempted };
+}
+
+export async function runAdversarialCampaigns(ctx: Ctx, input: { prepared: PreparedAttack; preflight: SetupPreflight; target: AiEvaluationTarget; component: AiComponentInventory; campaigns: CatalogCampaign[]; endpoints: Set<string>; rules: RulesOfEngagement; profile: keyof typeof AD_PROFILE_LIMITS; onEvent: (message: string) => Promise<void> }): Promise<RunResult> {
+  const providerBacked = input.component.kind !== "local_logic";
+  const replay = providerBacked && input.component.provider.interceptable && input.component.provider.family === "openai_compatible" && input.component.provider.baseUrlEnv.length > 0;
+  if (providerBacked && !replay) return { records: [], verdicts: new Map(), appBooted: input.preflight.appBooted, bootNote: input.component.provider.reason ?? "The model provider cannot be redirected to the sandbox-local replay model, so its campaigns were not executed.", executionIds: [...input.preflight.executionIds], setup: input.preflight.setup, attempted: 0 };
+  const { image, app, graph } = input.prepared;
+  const records: AdversarialCampaign[] = [];
+  const verdicts = new Map<string, CampaignVerdict>();
+  const executionIds: string[] = [...input.preflight.executionIds];
+  let attempted = 0;
   let seq = 0;
   const extra: Record<string, string> = {};
   if (replay) {
@@ -184,17 +367,31 @@ export async function runAdversarialCampaigns(ctx: Ctx, input: { dossier: Projec
     for (const name of input.component.provider.apiKeyEnv) extra[name] = REPLAY_KEY;
   }
   for (const c of input.campaigns) {
+    const dependency = dependencyFailure(c, input.preflight);
+    if (dependency) {
+      const verdict = judgeCampaign(c, blockedObservation(c, input.preflight, input.component.evidence.slice(0, 4), `${dependency.name}: ${dependency.detail}`));
+      verdicts.set(c.id, verdict);
+      records.push(campaignRecord(c, verdict, ++seq));
+      await input.onEvent(`${c.title}: blocked by ${dependency.name} (${dependency.detail})`);
+      continue;
+    }
     const specCase = toHarnessCase(c, input.target, app.readyPath ?? "/", input.endpoints, replay);
-    if (!specCase) continue;
+    if (!specCase) {
+      const verdict = judgeCampaign(c, blockedObservation(c, input.preflight, input.component.evidence.slice(0, 4), "The campaign has no executable API turn after compilation."));
+      verdicts.set(c.id, verdict);
+      records.push(campaignRecord(c, verdict, ++seq));
+      continue;
+    }
     await input.onEvent(`Running ${c.title} in a fresh isolated application`);
     const ai: HarnessAiSpec = { aiCases: [specCase], replay: replay ? { port: REPLAY_PORT } : null, timeoutSec: Math.min(180, input.rules.limits.timeoutSec), deadlineMs: Math.min(180_000, input.rules.limits.timeoutSec * 1000), maxModelRequests: Math.max(1, input.rules.limits.toolCalls) };
     const r = await runHarness(ctx, image, app, graph, [], `Adversarial campaign: ${c.title}`, null, extra, [], CANARY.port, ai, "adversarial_campaign");
     executionIds.push(r.exec.id);
     const out = r.out?.aiCases?.find((x) => x.id === c.id);
+    if (out && !out.blocked && out.turns.length) attempted++;
     const obs = observation(c, out, input.target, r.exec.id, input.component.evidence.slice(0, 4), r.out?.canaryHits ?? [], Boolean(r.out?.boot.ok));
     const verdict = judgeCampaign(c, obs);
     verdicts.set(c.id, verdict);
     records.push(campaignRecord(c, verdict, ++seq));
   }
-  return { records, verdicts, appBooted: records.length > 0, bootNote: records.length ? `${records.length} campaign(s) ran in isolated application instances.` : "No API campaign could be executed.", executionIds };
+  return { records, verdicts, appBooted: input.preflight.appBooted, bootNote: attempted ? `${attempted} campaign(s) sent attack requests in isolated application instances.` : input.preflight.bootNote, executionIds, setup: input.preflight.setup, attempted };
 }

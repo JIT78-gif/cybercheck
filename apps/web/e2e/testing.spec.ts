@@ -121,7 +121,7 @@ test("a finished run shows defects with evidence, untested scope and the full le
   await page.route("**/v1/testing-runs/run-1", (r) => json(r, { run: run("completed") }));
   await page.goto("/app/projects/proj-1/testing/run-1");
 
-  await expect(page.getByRole("heading", { name: "Testing run", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Testing results", level: 1 })).toBeVisible();
   const sections = page.getByRole("tablist", { name: "Run sections" });
   await expect(sections.getByRole("tab", { name: "Overview" })).toHaveAttribute("aria-selected", "true");
   // Overview: the release decision leads; workflow completion is neutral, never a green "passed".
@@ -190,8 +190,8 @@ test("a finished run shows defects with evidence, untested scope and the full le
 
   // Details: downloads, sign-in setup, and what ran with platform exit codes.
   await sections.getByRole("tab", { name: "Details" }).click();
-  await expect(page.getByRole("link", { name: "Report (Markdown)" })).toHaveAttribute("href", "/v1/testing-runs/run-1/export?format=md");
-  await expect(page.getByRole("link", { name: "Full data (JSON)" })).toHaveAttribute("href", "/v1/testing-runs/run-1/export?format=json");
+  await expect(page.getByRole("link", { name: "Report", exact: true })).toHaveAttribute("href", "/v1/testing-runs/run-1/export?format=md");
+  await expect(page.getByRole("link", { name: "Data (JSON)" })).toHaveAttribute("href", "/v1/testing-runs/run-1/export?format=json");
   await expect(page.getByText("Sign in as admin")).toBeVisible();
   await page.locator("summary").filter({ hasText: "Start the app and probe 18 request(s)" }).click();
   await expect(page.getByText("harness: boot=true probes=18 failed=1")).toBeVisible();
@@ -231,7 +231,7 @@ test("a running run shows live progress and can be cancelled", async ({ page }) 
   await expect(page.getByRole("heading", { name: "Every check" })).toBeVisible();
   await expect(page.getByText("Your code runs only in an isolated cloud sandbox")).toBeVisible();
   // No download while the run is still going.
-  await expect(page.getByRole("link", { name: "Report (Markdown)" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Report", exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "Cancel run" }).click();
   await expect(page.getByText("Cancelled")).toBeVisible();
   await expect(page.getByRole("button", { name: "Cancel run" })).toHaveCount(0);

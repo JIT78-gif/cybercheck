@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, FileText, Upload } from "lucide-react";
+import { FileText, Upload } from "lucide-react";
 import type { FileTreeEntry, ProjectDetail, SnapshotSummary } from "@cybercheck/contracts";
 import { GitHubIcon } from "@/components/auth/provider-icons";
 import { AddProjectFlow } from "@/components/intake/add-project";
@@ -11,9 +11,9 @@ import { IssueList, SnapshotFacts } from "@/components/intake/snapshot-result";
 import { Button } from "@/components/ui/button";
 import { Alert, Spinner } from "@/components/ui/form";
 import { ApiError, api } from "@/lib/api";
-import { CHECK_INFO, CHECK_ORDER } from "@/lib/checks";
 import { formatBytes, shortDigest, timeAgo } from "@/lib/format";
 import { useAppData } from "./app-data";
+import { ProjectCheckResults } from "./project-checks";
 import { AnalysisChip, AnalysisProgress, Card, CardTitle, PageHeader, RUNNING_STAGES, StatusChip } from "./ui";
 
 const TREE_PREVIEW = 150;
@@ -170,43 +170,7 @@ export function ProjectDetailView({ id }: { id: string }) {
         )}
       </Card>
 
-      <div>
-        <h2 className="mb-1 text-lg font-semibold tracking-tight text-fg">Run a check on this project</h2>
-        {project.analysis.stage !== "ready" && (
-          <p className="mb-3 text-sm text-fg-muted">Checks unlock when the analysis has finished, so every check works from the complete understanding of the project.</p>
-        )}
-        <div className="mt-3 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {CHECK_ORDER.map((c) => {
-            const info = CHECK_INFO[c];
-            if (project.analysis.stage !== "ready") {
-              return (
-                <div key={c} aria-disabled="true" className="rounded-2xl border border-border bg-surface p-5 opacity-60">
-                  <info.icon className="size-5 text-fg-muted" aria-hidden="true" />
-                  <p className="mt-3 font-semibold text-fg">{info.name}</p>
-                  <p className="mt-1 text-sm text-fg-muted">{info.tagline}</p>
-                  <span className="mt-4 inline-flex items-center gap-1.5 text-sm text-fg-muted">
-                    {RUNNING_STAGES.has(project.analysis.stage) ? <><Spinner className="size-3.5" /> Waiting for the analysis</> : "Not available"}
-                  </span>
-                </div>
-              );
-            }
-            return (
-              <Link
-                key={c}
-                href={`/app/checks/${c}?project=${project.id}`}
-                className="group rounded-2xl border border-border bg-surface p-5 transition duration-200 hover:-translate-y-0.5 hover:border-accent/40 hover:shadow-md"
-              >
-                <info.icon className="size-5 text-accent" aria-hidden="true" />
-                <p className="mt-3 font-semibold text-fg">{info.name}</p>
-                <p className="mt-1 text-sm text-fg-muted">{info.tagline}</p>
-                <span className="mt-4 inline-flex items-center gap-1 text-sm font-medium text-fg">
-                  Open <ArrowRight className="size-4 transition-transform group-hover:translate-x-1" aria-hidden="true" />
-                </span>
-              </Link>
-            );
-          })}
-        </div>
-      </div>
+      <ProjectCheckResults projectId={project.id} ready={project.analysis.stage === "ready"} />
 
       {latest?.status === "BASELINED" && (
         <Card>

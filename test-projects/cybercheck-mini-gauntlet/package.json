@@ -1,0 +1,16 @@
+{
+  "name": "cybercheck-mini-gauntlet",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A deliberately vulnerable, synthetic Express application for authorized Cybercheck evaluation only.",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node test/smoke.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "express": "5.3.0"
+  }
+}

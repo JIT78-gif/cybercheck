@@ -3,9 +3,9 @@
   "note": "Ground truth for the AI Adversarial engine, frozen before the engine exists so later work is measured against a fixed target. The vulnerable fixture is ai-agent-gauntlet; the matched clean control is clean-ai-agent-control. Anchors are exact source substrings in the vulnerable project. This file is never uploaded into a project and never shown to the attacker model.",
   "scope": {
     "owner": "adversarial",
-    "appliesTo": "JavaScript, TypeScript and Python web or API projects that contain an AI, chatbot, agent, RAG, model gateway, tool-calling or document-search component.",
-    "notApplicable": "Projects with no AI component are not_applicable for AI Adversarial; broad non-AI penetration testing stays owned by the Security check.",
-    "insufficientEvidence": "A project that has an AI component but no reachable target is not_ready_insufficient_evidence, never not_applicable."
+    "appliesTo": "JavaScript, TypeScript and Python web or API projects, on two attacker tracks: the general track for any app with a reachable HTTP surface, and the AI track for apps that also contain an AI, chatbot, agent, RAG, model gateway, tool-calling or document-search component.",
+    "notApplicable": "not_applicable only when neither a reachable HTTP endpoint nor an AI component is present; per-endpoint weakness proofs stay owned by the Security check and are reused, not re-proved.",
+    "insufficientEvidence": "A project that has an AI component but no reachable target, and no general surface either, is not_ready_insufficient_evidence, never not_applicable."
   },
   "existingAdversarialDefects": {
     "keyPath": "test/testing-bench/cybercheck-gauntlet/expected.json",

@@ -33,8 +33,9 @@ const schema = z.object({
   /** Only changed by tests, which point it at a local fake GitHub. */
   GITHUB_API_URL: z.string().url().default("https://api.github.com"),
 
-  // AI step of project understanding (OpenAI-compatible Nebius Token Factory). Without a key,
-  // the dossier stays code-derived only.
+  // AI step of project understanding. Auto prefers Nebius and falls back to Gemini when Nebius is unavailable.
+  // Without either key, the dossier stays code-derived only.
+  UNDERSTANDING_AI_PROVIDER: z.enum(["auto", "nebius", "gemini"]).default("auto"),
   NEBIUS_API_KEY: optional,
   NEBIUS_BASE_URL: z.string().url().default("https://api.tokenfactory.nebius.com/v1/"),
   NEBIUS_MODEL_FAST: z.string().default("deepseek-ai/DeepSeek-V4-Flash-0731"),
@@ -92,7 +93,12 @@ export const providers = {
   github: Boolean(env.GITHUB_CLIENT_ID && env.GITHUB_CLIENT_SECRET),
   githubApp: Boolean(env.GITHUB_CLIENT_ID && env.GITHUB_CLIENT_SECRET && env.GITHUB_APP_SLUG),
   smtp: Boolean(env.SMTP_USER && env.SMTP_PASS),
-  ai: Boolean(env.NEBIUS_API_KEY),
+  ai:
+    env.UNDERSTANDING_AI_PROVIDER === "nebius"
+      ? Boolean(env.NEBIUS_API_KEY)
+      : env.UNDERSTANDING_AI_PROVIDER === "gemini"
+        ? Boolean(env.GEMINI_API_KEY)
+        : Boolean(env.NEBIUS_API_KEY || env.GEMINI_API_KEY),
   testingAi: env.TESTING_AI_PROVIDER === "gemini" ? Boolean(env.GEMINI_API_KEY) : Boolean(env.NEBIUS_API_KEY),
   sandbox: Boolean(env.NEBIUS_API_KEY && env.NEBIUS_PROJECT_ID),
 };

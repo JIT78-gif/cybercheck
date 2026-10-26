@@ -159,6 +159,7 @@ export function dependencyContext(
   // the nearest single fix, which could still leave another advisory unpatched).
   const sorted = [...fixedVersions].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
   const nearestFix = sorted.at(-1) ?? null;
+  const advisories = [...new Map(vulns.map((v) => [v.id, { id: v.id, aliases: [...new Set(v.aliases ?? [])], withdrawn: Boolean(v.withdrawn), severitySource: "OSV" }])).values()];
   return {
     ecosystem: pkg.ecosystem.toLowerCase().includes("pypi") ? "pypi" : "npm",
     package: pkg.name,
@@ -166,7 +167,7 @@ export function dependencyContext(
     lockfile,
     direct: dep ? d.dependencies.some((x) => x.name === pkg.name && x.manifest === lockfile.replace(/(^|\/)(package-lock\.json|npm-shrinkwrap\.json|yarn\.lock|pnpm-lock\.yaml)$/, "$1package.json").replace(/(^|\/)poetry\.lock$/, "$1pyproject.toml")) : null,
     scope: dep ? (dep.dev ? "development" : "production") : "unknown",
-    advisories: vulns.map((v) => ({ id: v.id, aliases: v.aliases ?? [], withdrawn: Boolean(v.withdrawn), severitySource: "OSV" })),
+    advisories,
     affected: null,
     fixedVersions,
     nearestFix,
@@ -178,6 +179,18 @@ export function dependencyContext(
 }
 
 const severityOfCvss =(score: number | null): SecurityFinding["severity"] => (score == null ? "medium" : score >= 9 ? "critical" : score >= 7 ? "high" : score >= 4 ? "medium" : "low");
+
+/** OSV calls requirements.txt a lockfile even when it contains ranges. Verify exactness from the snapshot itself. */
+function exactDependencyVersion(path: string, sourceType: string, pkg: { name: string; version: string }, src: SnapshotSource) {
+  if (/(^|\/)(package-lock\.json|npm-shrinkwrap\.json|yarn\.lock|pnpm-lock\.yaml|poetry\.lock|Pipfile\.lock|uv\.lock)$/.test(path)) return sourceType === "lockfile";
+  if (!/(^|\/)requirements(?:[-_.][\w-]+)?\.txt$/i.test(path)) return false;
+  const normalized = pkg.name.toLowerCase().replace(/[-_.]+/g, "[-_.]+");
+  const version = pkg.version.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return (src.files.get(path)?.text ?? "")
+    .split("\n")
+    .map((line) => line.replace(/\s+#.*$/, "").trim())
+    .some((line) => new RegExp(`^${normalized}(?:\\[[^\\]]+\\])?\\s*==\\s*${version}(?:\\s*;.*)?$`, "i").test(line));
+}
 
 /** A credential assigned to a secret-named identifier as a string literal in source code (not .env, tests or docs). */
 const TOKEN_NAME = /\b([A-Za-z_]*(?:token|secret|api[_-]?key|apikey|credential|passwd|password|private[_-]?key)[A-Za-z_]*)\b/i;
@@ -253,19 +266,22 @@ export function scanFindings(runs: ToolRun[], c: ScanContext): { findings: Draft
     const path = rel(l.File);
     const fp = secretFingerprint(l.Secret ?? "", c.salt);
     const loc = { path, line: Math.max(1, l.StartLine) };
+    const templateOnly = /(^|\/)(\.env\.(example|sample|template)|[^/]+\.(example|sample))$/i.test(path) || PLACEHOLDER.test(l.Secret ?? "");
     const known = bySecret.get(fp);
     if (known) {
       known.files.push(loc);
+      // The same value in a real source/config file removes the template-only uncertainty.
+      if (!templateOnly) Object.assign(known.draft, { status: "confirmed", severity: /private-key|aws|gcp|azure|stripe|github|slack|live/i.test(l.RuleID) ? "critical" : "high", confirmation: "The value is committed outside an example/template file; whether it is still active was not checked." });
       continue;
     }
     const critical = /private-key|aws|gcp|azure|stripe|github|slack|live/i.test(l.RuleID);
     bySecret.set(fp, {
       files: [loc],
       draft: {
-        status: "confirmed", severity: critical ? "critical" : "high", lane: "secrets", category: "secrets", title: `${l.Description} committed in ${path}`, cwe: ["CWE-798"], owasp: ["A07:2021"],
+        status: templateOnly ? "suspected" : "confirmed", severity: templateOnly ? "medium" : critical ? "critical" : "high", lane: "secrets", category: "secrets", title: `${l.Description} committed in ${path}`, cwe: ["CWE-798"], owasp: ["A07:2021"],
         expected: "Credentials and keys are not committed with the code", observed: `A value matching the ${l.RuleID} pattern is in the code (shown only as a fingerprint).`, impact: "Anyone with read access to the code can use the credential until it is rotated.",
         location: loc, evidence: [loc], trust: "tool_observation", detector: { tool: "gitleaks", version: c.versions.gitleaks, rule: l.RuleID }, secret: { type: l.RuleID, preview: secretPreview(l.Secret ?? ""), fingerprint: fp },
-        confirmation: "A secret is confirmed when it is found in the code; whether it is still active was not checked.", obligationIds: ["sec:secrets:repository"], executionIds: [c.executionId], remediation: "Rotate the credential, remove it from the code (and its history), and load it from the environment.", rootCause: `secret:${fp}`,
+        confirmation: templateOnly ? "The value appears only in an example/template context; confirm that it is a real credential before treating it as an incident." : "A secret-shaped value is committed in a non-template file; whether it is still active was not checked.", obligationIds: ["sec:secrets:repository"], executionIds: [c.executionId], remediation: "Rotate the credential if it is real, remove it from the code (and its history), and load it from the environment.", rootCause: `secret:${fp}`,
       },
     });
   }
@@ -277,7 +293,7 @@ export function scanFindings(runs: ToolRun[], c: ScanContext): { findings: Draft
   for (const r of ((run("osv")?.output as Osv | null)?.results ?? [])) {
     const lockfile = rel(r.source.path);
     const manifest = lockfile.replace(/(^|\/)(package-lock\.json|npm-shrinkwrap\.json|yarn\.lock|pnpm-lock\.yaml)$/, "$1package.json").replace(/(^|\/)(poetry\.lock)$/, "$1pyproject.toml");
-    const exact = r.source.type === "lockfile";
+    const sourceType = r.source.type;
     const lines = c.src.files.get(lockfile)?.text.split("\n") ?? [];
     for (const p of r.packages) {
       const vulns = p.vulnerabilities ?? [];
@@ -285,8 +301,9 @@ export function scanFindings(runs: ToolRun[], c: ScanContext): { findings: Draft
       const max = Math.max(...(p.groups ?? []).map((g) => Number(g.max_severity)).filter((n) => Number.isFinite(n)), -1);
       const line = Math.max(1, lines.findIndex((l) => l.includes(`"${p.package.name}"`) || l.includes(`node_modules/${p.package.name}"`) || l.toLowerCase().startsWith(`${p.package.name.toLowerCase()}==`)) + 1);
       const loc = { path: lockfile, line };
-      const ids = vulns.map((v) => v.aliases?.find((a) => a.startsWith("CVE-")) ?? v.id);
+      const ids = [...new Set(vulns.map((v) => v.aliases?.find((a) => a.startsWith("CVE-")) ?? v.id))];
       const live = vulns.filter((v) => !v.withdrawn);
+      const exact = exactDependencyVersion(lockfile, sourceType, p.package, c.src);
       const dependency = dependencyContext(c.d, p.package, lockfile, exact, vulns, c.versions.osvDatabaseAt);
       // An exact lockfile match confirms the vulnerable component is present. It does not claim the app is exploitable
       // (reachability is "unknown" until a runtime proof touches it); a withdrawn-only advisory is not confirmed.

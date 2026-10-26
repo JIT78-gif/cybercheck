@@ -1,5 +1,5 @@
 import { buffer } from "node:stream/consumers";
-import type { ProjectDossier, SecurityObligation, SecurityProof, TestExecution } from "@cybercheck/contracts";
+import type { ProjectDossier, SecurityObligation, SecurityProof, SecurityProofRuntime, TestExecution } from "@cybercheck/contracts";
 import { APP_ROOT, planWorkspaces, slug, wsPath } from "../../testing/adapters.ts";
 import { bootGraph, planBoot, type BootApp } from "../../testing/agents.ts";
 import { seededAccounts, verifyTarget } from "../../testing/fixtures.ts";
@@ -21,19 +21,36 @@ export type ProofRunResult = {
   appBooted: boolean;
   bootNote: string;
   identities: Identity[];
+  runtime: SecurityProofRuntime;
   /** Runtime obligations no proof could exercise, with the reason (the orchestrator marks them not_applicable). */
   notApplicable: Array<{ obligationId: string; reason: string }>;
 };
 
+const runtime = (stage: SecurityProofRuntime["stage"], reason: string, over: Partial<SecurityProofRuntime> = {}): SecurityProofRuntime => ({
+  stage,
+  attempted: stage !== "not_attempted",
+  appBooted: stage === "completed",
+  compiled: 0,
+  rejected: 0,
+  executed: 0,
+  identities: 0,
+  reason,
+  executionIds: [],
+  ...over,
+});
+
 /** Deterministic identities from the accounts the project seeds: two of the first role (for IDOR) plus an admin. */
-export function buildIdentities(src: SnapshotSource, login: { method: string; path: string; accountField: string; passwordField: string }, d: ProjectDossier): { identities: Identity[]; nodes: FixtureNode[] } {
+export function buildIdentities(src: SnapshotSource, login: { method: string; path: string; accountField: string; passwordField: string; body?: "json" | "form"; tokenPath?: string }, d: ProjectDossier): { identities: Identity[]; nodes: FixtureNode[] } {
   const accounts = seededAccounts(src);
   if (!accounts.length) return { identities: [], nodes: [] };
   const admins = accounts.filter((a) => /admin|superuser|root|owner|staff/i.test(a.role ?? ""));
   const members = accounts.filter((a) => !admins.includes(a));
   const chosen = [...members.slice(0, 2), ...admins.slice(0, 1)];
   const nameOf = (role: string | null, i: number, memberIdx: number) => (admins.some((a) => a.role === role) && role ? "admin" : memberIdx === 0 ? "customer" : `customer-${memberIdx + 1}`);
-  const verify = verifyTarget(d, ["session_required"]) ?? verifyTarget(d, []);
+  // Verify a sign-in against a route that only needs a session, never a role: a role_required route answers 403 for
+  // every non-admin identity and would wrongly fail its sign-in (so every authenticated proof or campaign using that
+  // identity would then be blocked). A handler-level check accepts any signed-in caller, so it is a valid fallback.
+  const verify = verifyTarget(d, ["session_required", "handler_check"]) ?? null;
   const identities: Identity[] = [];
   const nodes: FixtureNode[] = [];
   let memberIdx = 0;
@@ -48,7 +65,17 @@ export function buildIdentities(src: SnapshotSource, login: { method: string; pa
       label: `Sign in as ${name}`,
       kind: "identity",
       dependsOn: [],
-      auth: { kind: "login", request: { method: login.method, path: login.path, json: { [login.accountField]: a.account, [login.passwordField]: a.password } }, tokenPath: "token" },
+      auth: {
+        kind: "login",
+        request: {
+          method: login.method,
+          path: login.path,
+          ...(login.body === "form"
+            ? { form: { [login.accountField]: a.account, [login.passwordField]: a.password } }
+            : { json: { [login.accountField]: a.account, [login.passwordField]: a.password } }),
+        },
+        tokenPath: login.tokenPath ?? "token",
+      },
       verify,
       appliesTo: ["session_required"],
       // A member identity also yields a tampered-token variant for the forged-token proof.
@@ -116,18 +143,35 @@ export async function runProofs(ctx: Ctx, d: ProjectDossier, src: SnapshotSource
   const workspaces = planWorkspaces(d, src);
   const boot = await planBoot(null, d, src, workspaces);
   const app = boot.apps[0];
-  if (!app) return { proofs: [], appBooted: false, bootNote: "No startable app was found to prove against.", identities: [], notApplicable: [] };
+  if (!app) {
+    const reason = "No startable app was found to prove against.";
+    return { proofs: [], appBooted: false, bootNote: reason, identities: [], notApplicable: [], runtime: runtime("no_startable_app", reason) };
+  }
 
   const loginEp = d.entryPoints.find((e) => /(^|\/)(log-?in|sign-?in|auth\/login|session)(\/|$)/i.test(e.path) && e.method === "POST");
   const accounts = seededAccounts(src);
-  const login = loginEp && accounts.length ? { method: loginEp.method, path: loginEp.path, accountField: accounts[0]!.accountField, passwordField: accounts[0]!.passwordField } : null;
+  const loginSource = loginEp ? (src.files.get(loginEp.handler.path)?.text ?? "") : "";
+  const formLogin = /OAuth2PasswordRequestForm|Form\s*\(/.test(loginSource);
+  const login = loginEp && accounts.length ? {
+    method: loginEp.method,
+    path: loginEp.path,
+    accountField: formLogin ? "username" : accounts[0]!.accountField,
+    passwordField: "password",
+    body: formLogin ? "form" as const : "json" as const,
+    tokenPath: /["']access_token["']|\baccess_token\s*=/.test(loginSource) ? "access_token" : "token",
+  } : null;
   const { identities, nodes: idNodes } = login ? buildIdentities(src, login, d) : { identities: [], nodes: [] };
 
   const cookieSession = d.securityModel.authMechanisms.some((m) => m.kind === "session") || Boolean(d.runtime.session);
   const catalog = buildCatalog({ dossier: d, identities, sensitiveFields: sensitiveFieldsOf(d), hypotheses, canaryBase: `http://127.0.0.1:${CANARY.port}`, obligations, cookieSession, login: login && accounts[0] ? { ...login, knownEmail: accounts[0].account } : undefined });
   const { proofs: compiled, rejected } = compilePlan(catalog.proofs, d, identities.map((i) => i.name));
   if (rejected.length) await onEvent(`${rejected.length} proof(s) were not run (safety gate): ${rejected.slice(0, 2).map((r) => r.reasons[0]).join("; ")}`);
-  if (!compiled.length) return { proofs: [], appBooted: false, bootNote: "No runnable proofs were compiled for this project.", identities, notApplicable: catalog.notApplicable };
+  if (!compiled.length) {
+    const reason = identities.length
+      ? "No runnable proofs were compiled for this project's endpoints."
+      : "No runnable proofs were compiled because no synthetic identity could be established from the project's fixtures or seed data.";
+    return { proofs: [], appBooted: false, bootNote: reason, identities, notApplicable: catalog.notApplicable, runtime: runtime("no_compiled_proofs", reason, { compiled: 0, rejected: rejected.length, identities: identities.length }) };
+  }
   // The harness runs every proof against one shared app with no reset between them, so a proof that changes stored
   // state (e.g. a mass-assignment or CSRF proof that rewrites a seeded account) can invalidate a later read proof
   // that relies on the clean seed, such as account enumeration checking a known email. Run the proofs that only
@@ -135,7 +179,10 @@ export async function runProofs(ctx: Ctx, d: ProjectDossier, src: SnapshotSource
   orderProofs(compiled, login?.path);
 
   const image = await prepareApp(ctx, archive, app.prepare.length || workspaces.find((w) => w.dir === app.workspace)?.install ? { dir: app.workspace, command: workspaces.find((w) => w.dir === app.workspace)?.install?.command ?? "npm install" } : null);
-  if (!image) return { proofs: [], appBooted: false, bootNote: "The app could not be prepared in the sandbox.", identities, notApplicable: catalog.notApplicable };
+  if (!image) {
+    const reason = "The app could not be prepared in the sandbox; unpacking or dependency installation failed.";
+    return { proofs: [], appBooted: false, bootNote: reason, identities, notApplicable: catalog.notApplicable, runtime: runtime("preparation_failed", reason, { compiled: compiled.length, rejected: rejected.length, identities: identities.length }) };
+  }
 
   const graph: FixtureNode[] = [...bootGraph(app, (applies) => verifyTarget(d, applies)), ...idNodes];
   const probes = compiled.map(toProbe);
@@ -166,7 +213,25 @@ export async function runProofs(ctx: Ctx, d: ProjectDossier, src: SnapshotSource
     if (probeOut?.blocked || (missingId.length && p.identities.length)) proofs.push(readProof(p, [], ctxP, `P${i + 1}`));
     else proofs.push(readProof(p, steps, ctxP, `P${i + 1}`));
   });
-  return { proofs, appBooted: Boolean(r.out), bootNote: r.out ? `Signed in: ${[...signedIn].join(", ") || "none"}.` : "The app did not boot.", identities, notApplicable: catalog.notApplicable };
+  const appBooted = Boolean(r.out?.boot.ok);
+  const bootNote = appBooted
+    ? `Signed in: ${[...signedIn].join(", ") || "none"}.`
+    : `The app did not boot${r.out?.boot.reason ? `: ${r.out.boot.reason}` : ""}.`;
+  return {
+    proofs,
+    appBooted,
+    bootNote,
+    identities,
+    notApplicable: catalog.notApplicable,
+    runtime: runtime(appBooted ? "completed" : "boot_failed", bootNote, {
+      appBooted,
+      compiled: compiled.length,
+      rejected: rejected.length,
+      executed: proofs.length,
+      identities: identities.length,
+      executionIds: [r.exec.id],
+    }),
+  };
 }
 
 /** Field names that mark one account's own data, from the entities' personal/secret fields. */
