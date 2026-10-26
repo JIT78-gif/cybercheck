@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="920" viewBox="0 0 1600 920" role="img" aria-labelledby="title desc">
+  <title id="title">cybercheck system architecture</title>
+  <desc id="desc">The web application calls the Fastify API. The trusted control plane manages authentication, intake, project understanding, PostgreSQL, a worker, four check engines, a model gateway, and an object store. Untrusted project execution happens in disposable sandboxes.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#08111f"/><stop offset="1" stop-color="#101c2d"/></linearGradient>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#8ba5c2"/></marker>
+    <style>
+      .h{font:700 27px system-ui,-apple-system,'Segoe UI',sans-serif;fill:#f8fbff}.sub{font:500 16px system-ui,-apple-system,'Segoe UI',sans-serif;fill:#aabed5}.label{font:700 17px system-ui,-apple-system,'Segoe UI',sans-serif;fill:#f8fbff}.small{font:500 14px system-ui,-apple-system,'Segoe UI',sans-serif;fill:#c7d5e5}.line{fill:none;stroke:#8ba5c2;stroke-width:2.5;marker-end:url(#arrow)}.box{stroke-width:2;rx:16}.zone{fill:#0e1928;stroke:#334960;stroke-width:2;rx:24}
+    </style>
+  </defs>
+  <rect width="1600" height="920" fill="url(#bg)" rx="28"/>
+  <text x="70" y="64" class="h">cybercheck system architecture</text>
+  <text x="70" y="94" class="sub">Trusted orchestration around disposable, untrusted execution</text>
+
+  <rect x="70" y="132" width="1460" height="110" class="zone"/>
+  <rect x="110" y="158" width="250" height="58" class="box" fill="#1b3551" stroke="#68a8e8"/><text x="235" y="193" text-anchor="middle" class="label">Developer / judge</text>
+  <path d="M360 187H455" class="line"/>
+  <rect x="460" y="158" width="310" height="58" class="box" fill="#143c45" stroke="#45d0b6"/><text x="615" y="183" text-anchor="middle" class="label">Next.js web application</text><text x="615" y="204" text-anchor="middle" class="small">UI, progress, reports, approvals</text>
+  <path d="M770 187H865" class="line"/>
+  <rect x="870" y="158" width="300" height="58" class="box" fill="#322a59" stroke="#a996ff"/><text x="1020" y="183" text-anchor="middle" class="label">Fastify API</text><text x="1020" y="204" text-anchor="middle" class="small">auth, tenancy, validation, routes</text>
+  <text x="1260" y="181" class="small">same-origin proxy</text><text x="1260" y="203" class="small">/v1 + /api/auth</text>
+
+  <rect x="70" y="278" width="970" height="560" class="zone"/><text x="108" y="321" class="h">Trusted control plane</text>
+  <rect x="110" y="354" width="250" height="70" class="box" fill="#1c3553" stroke="#6ea8e6"/><text x="235" y="384" text-anchor="middle" class="label">Better Auth</text><text x="235" y="406" text-anchor="middle" class="small">sessions + workspace scope</text>
+  <rect x="405" y="354" width="270" height="70" class="box" fill="#1c3553" stroke="#6ea8e6"/><text x="540" y="384" text-anchor="middle" class="label">Intake + policy</text><text x="540" y="406" text-anchor="middle" class="small">normalize, validate, digest</text>
+  <rect x="720" y="354" width="270" height="70" class="box" fill="#1c3553" stroke="#6ea8e6"/><text x="855" y="384" text-anchor="middle" class="label">Project understanding</text><text x="855" y="406" text-anchor="middle" class="small">facts, dossier, diagrams</text>
+
+  <rect x="110" y="474" width="270" height="74" class="box" fill="#183349" stroke="#55c3b7"/><text x="245" y="505" text-anchor="middle" class="label">PostgreSQL</text><text x="245" y="527" text-anchor="middle" class="small">state, evidence, leases</text>
+  <rect x="405" y="474" width="270" height="74" class="box" fill="#183349" stroke="#55c3b7"/><text x="540" y="505" text-anchor="middle" class="label">Check worker</text><text x="540" y="527" text-anchor="middle" class="small">claim, heartbeat, dispatch</text>
+  <rect x="720" y="474" width="270" height="74" class="box" fill="#183349" stroke="#55c3b7"/><text x="855" y="505" text-anchor="middle" class="label">Object store</text><text x="855" y="527" text-anchor="middle" class="small">snapshots + artifacts</text>
+
+  <path d="M1020 216V300H235V349" class="line"/><path d="M1020 216V300H540V349" class="line"/><path d="M1020 216V300H855V349" class="line"/>
+  <path d="M540 424V469" class="line"/><path d="M675 389H715" class="line"/><path d="M855 424V469" class="line"/><path d="M405 511H385" class="line"/>
+
+  <text x="110" y="604" class="label">Four evidence engines</text>
+  <rect x="110" y="630" width="200" height="88" class="box" fill="#143b42" stroke="#45d0b6"/><text x="210" y="670" text-anchor="middle" class="label">Testing</text><text x="210" y="696" text-anchor="middle" class="small">behavior + coverage</text>
+  <rect x="330" y="630" width="200" height="88" class="box" fill="#47262e" stroke="#ff7f8e"/><text x="430" y="670" text-anchor="middle" class="label">Security</text><text x="430" y="696" text-anchor="middle" class="small">controls + proofs</text>
+  <rect x="550" y="630" width="200" height="88" class="box" fill="#3e2d50" stroke="#d898ff"/><text x="650" y="670" text-anchor="middle" class="label">AI Evaluator</text><text x="650" y="696" text-anchor="middle" class="small">quality + safety</text>
+  <rect x="770" y="630" width="220" height="88" class="box" fill="#4b321d" stroke="#ffb45e"/><text x="880" y="670" text-anchor="middle" class="label">AI Adversarial</text><text x="880" y="696" text-anchor="middle" class="small">campaigns + chains</text>
+  <path d="M540 548V590H210V625" class="line"/><path d="M540 548V590H430V625" class="line"/><path d="M540 548V590H650V625" class="line"/><path d="M540 548V590H880V625" class="line"/>
+
+  <rect x="350" y="758" width="400" height="54" class="box" fill="#302957" stroke="#a996ff"/><text x="550" y="791" text-anchor="middle" class="label">Provider-neutral model gateway</text>
+  <path d="M430 718V753" class="line"/><path d="M650 718V753" class="line"/><path d="M880 718V785H755" class="line"/>
+
+  <rect x="1080" y="278" width="450" height="560" class="zone"/><text x="1118" y="321" class="h">Untrusted execution plane</text>
+  <rect x="1130" y="372" width="350" height="100" class="box" fill="#4b321d" stroke="#ffb45e"/><text x="1305" y="412" text-anchor="middle" class="label">Fresh isolated sandbox</text><text x="1305" y="439" text-anchor="middle" class="small">network, time, process and output bounds</text>
+  <rect x="1130" y="530" width="160" height="92" class="box" fill="#47262e" stroke="#ff7f8e"/><text x="1210" y="568" text-anchor="middle" class="label">Submitted</text><text x="1210" y="591" text-anchor="middle" class="small">project</text>
+  <rect x="1320" y="530" width="160" height="92" class="box" fill="#143b42" stroke="#45d0b6"/><text x="1400" y="568" text-anchor="middle" class="label">cybercheck</text><text x="1400" y="591" text-anchor="middle" class="small">harnesses</text>
+  <path d="M1305 472V500H1210V525" class="line"/><path d="M1305 472V500H1400V525" class="line"/>
+  <rect x="1130" y="680" width="350" height="94" class="box" fill="#183349" stroke="#55c3b7"/><text x="1305" y="718" text-anchor="middle" class="label">Bounded evidence return</text><text x="1305" y="744" text-anchor="middle" class="small">logs, responses, screenshots, metrics</text>
+  <path d="M1210 622V675" class="line"/><path d="M1400 622V675" class="line"/>
+  <path d="M990 674H1060V422H1125" class="line"/><path d="M1130 727H1045V785H855V553" class="line"/>
+</svg>

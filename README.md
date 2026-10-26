@@ -105,50 +105,7 @@ Expected outcome: two ordinary tests pass, two planted regression tests fail, an
 
 ## System architecture
 
-```mermaid
-flowchart TB
-    U[Developer / judge] --> W[Next.js web application]
-    W -->|same-origin /v1 and /api/auth| A[Fastify API]
-
-    subgraph CP[Trusted control plane]
-      A --> AUTH[Better Auth]
-      A --> IN[Intake and policy validation]
-      IN --> OBJ[(Local object store)]
-      IN --> UNDER[Project understanding]
-      A --> DB[(PostgreSQL)]
-      UNDER --> DB
-      A --> Q[Database-backed run queue]
-      Q --> WK[Check worker]
-      WK --> TST[Testing engine]
-      WK --> SEC[Security engine]
-      WK --> AIE[AI Evaluator]
-      WK --> ADV[AI Adversarial]
-      TST --> DB
-      SEC --> DB
-      AIE --> DB
-      ADV --> DB
-    end
-
-    UNDER --> MG[Provider-neutral model gateway]
-    TST --> MG
-    SEC --> MG
-    AIE --> MG
-    ADV --> MG
-
-    subgraph EP[Untrusted execution plane]
-      SB[Fresh isolated sandbox]
-      APP[Submitted project]
-      HAR[cybercheck harnesses]
-      SB --> APP
-      SB --> HAR
-    end
-
-    TST --> SB
-    SEC --> SB
-    AIE --> SB
-    ADV --> SB
-    SB -->|bounded logs and artifacts| OBJ
-```
+![cybercheck system architecture](images/readme-system-architecture.svg)
 
 ### Architectural boundaries
 
@@ -168,21 +125,7 @@ The worker increments a run generation when reclaiming abandoned work. Late writ
 
 cybercheck uses a **controlled specialist pipeline**, not an unrestricted autonomous swarm. “Agent” means a versioned role with a narrow prompt, schema, context, allowed actions, and budget. Agents do not receive credentials for the assessed project, cannot expand scope, and cannot mark their own hypotheses as proven.
 
-```mermaid
-flowchart LR
-    S[Immutable snapshot] --> F[Deterministic fact extraction]
-    F --> D[Shared project dossier]
-    D --> P[Planner / author specialist]
-    P --> V[Schema and policy validator]
-    V --> X[Sandbox execution]
-    X --> E[Normalized evidence]
-    E --> R[Deterministic verdict rules]
-    E --> C[Independent critic]
-    C --> R
-    R --> H[Human review]
-    H -->|explicit approval| FX[Fresh-baseline repair]
-    FX --> RP[Replay + regressions]
-```
+![cybercheck controlled specialist pipeline](images/readme-agent-pipeline.svg)
 
 ### Shared understanding specialists
 

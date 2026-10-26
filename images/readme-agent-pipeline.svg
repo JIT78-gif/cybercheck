@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="690" viewBox="0 0 1600 690" role="img" aria-labelledby="title desc">
+  <title id="title">cybercheck controlled specialist pipeline</title>
+  <desc id="desc">An immutable snapshot is analyzed into facts and a dossier. Specialists propose plans that are validated before sandbox execution. Evidence is judged by deterministic rules and an independent critic, reviewed by a human, and only then can an approved repair be replayed.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#08111f"/><stop offset="1" stop-color="#101c2d"/></linearGradient>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#8ba5c2"/></marker>
+    <style>.h{font:700 27px system-ui,-apple-system,'Segoe UI',sans-serif;fill:#f8fbff}.sub{font:500 16px system-ui,-apple-system,'Segoe UI',sans-serif;fill:#aabed5}.label{font:700 16px system-ui,-apple-system,'Segoe UI',sans-serif;fill:#f8fbff}.small{font:500 13px system-ui,-apple-system,'Segoe UI',sans-serif;fill:#c7d5e5}.num{font:800 15px system-ui,-apple-system,'Segoe UI',sans-serif;fill:#08111f}.line{fill:none;stroke:#8ba5c2;stroke-width:2.5;marker-end:url(#arrow)}.box{stroke-width:2;rx:16}</style>
+  </defs>
+  <rect width="1600" height="690" fill="url(#bg)" rx="28"/>
+  <text x="70" y="64" class="h">Controlled specialist pipeline</text>
+  <text x="70" y="94" class="sub">Models can propose and challenge. Policy, tools, replayable evidence and people decide.</text>
+
+  <g>
+    <rect x="70" y="150" width="250" height="92" class="box" fill="#1c3553" stroke="#6ea8e6"/><circle cx="96" cy="174" r="15" fill="#6ea8e6"/><text x="96" y="180" text-anchor="middle" class="num">1</text><text x="195" y="184" text-anchor="middle" class="label">Immutable snapshot</text><text x="195" y="210" text-anchor="middle" class="small">fixed digest + manifest</text>
+    <path d="M320 196H370" class="line"/>
+    <rect x="375" y="150" width="250" height="92" class="box" fill="#143c45" stroke="#45d0b6"/><circle cx="401" cy="174" r="15" fill="#45d0b6"/><text x="401" y="180" text-anchor="middle" class="num">2</text><text x="500" y="184" text-anchor="middle" class="label">Fact extraction</text><text x="500" y="210" text-anchor="middle" class="small">parsers + deterministic rules</text>
+    <path d="M625 196H675" class="line"/>
+    <rect x="680" y="150" width="250" height="92" class="box" fill="#143c45" stroke="#45d0b6"/><circle cx="706" cy="174" r="15" fill="#45d0b6"/><text x="706" y="180" text-anchor="middle" class="num">3</text><text x="805" y="184" text-anchor="middle" class="label">Project dossier</text><text x="805" y="210" text-anchor="middle" class="small">shared source-grounded context</text>
+    <path d="M930 196H980" class="line"/>
+    <rect x="985" y="150" width="250" height="92" class="box" fill="#3e2d50" stroke="#d898ff"/><circle cx="1011" cy="174" r="15" fill="#d898ff"/><text x="1011" y="180" text-anchor="middle" class="num">4</text><text x="1110" y="184" text-anchor="middle" class="label">Specialist proposal</text><text x="1110" y="210" text-anchor="middle" class="small">plan, scenario or hypothesis</text>
+    <path d="M1235 196H1285" class="line"/>
+    <rect x="1290" y="150" width="240" height="92" class="box" fill="#47262e" stroke="#ff7f8e"/><circle cx="1316" cy="174" r="15" fill="#ff7f8e"/><text x="1316" y="180" text-anchor="middle" class="num">5</text><text x="1410" y="184" text-anchor="middle" class="label">Policy validator</text><text x="1410" y="210" text-anchor="middle" class="small">schema, scope, budget, tools</text>
+  </g>
+
+  <path d="M1410 242V312H1250" class="line"/>
+  <rect x="1010" y="285" width="240" height="92" class="box" fill="#4b321d" stroke="#ffb45e"/><circle cx="1036" cy="309" r="15" fill="#ffb45e"/><text x="1036" y="315" text-anchor="middle" class="num">6</text><text x="1130" y="319" text-anchor="middle" class="label">Sandbox execution</text><text x="1130" y="345" text-anchor="middle" class="small">bounded tools + synthetic data</text>
+  <path d="M1010 331H960" class="line"/>
+  <rect x="710" y="285" width="250" height="92" class="box" fill="#183349" stroke="#55c3b7"/><circle cx="736" cy="309" r="15" fill="#55c3b7"/><text x="736" y="315" text-anchor="middle" class="num">7</text><text x="835" y="319" text-anchor="middle" class="label">Normalized evidence</text><text x="835" y="345" text-anchor="middle" class="small">logs, responses, metrics, artifacts</text>
+
+  <path d="M835 377V430H585" class="line"/><path d="M835 377V430H1085" class="line"/>
+  <rect x="455" y="438" width="260" height="92" class="box" fill="#143c45" stroke="#45d0b6"/><circle cx="481" cy="462" r="15" fill="#45d0b6"/><text x="481" y="468" text-anchor="middle" class="num">8A</text><text x="585" y="472" text-anchor="middle" class="label">Deterministic verdict</text><text x="585" y="498" text-anchor="middle" class="small">objective rules keep authority</text>
+  <rect x="955" y="438" width="260" height="92" class="box" fill="#3e2d50" stroke="#d898ff"/><circle cx="981" cy="462" r="15" fill="#d898ff"/><text x="981" y="468" text-anchor="middle" class="num">8B</text><text x="1085" y="472" text-anchor="middle" class="label">Independent critic</text><text x="1085" y="498" text-anchor="middle" class="small">challenges evidence strength</text>
+  <path d="M715 484H950" class="line"/>
+
+  <path d="M585 530V584H750" class="line"/><path d="M1085 530V584H850" class="line"/>
+  <rect x="680" y="550" width="240" height="92" class="box" fill="#1c3553" stroke="#6ea8e6"/><circle cx="706" cy="574" r="15" fill="#6ea8e6"/><text x="706" y="580" text-anchor="middle" class="num">9</text><text x="800" y="584" text-anchor="middle" class="label">Human review</text><text x="800" y="610" text-anchor="middle" class="small">evidence + explicit approval</text>
+  <path d="M920 596H1010" class="line"/>
+  <rect x="1015" y="550" width="250" height="92" class="box" fill="#4b321d" stroke="#ffb45e"/><circle cx="1041" cy="574" r="15" fill="#ffb45e"/><text x="1041" y="580" text-anchor="middle" class="num">10</text><text x="1140" y="584" text-anchor="middle" class="label">Fresh-baseline repair</text><text x="1140" y="610" text-anchor="middle" class="small">approved scope only</text>
+  <path d="M1265 596H1315" class="line"/>
+  <rect x="1320" y="550" width="210" height="92" class="box" fill="#143c45" stroke="#45d0b6"/><circle cx="1346" cy="574" r="15" fill="#45d0b6"/><text x="1346" y="580" text-anchor="middle" class="num">11</text><text x="1425" y="584" text-anchor="middle" class="label">Replay</text><text x="1425" y="610" text-anchor="middle" class="small">failure + regressions</text>
+</svg>
