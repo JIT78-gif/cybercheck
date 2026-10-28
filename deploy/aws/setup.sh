@@ -75,6 +75,8 @@ cd "$APP_DIR"
 sudo -u "$APP_USER" git pull --ff-only || echo "(git pull skipped: deploying the code already here)"
 sudo -u "$APP_USER" npm ci
 sudo -u "$APP_USER" npm run build -w @cybercheck/web
+# next build can exit 0 without building (for example when it refuses a version with a known vulnerability)
+[ -f apps/web/.next/BUILD_ID ] || { echo "The web build produced no output. Read the build messages above."; exit 1; }
 
 # ---- services: start on boot, restart on crash
 NPM="$(command -v npm)"
