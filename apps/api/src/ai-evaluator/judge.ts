@@ -64,11 +64,11 @@ export interface JudgeProvider {
   compare(input: JudgeInput & { baseline: string }): Promise<{ preference: "candidate" | "baseline" | "tie" | null; rationale: string; error: string | null }>;
 }
 
-// ---------------------------------------------------------------- the real provider (Gemini via cybercheck's gateway)
+// ---------------------------------------------------------------- the real provider (the critic model via cybercheck's gateway)
 
 const rubricPrompt = (r: { dimension: string; instruction: string }) => `You are an impartial evaluator. Score only on this criterion: ${r.dimension}. ${r.instruction} Return JSON {"score": 0-4, "rationale": "<one sentence citing the response>"}. Do not include any other text or your reasoning steps.`;
 
-/** A judge backed by cybercheck's own AI session (Gemini). Only built when a session and budget exist. */
+/** A judge backed by the critic role of cybercheck's own AI session. Only built when a session and budget exist. */
 export function sessionJudge(session: AiSession, model = "gemini-2.5-pro"): JudgeProvider {
   const user = (i: JudgeInput) => `Request (class): ${i.inputClass}\nExpected: ${i.expected}\n${i.context.length ? `Allowed context:\n${i.context.join("\n")}\n` : ""}${i.citations.length ? `Citations: ${i.citations.join(", ")}\n` : ""}Response to score:\n${i.response}`;
   return {

@@ -38,8 +38,9 @@ const schema = z.object({
   UNDERSTANDING_AI_PROVIDER: z.enum(["auto", "nebius", "gemini"]).default("auto"),
   NEBIUS_API_KEY: optional,
   NEBIUS_BASE_URL: z.string().url().default("https://api.tokenfactory.nebius.com/v1/"),
-  NEBIUS_MODEL_FAST: z.string().default("deepseek-ai/DeepSeek-V4-Flash-0731"),
-  NEBIUS_MODEL_STRONG: z.string().default("deepseek-ai/DeepSeek-V4-Pro-0813"),
+  // NVIDIA Nemotron on Token Factory does the work; the critic is a different model family so no model reviews its own answer.
+  NEBIUS_MODEL_FAST: z.string().default("nvidia/nemotron-3-super-120b-a12b"),
+  NEBIUS_MODEL_STRONG: z.string().default("nvidia/Nemotron-3-Ultra-550b-a55b"),
   NEBIUS_MODEL_CRITIC: z.string().default("zai-org/GLM-5.3"),
   NEBIUS_MODEL_EMBED: z.string().default("Qwen/Qwen3-Embedding-8B"),
   /** Spending cap for one project analysis, in US dollars. */
@@ -59,10 +60,10 @@ const schema = z.object({
   GEMINI_MODEL_CRITIC: z.string().default("gemini-2.5-pro"),
   /** Gemini's thinking counts against max_tokens on its OpenAI-compatible API; "low" keeps answers whole. */
   GEMINI_REASONING_EFFORT: z.enum(["none", "low", "medium", "high"]).default("low"),
-  /** Model that writes extra probes and tests (code-specialised). */
-  TESTING_MODEL_AUTHOR: z.string().default("moonshotai/Kimi-K2.7-Code"),
-  /** Model that plans booting and explains failures. */
-  TESTING_MODEL_TRIAGE: z.string().default("deepseek-ai/DeepSeek-V4-Pro-0813"),
+  /** Model that writes extra probes, tests, attacks and repair patches (many calls: fast and low cost). */
+  TESTING_MODEL_AUTHOR: z.string().default("nvidia/nemotron-3-super-120b-a12b"),
+  /** Model that plans booting and explains failures (fewer calls that need the strongest reasoning). */
+  TESTING_MODEL_TRIAGE: z.string().default("nvidia/Nemotron-3-Ultra-550b-a55b"),
   /** Independent model (different family) that must agree before a product defect is confirmed. */
   TESTING_MODEL_CRITIC: z.string().default("zai-org/GLM-5.3"),
   /** Spending cap on AI for one Testing run, in US dollars (the 9+/10 plan's hard limit for a Deep run is $1). */

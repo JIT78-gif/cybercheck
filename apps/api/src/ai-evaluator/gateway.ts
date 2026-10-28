@@ -1,7 +1,7 @@
 // Configuration for the future trusted live-model gateway. The gateway must run outside the untrusted application
 // workload: placing its key or outbound network in the app container would let evaluated code bypass every limit.
 
-/** cybercheck's own model used to run an evaluated app's traffic in live mode (separate from the Gemini judge). */
+/** cybercheck's own model used to run an evaluated app's traffic in live mode (separate from the judge). */
 export type LiveModelConfig = { baseUrl: string; apiKey: string; model: string; inPricePerMTok: number; outPricePerMTok: number };
 
 /** Read cybercheck's live-model configuration from the environment. Null when it is not configured (no credits). */

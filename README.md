@@ -15,11 +15,14 @@ cybercheck ingests a repository or source archive, builds a source-grounded unde
 
 This is a hackathon build with a working full-stack application, a deliberately flawed demonstration project, isolated execution support, review and repair workflows, and benchmark suites for the check engines.
 
+**Live demo:** https://32-237-56-77.sslip.io · **Track:** Coding and Agentic Engineering · **License:** [MIT](LICENSE)
+
 > **Safety boundary:** cybercheck assesses only code you own or are authorized to test. Uploaded projects and generated commands are untrusted workloads. Never point the adversarial workflow at production or third-party systems.
 
 ## Contents
 
 - [Why cybercheck](#why-cybercheck)
+- [NVIDIA Nemotron on Nebius Token Factory](#nvidia-nemotron-on-nebius-token-factory)
 - [What the product does](#what-the-product-does)
 - [The 3-minute judge demo](#the-3-minute-judge-demo)
 - [System architecture](#system-architecture)
@@ -52,6 +55,30 @@ Most tools expose isolated signals. cybercheck creates a shared, evidence-backed
 | Automated fixes are hard to trust | Require explicit approval, patch a fresh baseline, replay the original failure, and run regression checks |
 
 The core design principle is simple: **AI may propose and explain; deterministic code, tool output, and replayable evidence decide whenever possible.**
+
+## NVIDIA Nemotron on Nebius Token Factory
+
+cybercheck is a coding agent that writes, runs and tests code. Its model calls go to the Nebius Token Factory inference API, and the untrusted project code it builds and attacks runs in Nebius Sandboxes on the same platform.
+
+**Which model does what.** Every model call names a role, and each role maps to the model that fits it:
+
+| Role | Default model (Token Factory) | Why this size |
+|---|---|---|
+| Author: writes tests, probes, attack steps and repair patches for all four checks | `nvidia/nemotron-3-super-120b-a12b` (Nemotron 3 Super) | The highest-volume role: dozens of calls per run, so it needs to be fast and low cost while still writing correct code |
+| Triage: plans how to boot an app and explains why a test failed | `nvidia/Nemotron-3-Ultra-550b-a55b` (Nemotron 3 Ultra) | Fewer calls that need the strongest reasoning over long logs and source |
+| Project understanding: summarises the codebase into the shared project model | Nemotron 3 Super (fast passes) and Nemotron 3 Ultra (deep passes) | Same split: breadth with Super, depth with Ultra |
+| Critic: must agree before a defect is confirmed, and scores AI answers as the AI Evaluator judge | `zai-org/GLM-5.3` | Deliberately a different model family, so a model never approves its own mistake |
+
+**How the models are used safely.**
+
+- **Structured output only.** Every call must return JSON that matches a Zod schema. A wrong shape gets one retry with the exact validation errors, and reasoning text is stripped before parsing.
+- **The model never decides a verdict.** Nemotron proposes tests, attacks and patches; deterministic oracles that run real code in a Nebius Sandbox decide pass or fail, and a repair counts only when the original failure replays as fixed.
+- **Untrusted project text is data.** Source is wrapped in `<project_data>` tags, and secrets are redacted before any model sees them.
+- **Hard spending caps.** Before each call, the gateway reserves the worst-case cost using the per-token prices Token Factory publishes in its `/models` list, so a run can never exceed its budget (`AI_RUN_BUDGET_USD`, `TESTING_RUN_BUDGET_USD`).
+
+**Where Token Factory accelerated the work.** One OpenAI-compatible endpoint serves both NVIDIA Nemotron and an independent critic family, so trying a different model for a role is a configuration change (`TESTING_MODEL_*`, `NEBIUS_MODEL_*`), not new code. Published prices make the budget guard exact. Token Factory Sandboxes give each run a disposable, VM-isolated machine, so cybercheck can build and attack code it has never seen without running it on its own server.
+
+Gemini remains an optional alternative provider (`TESTING_AI_PROVIDER=gemini`, `UNDERSTANDING_AI_PROVIDER=gemini`); the default is Nemotron on Token Factory.
 
 ## What the product does
 
@@ -190,7 +217,7 @@ Security does not equate “scanner returned nothing” with “secure.” Tool 
 | Chain coordinator | Combine individually smaller weaknesses into a source-to-impact attack path |
 | Replay specialist | Confirm an approved repair blocks the original attack without breaking expected behavior |
 
-The adversarial engine is constrained by rules of engagement. It is intended for owned, isolated targets and synthetic data—not open-ended offensive use.
+The adversarial engine is constrained by rules of engagement. It is intended for owned, isolated targets and synthetic data, not open-ended offensive use.
 
 ## How a project moves through the system
 
@@ -280,7 +307,7 @@ Useful starting points for contributors:
 | Contracts | npm workspace package + Zod | One source of truth shared by the browser and API |
 | Worker | PostgreSQL-backed claiming with `SKIP LOCKED`, heartbeat and fencing | Durable concurrent work without adding a second queue system during the hackathon |
 | Sandboxes | Nebius Sandboxes; bounded Docker fallback for supported checks | Disposable execution for untrusted builds, apps, probes, and repair validation |
-| AI providers | Nebius Token Factory or Gemini through an OpenAI-compatible gateway | Provider-neutral structured output, model-role separation, timeouts, and budgets |
+| AI models | NVIDIA Nemotron 3 Super and Ultra on Nebius Token Factory, GLM-5.3 as the independent critic; Gemini optional | Right-sized models per role, structured output, model-role separation, timeouts, and budgets |
 | Browser/accessibility | Playwright, Chromium, axe-core | Real user journeys, screenshots, and WCAG evidence |
 | Testing | Vitest, Playwright, frozen benchmark fixtures | Unit/integration confidence plus regression measurement for the assurance engines themselves |
 | Storage | Local filesystem object-store interface | Atomic local artifacts now, with a narrow interface for future S3-compatible storage |
@@ -292,8 +319,8 @@ Useful starting points for contributors:
 - **Node.js 24 or newer**
 - **npm** (included with Node)
 - **Docker Desktop** or another Docker Compose-compatible runtime for PostgreSQL
-- A Nebius API key/project for full Testing sandbox execution
-- Optional Gemini or Nebius model credentials for AI-assisted planning and review
+- A Nebius Token Factory API key and project: NVIDIA Nemotron models for the AI roles, and Nebius Sandboxes for Testing execution
+- Optional: a Gemini key, if you prefer Gemini for the AI roles
 
 ### 1. Clone and install
 
@@ -393,7 +420,7 @@ All options are documented in [`.env.example`](.env.example). The most important
 | Variable | Purpose | Local default |
 |---|---|---|
 | `DATABASE_URL` | PostgreSQL connection string | `postgres://cybercheck:cybercheck_dev@localhost:5433/cybercheck` |
-| `BETTER_AUTH_SECRET` | Session signing secret; use 32+ random characters | None—must be set |
+| `BETTER_AUTH_SECRET` | Session signing secret; use 32+ random characters | None; must be set |
 | `BETTER_AUTH_URL` | Public authentication base URL | `http://localhost:3000` |
 | `WEB_ORIGIN` | Allowed browser origin | `http://localhost:3000` |
 | `API_PORT` | API listener port | `4000` |
@@ -406,8 +433,8 @@ All options are documented in [`.env.example`](.env.example). The most important
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Google sign-in |
 | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `GITHUB_APP_SLUG` | GitHub sign-in and read-only repository import |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `EMAIL_FROM` | Delivery of email verification codes |
-| `NEBIUS_API_KEY`, `NEBIUS_PROJECT_ID` | Nebius model access and isolated sandbox execution |
-| `GEMINI_API_KEY` | Gemini-based testing author/triage/critic roles |
+| `NEBIUS_API_KEY`, `NEBIUS_PROJECT_ID` | Nemotron and other Token Factory models, and isolated sandbox execution |
+| `GEMINI_API_KEY` | Optional Gemini alternative for the author, triage and critic roles |
 | `OBJECT_STORE_DIR` | Override the local artifact-store directory |
 | `TESTING_WORKER_CONCURRENCY` | Maximum concurrently claimed worker jobs; default `2` |
 
@@ -416,7 +443,7 @@ All options are documented in [`.env.example`](.env.example). The most important
 - `UNDERSTANDING_AI_PROVIDER` chooses `auto`, `nebius`, or `gemini`.
 - `TESTING_AI_PROVIDER` chooses the model provider for Testing specialists independently of the execution sandbox.
 - `AI_RUN_BUDGET_USD` and `TESTING_RUN_BUDGET_USD` cap model spend per run.
-- Model names are configurable so the system can evolve without changing orchestration code.
+- Model names are configurable so the system can evolve without changing orchestration code: `TESTING_MODEL_AUTHOR`, `TESTING_MODEL_TRIAGE`, `TESTING_MODEL_CRITIC` and `NEBIUS_MODEL_FAST`, `NEBIUS_MODEL_STRONG`, `NEBIUS_MODEL_CRITIC` (defaults: Nemotron 3 Super, Nemotron 3 Ultra, GLM-5.3).
 - `CC_LIVE_MODEL_*` variables are reserved for a future isolated live-model sidecar. Setting them does **not** enable live evaluation; the implementation fails closed until credential and network isolation can be guaranteed.
 
 ## Testing and evaluation
@@ -606,6 +633,12 @@ npm run typecheck
 npm test
 npm run build
 ```
+
+---
+
+## License
+
+cybercheck is open source under the [MIT License](LICENSE).
 
 ---
 

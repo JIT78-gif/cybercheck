@@ -51,7 +51,9 @@ function prices(baseUrl: string, apiKey: string, fetchImpl: typeof fetch): Promi
 export const estimateTokens = (s: string) => Math.ceil(s.length / 3.5);
 
 /** Extract a JSON value from model text (tolerates code fences and leading prose). */
-export function extractJson(text: string): unknown {
+export function extractJson(raw: string): unknown {
+  // Reasoning models (Nemotron, DeepSeek) may put their thinking in the answer; its braces are not the JSON.
+  const text = raw.replace(/<think>[\s\S]*?<\/think>/g, "").replace(/^[\s\S]*<\/think>/, "");
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/)?.[1];
   const candidate = (fenced ?? text).trim();
   try {
@@ -180,7 +182,9 @@ export class AiSession {
           if ((err as Error).name !== "TimeoutError" && (err as Error).name !== "TypeError") throw err;
           res = await send();
         }
-        const body = (await res.json().catch(() => ({}))) as { choices?: Array<{ finish_reason?: string; message?: { content?: string } }>; usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number }; error?: { message?: string } };
+        // Gemini wraps an error body in an array; unwrap it so the provider's message reaches the user.
+        const parsedBody = (await res.json().catch(() => ({}))) as unknown;
+        const body = (Array.isArray(parsedBody) ? (parsedBody[0] ?? {}) : parsedBody) as { choices?: Array<{ finish_reason?: string; message?: { content?: string } }>; usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number }; error?: { message?: string } };
         const inputTokens = body.usage?.prompt_tokens ?? 0;
         // Thinking tokens are billed as output, but some providers (Gemini) leave them out of completion_tokens and
         // count them only in total_tokens.

@@ -208,7 +208,7 @@ export async function runAiEvaluation(store: RunStore, deps: AiDeps, onProgress:
   const executions = () => (ctx as unknown as { executions: TestExecution[] }).executions;
 
   if (policy.judge === "auto" && deps.session) {
-    judgeProvider = sessionJudge(deps.session);
+    judgeProvider = sessionJudge(deps.session, deps.session.opts.models.critic);
     await step("judging", "Calibrating the judge against the human-labelled set");
     try {
       calibration = await calibrate(judgeProvider, JUDGE_CALIBRATION);
